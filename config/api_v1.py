@@ -1,0 +1,14 @@
+"""Every /api/v1/ route, one line per feature.
+
+A feature owns its own urls.py. To add a feature, add its line here.
+"""
+
+from django.urls import include, path
+
+urlpatterns = [
+    path("", include("apps.core.urls")),
+    path("auth/", include("apps.accounts.urls")),
+    path("", include("apps.schools.urls")),
+    path("sync/", include("apps.sync.urls")),
+    path("owner/", include("apps.owner.urls")),
+]

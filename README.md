@@ -5,6 +5,9 @@ Django + Django REST Framework backend for the SchoolOS Flutter app
 queues them, and this backend is where those queued changes are checked, stored
 and shared between devices.
 
+Built **one feature at a time**, each in its own folder, with no file over 700
+lines. Read [docs/architecture.md](docs/architecture.md) before adding a feature.
+
 ## Run it locally
 
 ```powershell
@@ -13,12 +16,13 @@ python -m venv .venv                     # once
 .\.venv\Scripts\pip install -r requirements.txt
 Copy-Item .env.example .env              # once; DEBUG=True for local work
 .\.venv\Scripts\python manage.py migrate
-.\.venv\Scripts\python manage.py createsuperuser   # asks for email + password
+.\.venv\Scripts\python manage.py create_school "BrightGate Academy" --owner-email you@school.ng
+.\.venv\Scripts\python manage.py changepassword you@school.ng   # if the account is new
 .\.venv\Scripts\python manage.py runserver
 ```
 
-- Admin: <http://127.0.0.1:8000/admin/> (create a School, then a Membership for
-  your user to give them a role at that school).
+- Admin: <http://127.0.0.1:8000/admin/> (create a superuser with
+  `manage.py createsuperuser` to use it).
 - Health check: <http://127.0.0.1:8000/api/v1/health/>
 - Android emulator reaches this machine at `http://10.0.2.2:8000`.
 
@@ -28,10 +32,14 @@ Tests: `.\.venv\Scripts\python manage.py test`
 
 | Path | Purpose |
 | --- | --- |
-| `config/` | Settings, URLs, WSGI/ASGI |
-| `apps/accounts` | Custom `User`, signing in by email |
-| `apps/schools` | `School` (a tenant), `Membership` (a person's role at a school), `/me/` |
-| `apps/sync` | Receives the app's queued mutations: `SyncRecord`, `MutationLog`, role policy |
+| `config/` | Settings, root URLs, `api_v1.py` (one line per feature) |
+| `apps/core` | Shared helpers: validation, permissions, `Rejected`, health |
+| `apps/accounts` | `User`, signing in by email |
+| `apps/schools` | `School` (a tenant), `Membership` (a role at a school), `/me/`, `create_school` |
+| `apps/domains` | Each school's web addresses: a platform subdomain plus an optional own domain |
+| `apps/sync` | Receives the app's queued changes; the registry features plug their rules into |
+| `apps/owner` | **Feature 1.** Salaries, payroll authority, job assignments |
+| `docs/` | Architecture, and contracts for features not built yet |
 
 ## API (all under `/api/v1/`)
 
@@ -41,91 +49,81 @@ Tests: `.\.venv\Scripts\python manage.py test`
 | `POST auth/token/` | none | `{email, password}` returns `{access, refresh}` |
 | `POST auth/token/refresh/` | none | `{refresh}` returns a new `{access, refresh}` |
 | `GET  me/` | Bearer | The person and their memberships |
-| `POST sync/push/` | Bearer | Applies one queued mutation |
+| `POST sync/push/` | Bearer | Applies one queued change |
+| `GET  owner/schools/{school}/records/{type}/` | Bearer, owner only | The owner's records of one kind |
 
 Access tokens last 15 minutes and refresh tokens 7 days. Send
 `Authorization: Bearer <access>`.
 
-### `GET me/`
-
-```json
-{
-  "id": "…", "email": "owner@school.ng", "name": "Ibrahim Yahaya",
-  "memberships": [
-    {"id": "…", "schoolId": "…", "schoolName": "BrightGate Academy", "role": "proprietor"}
-  ]
-}
-```
-
-Each membership has the same shape as the app's `SchoolMembership`, and `role`
-uses the app's `SchoolRole` names (`proprietor`, `administrator`, `principal`,
-`teacher`, `accountant`, `parent`, `student`, `staff`).
-
 ### `POST sync/push/`
 
-Body is one mutation, using the field names the app's `SyncMutation` already
-has:
+Body is one mutation, in the field names the app's `SyncMutation` already has:
 
 ```json
 {
   "id": "mutation id", "tenantId": "school uuid", "membershipId": "membership uuid",
   "entityType": "owner_payroll_profile", "entityId": "STAFF-001",
   "operation": "create | update | delete",
-  "payload": {"…": "…"}, "baseVersion": 3
+  "payload": {"...": "..."}, "baseVersion": 3
 }
 ```
 
 | HTTP | `disposition` | Meaning |
 | --- | --- | --- |
 | 200 | `accepted` | Applied. `serverVersion` is the record's new version. |
-| 409 | `conflict` | The record changed on the server first (or already exists, or was deleted). `serverVersion` is the current version. |
-| 422 | `rejected` | Not allowed for this role or entity type, or the record does not exist. `message` says why. |
+| 409 | `conflict` | The record changed on the server first, already exists, or was deleted. |
+| 422 | `rejected` | Not allowed, not valid, or not accepted yet. `message` says why and is safe to show. |
 | 400 | | The request itself is malformed. |
 | 401 / 403 | | Not signed in, or not a member of that school with that membership id. |
 
-Rules:
+- The caller must be signed in **and** own `membershipId`, an active membership
+  at `tenantId`. Nothing is ever read or written across schools.
+- **Retries are safe.** Every decision is stored against the mutation id.
+- `baseVersion` is the version the app last saw. A mismatch is a `conflict`.
+  Omitting it on an update is allowed (chained offline edits have none).
+- What is stored is what the record type's **handler** returns, not what the
+  app sent. Unknown fields are dropped and server-owned fields are set by the
+  server.
 
-- The caller must be signed in **and** own `membershipId`, an active
-  membership at `tenantId`. Nothing is ever read or written across schools.
-- **Retries are safe.** Every decision is stored against the mutation id, so
-  resending after a lost response returns the same answer and applies nothing
-  twice.
-- `baseVersion` is the version the app last saw. If it differs from the
-  server's, the result is `conflict`. Omitting it on an update is allowed,
-  because chained offline edits (create, then update, before the first sync)
-  have none.
-- Which roles may write which entity types is set in `apps/sync/policy.py`.
+### Owner records (feature 1)
 
-## Read this before relying on it for anything sensitive
+Three record types, owner only. Anyone else's write is `rejected`.
 
-**Sync is not fully authorized yet.** Only the owner-only record types in
-`apps/sync/policy.py` have rules. Every other type the app syncs is accepted
-in DEBUG only (`SYNC_ALLOW_UNLISTED_ENTITY_TYPES`) and **refused in
-production**, on purpose. Those types need server-side handlers first, because
-the app's rules are finer than "role X may write type Y":
+| `entityType` | Rules the server enforces |
+| --- | --- |
+| `owner_payroll_profile` | Whole-number salary, deductions not above gross, on-payroll needs a salary. **History is append-only** and stamped by the server; the past cannot be rewritten. No deletes. |
+| `owner_payroll_authorizer` | Authorities from a fixed list. **The app cannot make a grant `active` or set `membershipId`.** Only linking an account does. Revoke, never delete. |
+| `owner_job_assignment` | Valid role, duties, registered or unregistered person, section for a head of section. Same server-owned status and link. Revoke, never delete. |
 
-- `staff_proposal` - many roles propose; only the owner or an assigned approver
-  may decide, and not on their own proposals.
-- `owner_staff_profile` - only the staff member's own login may change bank
-  details; owner and principal edit the rest.
-- `payroll_batch`, `owner_payroll_authorizer` - prepare, approve and release
-  payment are separate authorities, and the approver cannot be the preparer.
-- staff onboarding - only the login linked to the staff record may submit.
+## School web addresses
 
-The app enforces these on the device, but a device can be modified, so the
-server has to enforce them too.
+Every school gets `<short name>.PLATFORM_DOMAIN` automatically (set
+`PLATFORM_DOMAIN` in `.env`). A school can add its own domain later, in the admin
+under **Domains**:
+
+1. Add the domain (kind `custom`). It starts `pending` and shows a DNS record to
+   create: a TXT record named `_schoolos-verify.<domain>` with the given value.
+2. Once the school has published it, select the domain and run **Check DNS and
+   verify**.
+3. Optionally run **Use as the school's primary domain** so emailed links use it.
+
+Platform subdomains open links **in the phone app** (set `ANDROID_APP_PACKAGE` and
+`ANDROID_CERT_SHA256`); a custom domain opens the web page instead.
+Details in [docs/contracts/invitations.md](docs/contracts/invitations.md).
 
 ## Not built yet
 
-- **Pull / download of records** to other devices. Only push exists.
-- **Server-side handlers** for the workflows above.
-- **Invitations:** sending the onboarding email, issuing a secure expiring link,
-  and linking the new login to the staff record on activation. The app already
-  queues the request (`onboardingStatus: invitePending`).
-- Sending email at all (no mail backend is configured).
-- File storage for passport photographs and documents.
-- A Flutter `SyncTransport` that calls `sync/push/` (the app has the interface
-  but no HTTP client yet).
+See the build order in [docs/architecture.md](docs/architecture.md). In short:
+
+- **Server-side handlers for everything except the owner records.** Other record
+  types are accepted in DEBUG and **refused in production**, on purpose.
+- **Staff proposals and approval.** Today a non-owner cannot write a salary
+  through sync, which is correct; approving a proposal must happen on the
+  server, atomically.
+- **Payroll batches**, **invitations and account linking**
+  ([contract](docs/contracts/invitations.md)), **pull sync** for other devices.
+- Email sending, file storage, background tasks.
+- A Flutter `SyncTransport` that calls `sync/push/`.
 - Postgres is supported through `DATABASE_URL` but has not been exercised.
 
 ## Production

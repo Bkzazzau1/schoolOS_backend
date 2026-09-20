@@ -4,6 +4,7 @@ Everything environment-specific comes from environment variables (or a local
 .env file, which is never committed). See .env.example.
 """
 
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -37,15 +38,21 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt",
+    # Shared foundations
+    "apps.core",
     "apps.accounts",
     "apps.schools",
+    "apps.domains",
     "apps.sync",
+    # Features, built one at a time
+    "apps.owner",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "apps.domains.middleware.SchoolHostMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -79,6 +86,10 @@ DATABASES = {
 }
 
 AUTH_USER_MODEL = "accounts.User"
+
+# Tests create many users, and real password hashing is deliberately slow.
+if "test" in sys.argv:
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -122,14 +133,24 @@ SIMPLE_JWT = {
 }
 
 # --- Sync -------------------------------------------------------------------
-# Which roles may write which entity types is set in apps/sync/policy.py.
-# Entity types that are not listed there are refused unless this is on. It
-# defaults to on only in DEBUG, so production never accepts a type that nobody
-# has written rules for.
+# Each feature owns the record types it registers a handler for (see
+# apps/sync/registry.py). Record types with no handler are refused unless this
+# is on. It defaults to on only in DEBUG, so production never accepts a type
+# that nobody has written rules for.
 SYNC_ALLOW_UNLISTED_ENTITY_TYPES = env.bool(
     "SYNC_ALLOW_UNLISTED_ENTITY_TYPES", default=DEBUG
 )
 SYNC_MAX_PAYLOAD_BYTES = 256 * 1024
+
+# --- School domains ----------------------------------------------------------
+# Every school gets <slug>.PLATFORM_DOMAIN automatically, and may add its own
+# domain later (see apps/domains). Leave PLATFORM_DOMAIN empty to switch this off.
+PLATFORM_DOMAIN = env("PLATFORM_DOMAIN", default="")
+
+# What lets Android open emailed links in the app. The link file is served only
+# when both are set, and only on platform subdomains.
+ANDROID_APP_PACKAGE = env("ANDROID_APP_PACKAGE", default="")
+ANDROID_CERT_SHA256 = env.list("ANDROID_CERT_SHA256", default=[])
 
 # --- Production hardening ---------------------------------------------------
 if not DEBUG:

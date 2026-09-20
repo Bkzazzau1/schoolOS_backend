@@ -4,7 +4,7 @@ from rest_framework.test import APITestCase
 
 from apps.schools.models import Membership, Role, School
 
-from .models import MutationLog, SyncRecord
+from apps.sync.models import MutationLog, SyncRecord
 
 User = get_user_model()
 PUSH = "/api/v1/sync/push/"
@@ -153,20 +153,7 @@ class PushTests(APITestCase):
         self.assertEqual(SyncRecord.objects.get(school=self.school).payload, {"title": "School A"})
         self.assertEqual(SyncRecord.objects.get(school=self.other_school).payload, {"title": "School B"})
 
-    # -- role policy --------------------------------------------------------
-
-    def test_owner_only_records_are_refused_for_other_roles(self):
-        self.client.force_authenticate(self.teacher_user)
-        response = self.push(membership=self.teacher, entity_type="owner_payroll_profile", entity_id="s1",
-                             payload={"gross": 1})
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(SyncRecord.objects.count(), 0)
-        # The refusal is recorded.
-        self.assertEqual(MutationLog.objects.get().disposition, "rejected")
-
-    def test_the_owner_may_write_owner_only_records(self):
-        response = self.push(entity_type="owner_payroll_profile", entity_id="s1", payload={"gross": 1})
-        self.assertEqual(response.status_code, 200)
+    # -- record types with no handler ---------------------------------------
 
     @override_settings(SYNC_ALLOW_UNLISTED_ENTITY_TYPES=False)
     def test_unlisted_types_are_refused_when_unlisted_types_are_off(self):

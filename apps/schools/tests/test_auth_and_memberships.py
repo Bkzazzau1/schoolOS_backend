@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient, APITestCase
 
-from .models import Membership, Role, School
+from apps.schools.models import Membership, Role, School
 
 User = get_user_model()
 PASSWORD = "a-long-test-password-1"
