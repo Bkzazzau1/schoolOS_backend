@@ -68,6 +68,16 @@ A known gap: if someone loses access to a record, their device keeps its old cop
    unavailable, or keep using device data for it. Never invent figures.
 3. `attention[].screen` is an access-catalog key, so the app can open the right page. Refresh on open and pull-to-refresh.
 
+## G2. School life (`features/school-life.md`)
+
+1. **Community**: stop keeping comments and a reaction count inside the post. Create a `community_comment` per comment
+   and a `community_reaction` (id `<postId>:<membershipId>`) per like, and count on the device. Reporting creates a
+   `community_report`. Show the author from the record.
+2. **Noticeboard**: never raise `readCount` on the notice; it is the server's.
+3. Show the server's message when a guarded change is refused (`pinned`, review ticks, public showcase).
+4. Widen the screens for roles that may now add records (teachers, staff, parents), and hide controls for the rest.
+5. Meal days use the lower-case day as id; boarding records use an id made from the dorm name.
+
 ## H. Owner screens that are new
 
 - **Access & Activities** (`owner.access`): role defaults, a per-person page (grant, block after sync or now, end date,
@@ -81,5 +91,4 @@ invitation), then B, D, E, F, G, H. Do D1 and F3 before testing those features, 
 
 ## Not on the server yet (so the app keeps using device data)
 
-Students, attendance, academic results, fee payments and family accounts, campuses, and the 16 school-life modules
-(item 8, next). Records of these types are refused in production until their handlers exist.
+Students, attendance, academic results, fee payments and family accounts, campuses, and section or class audiences for school life. Records of these types are refused in production until their handlers exist.

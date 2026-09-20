@@ -22,7 +22,7 @@ class PushTests(APITestCase):
         self._n = 0
 
     def mutation(self, *, membership=None, school=None, operation="create",
-                 entity_type="school_event", entity_id="e1", payload=None,
+                 entity_type="some_future_thing", entity_id="e1", payload=None,
                  base_version=None, mutation_id=None):
         self._n += 1
         body = {

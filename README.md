@@ -162,6 +162,10 @@ Owner and finance summaries and the "needs your attention" list. See [docs/featu
 
 Everything the Flutter app must change, in order: [docs/APP_CHANGES.md](docs/APP_CHANGES.md).
 
+## School life (built)
+
+The 16 shared modules, with community split into posts, comments, reactions and reports. See [docs/features/school-life.md](docs/features/school-life.md).
+
 ## Not built yet
 
 See the build order in [docs/architecture.md](docs/architecture.md). In short:

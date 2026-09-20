@@ -18,7 +18,7 @@ approvals, 7 dashboards, 8 school-life modules.
 | **5** | **Payroll batches**: prepare, approve or reject, instruct payment | **done** | 495 in total | `apps/payroll`, `docs/features/payroll.md` |
 | **6** | **Scholarship approvals**: finance asks, owner decides | **done** | 515 in total | `apps/concessions`, `docs/features/concessions.md` |
 | **7** | **Dashboards** (owner and finance): what the server really knows, plus "needs your attention" | **done** (partly) | 532 in total | `apps/dashboards`, `docs/features/dashboards.md` |
-| 8 | School-life modules | not started | | One small handler each |
+| **8** | **School-life modules** (16): community, noticeboard, events, transport, and the rest | **done** | 576 in total | `apps/schoollife`, `docs/features/school-life.md` |
 
 ## Item 1: staff (done)
 
@@ -109,6 +109,14 @@ through the endpoints, stop pushing updates to proposals, send `?membership=`.
   sections, and an attention list. The dashboards never invent figures: `notAvailableYet` names what needs students,
   attendance, results or fee payments, which are not on the server.
 - Enrollment, reports and campus comparison wait for those records. Each will be added to the same endpoints.
+
+## Item 8: school-life modules (done)
+
+- 15 modules are one small spec each, run by one shared handler; community is four record types (post, comment,
+  reaction, report) so nobody edits anyone else's record. Everyone in the school can read by default.
+- Defaults I chose are listed in `features/school-life.md` (students cannot post; teachers add their own events; section
+  and class audiences are not enforced yet).
+- **App change**: community comments and reactions move out of the post into their own records.
 
 ## How to resume
 

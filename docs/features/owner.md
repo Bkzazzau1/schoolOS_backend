@@ -25,7 +25,7 @@ store yet; the backend has to compute it from other features.
 | `owner.ai` | Owner's assistant | Demo | Later; depends on what data it may read |
 | `owner.structure` | Sections, leaders, appointments | Persisted: `academic_section`, `leadership_appointment` | `structure` feature: small, owner-only |
 | `owner.appearance` | School colours and look | Persisted: `school_appearance` | `appearance` feature: owner writes, everyone reads |
-| `owner.school-life` | Opens 16 shared modules (community, events, transport, meals, ...), which everyone has by default | Persisted, one record type per module | `schoollife` feature, one small handler per module |
+| `owner.school-life` | Opens 16 shared modules (community, events, transport, meals, ...), which everyone has by default | Persisted, one record type per module | **Built** (`apps/schoollife`), see `features/school-life.md` |
 | `owner.access` | **New.** Decide who sees which activity | n/a | **Built** (`apps/access`), see the access contract |
 
 ## What is already built
