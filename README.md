@@ -158,6 +158,10 @@ Finance asks, the owner decides. See [docs/features/concessions.md](docs/feature
 
 Owner and finance summaries and the "needs your attention" list. See [docs/features/dashboards.md](docs/features/dashboards.md).
 
+## For the app developer
+
+Everything the Flutter app must change, in order: [docs/APP_CHANGES.md](docs/APP_CHANGES.md).
+
 ## Not built yet
 
 See the build order in [docs/architecture.md](docs/architecture.md). In short:
