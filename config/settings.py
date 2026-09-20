@@ -43,6 +43,8 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.schools",
     "apps.domains",
+    "apps.notifications",
+    "apps.access",
     "apps.sync",
     # Features, built one at a time
     "apps.owner",
@@ -141,6 +143,12 @@ SYNC_ALLOW_UNLISTED_ENTITY_TYPES = env.bool(
     "SYNC_ALLOW_UNLISTED_ENTITY_TYPES", default=DEBUG
 )
 SYNC_MAX_PAYLOAD_BYTES = 256 * 1024
+
+# --- Access ------------------------------------------------------------------
+# When the owner blocks someone, the app first fetches the latest and submits its
+# pending work, then the block takes effect. If the person's app never reports
+# back, the block takes effect anyway after this many hours.
+ACCESS_BLOCK_GRACE_HOURS = env.int("ACCESS_BLOCK_GRACE_HOURS", default=48)
 
 # --- School domains ----------------------------------------------------------
 # Every school gets <slug>.PLATFORM_DOMAIN automatically, and may add its own

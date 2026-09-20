@@ -18,6 +18,12 @@ apps/
     services.py           add, verify (DNS), set primary, disable, resolve a host
     middleware.py         which school is this request for?
     views.py              /.well-known/assetlinks.json (platform subdomains only)
+  notifications/        a person's in-app inbox; any feature can call notify()
+  access/               which activities (screens) each person may see
+    catalog/              the 106 activities, one file per workspace
+    services.py           effective access; role defaults; grant/block/reassign; audit
+    permissions.py        require_activity(): what other features call to enforce it
+    views_owner.py        the owner's management endpoints
   sync/                 the door every change from the app goes through
     registry.py           EntityHandler: how features plug their rules in
     services.py           applies one mutation (membership, conflicts, retries)
@@ -30,11 +36,12 @@ apps/
     tests/
 docs/
   architecture.md       this file
-  contracts/            agreed designs for features not built yet
+  features/             what each role's screens are, mapped to backend work
+  contracts/            agreed designs (built or not)
 ```
 
-Shared code lives in `core`, `schools` and `sync` and must not import from a
-feature. Features import shared code, never each other. If two features need the
+Shared code lives in `core`, `schools`, `domains`, `notifications`, `access` and `sync` and must not
+import from a feature. Features import shared code, never each other. If two features need the
 same thing, move it into `core`.
 
 ## How a change from the app is handled
@@ -90,6 +97,7 @@ Take "staff" as an example.
 | # | Feature | State |
 | --- | --- | --- |
 | 0 | `domains`: school web addresses, DNS verification, app-link file | done |
+| 0 | `access` + `notifications`: activities per role, owner grants/blocks/reassigns, two-step blocks, people are told | done |
 | 1 | `owner`: salaries, payroll authority, job assignments | done |
 | 2 | `staff`: proposals, approval (owner or assigned approver), staff profiles, identity uniqueness (phone and NIN) | next |
 | 3 | `payroll`: batches (prepare, approve, release; approver is not the preparer) | |

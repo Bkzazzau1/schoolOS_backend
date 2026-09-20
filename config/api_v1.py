@@ -9,6 +9,8 @@ urlpatterns = [
     path("", include("apps.core.urls")),
     path("auth/", include("apps.accounts.urls")),
     path("", include("apps.schools.urls")),
+    path("", include("apps.notifications.urls")),
+    path("", include("apps.access.urls")),
     path("sync/", include("apps.sync.urls")),
     path("owner/", include("apps.owner.urls")),
 ]

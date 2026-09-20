@@ -37,6 +37,8 @@ Tests: `.\.venv\Scripts\python manage.py test`
 | `apps/accounts` | `User`, signing in by email |
 | `apps/schools` | `School` (a tenant), `Membership` (a role at a school), `/me/`, `create_school` |
 | `apps/domains` | Each school's web addresses: a platform subdomain plus an optional own domain |
+| `apps/notifications` | A person's in-app messages; any feature can notify people |
+| `apps/access` | Which activities (screens) each person may see; the owner's grants, blocks and reassigns |
 | `apps/sync` | Receives the app's queued changes; the registry features plug their rules into |
 | `apps/owner` | **Feature 1.** Salaries, payroll authority, job assignments |
 | `docs/` | Architecture, and contracts for features not built yet |
@@ -51,6 +53,10 @@ Tests: `.\.venv\Scripts\python manage.py test`
 | `GET  me/` | Bearer | The person and their memberships |
 | `POST sync/push/` | Bearer | Applies one queued change |
 | `GET  owner/schools/{school}/records/{type}/` | Bearer, owner only | The owner's records of one kind |
+| `GET  schools/{school}/access/me/` | Bearer | Which activities the caller may see, and blocks waiting for their app |
+| `POST schools/{school}/access/acknowledge/` | Bearer | The app has synced; pending blocks take effect |
+| `GET  schools/{school}/notifications/` | Bearer | The caller's own messages |
+| `…    owner/schools/{school}/access/…` | Bearer, owner only | Manage access: catalog, roles, people, reassign, audit |
 
 Access tokens last 15 minutes and refresh tokens 7 days. Send
 `Authorization: Bearer <access>`.
@@ -94,6 +100,16 @@ Three record types, owner only. Anyone else's write is `rejected`.
 | `owner_payroll_profile` | Whole-number salary, deductions not above gross, on-payroll needs a salary. **History is append-only** and stamped by the server; the past cannot be rewritten. No deletes. |
 | `owner_payroll_authorizer` | Authorities from a fixed list. **The app cannot make a grant `active` or set `membershipId`.** Only linking an account does. Revoke, never delete. |
 | `owner_job_assignment` | Valid role, duties, registered or unregistered person, section for a head of section. Same server-owned status and link. Revoke, never delete. |
+
+## Who sees what (activities)
+
+There are 106 activities, one per app screen, and each role has a default set. The
+owner can change a role's defaults for their school, give a person an activity,
+block one, or move one between people, with optional end dates and a full audit
+trail. School life is for everyone by default. A block waits for the person's app
+to fetch and submit, then takes effect, and the person is told. Other features must call `require_activity()` so a blocked person cannot
+reach the data by API. Contract: [docs/contracts/access-control.md](docs/contracts/access-control.md).
+The owner's screens and how they map to backend work: [docs/features/owner.md](docs/features/owner.md).
 
 ## School web addresses
 
