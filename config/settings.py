@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "apps.sync",
     # Features, built one at a time
     "apps.owner",
+    "apps.staff",
 ]
 
 MIDDLEWARE = [

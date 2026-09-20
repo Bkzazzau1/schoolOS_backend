@@ -57,6 +57,14 @@ class EntityHandler:
         """
         raise NotImplementedError
 
+    def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
+        """Runs in the same transaction, right after a create or update is saved.
+
+        Use it for anything that must stay consistent with the record, such as a
+        table of unique values. Raise Rejected to undo the write: the record is
+        rolled back and the app is told why.
+        """
+
 
 _handlers: dict[str, EntityHandler] = {}
 

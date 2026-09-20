@@ -18,7 +18,7 @@ store yet; the backend has to compute it from other features.
 | `owner.enrollment` | Admissions and enrollment summary | Demo | **Read model** from admissions and registration |
 | `owner.staff` | HR overview: leadership, attendance, workload, contract risk | Demo | **Read model** |
 | `owner.jobs` | Gives jobs and duties to anyone, registered or not | Persisted: `owner_job_assignment` | **Built** (`apps/owner/jobs`) |
-| `owner.staff-profiles` | Full staff record; proposals and approvals; onboarding; duplicates | Persisted: `owner_staff_profile`, `staff_proposal`, staff directory | `staff` feature (**next**) |
+| `owner.staff-profiles` | Full staff record; proposals and approvals; onboarding; duplicates | Persisted: `owner_staff_profile`, `staff_proposal`, staff directory | **Built** (`apps/staff`), see `features/staff.md` |
 | `owner.payroll` | Salaries, invoice, who may approve staff and pay | Persisted: `owner_payroll_profile`, `owner_payroll_authorizer`, `payroll_batch` | Salaries and authority **built**; batches in `payroll` feature |
 | `owner.reports` | Executive report pack | Demo (export is on the device) | **Read model** |
 | `owner.campuses` | Compare campuses | Demo | Needs a campus model, then a read model |
@@ -42,9 +42,9 @@ store yet; the backend has to compute it from other features.
 1. **`structure` and `appearance`.** Small, owner-only, already persisted in the
    app, no dependencies. Quick wins that also prove the handler recipe again.
    `structure` matters because section heads in job assignments point at it.
-2. **`staff`.** The largest: proposals, approval (owner or assigned approver,
-   done on the server in one step), profiles, phone and NIN uniqueness, the
-   registration form. Unblocks invitations.
+2. **`staff`. Done.** Proposals, approval (owner or assigned approver, done on
+   the server in one step), profiles, phone and NIN uniqueness, the registration
+   rules. See `features/staff.md`. Unblocks invitations.
 3. **`invitations`.** Contract written. Needs staff, email, and the domains work
    already built.
 4. **`payroll` batches.** Prepare, approve, release, with the approver never the

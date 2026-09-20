@@ -116,6 +116,8 @@ def _create(membership, record, ctx, handler) -> Outcome:
                 payload=payload,
                 updated_by=membership,
             )
+            if handler is not None:
+                handler.after_write(ctx, payload)  # a Rejected here undoes the create
     except IntegrityError:
         # Another device created it at the same moment.
         existing = SyncRecord.objects.get(
@@ -136,11 +138,15 @@ def _change(membership, record, ctx, handler, base_version) -> Outcome:
     if base_version is not None and base_version != record.version:
         return Outcome(CONFLICT, record.version, "This record changed on the server first.")
 
-    if ctx.operation == "update":
-        record.payload = _stored_payload(handler, ctx)
-    else:
-        record.deleted = True
-    record.version += 1
-    record.updated_by = membership
-    record.save()
+    stored = _stored_payload(handler, ctx) if ctx.operation == "update" else None
+    with transaction.atomic():
+        if stored is not None:
+            record.payload = stored
+        else:
+            record.deleted = True
+        record.version += 1
+        record.updated_by = membership
+        record.save()
+        if stored is not None and handler is not None:
+            handler.after_write(ctx, stored)  # a Rejected here undoes the update
     return Outcome(ACCEPTED, record.version)

@@ -40,7 +40,8 @@ Tests: `.\.venv\Scripts\python manage.py test`
 | `apps/notifications` | A person's in-app messages; any feature can notify people |
 | `apps/access` | Which activities (screens) each person may see; the owner's grants, blocks and reassigns |
 | `apps/sync` | Receives the app's queued changes; the registry features plug their rules into |
-| `apps/owner` | **Feature 1.** Salaries, payroll authority, job assignments |
+| `apps/owner` | Salaries, payroll authority, job assignments |
+| `apps/staff` | Staff proposals, server-side approval, staff profiles, unique phone and NIN |
 | `docs/` | Architecture, and contracts for features not built yet |
 
 ## API (all under `/api/v1/`)
@@ -56,6 +57,8 @@ Tests: `.\.venv\Scripts\python manage.py test`
 | `GET  schools/{school}/access/me/` | Bearer | Which activities the caller may see, and blocks waiting for their app |
 | `POST schools/{school}/access/acknowledge/` | Bearer | The app has synced; pending blocks take effect |
 | `GET  schools/{school}/notifications/` | Bearer | The caller's own messages |
+| `POST staff/schools/{school}/proposals/{id}/approve/` | Bearer, owner or assigned approver | Makes the proposed person a staff member, all at once |
+| `POST staff/schools/{school}/proposals/{id}/reject/` | Bearer, owner or assigned approver | Declines it and frees their numbers |
 | `…    owner/schools/{school}/access/…` | Bearer, owner only | Manage access: catalog, roles, people, reassign, audit |
 
 Access tokens last 15 minutes and refresh tokens 7 days. Send
@@ -127,15 +130,19 @@ Platform subdomains open links **in the phone app** (set `ANDROID_APP_PACKAGE` a
 `ANDROID_CERT_SHA256`); a custom domain opens the web page instead.
 Details in [docs/contracts/invitations.md](docs/contracts/invitations.md).
 
+## Staff (built)
+
+Proposals, approval, staff profiles and the rule that a phone number and a NIN
+belong to one person only. Approval happens on the server in one step. Who may
+change which part of a profile, and the app changes this needs, are in
+[docs/features/staff.md](docs/features/staff.md). Progress: [docs/PROGRESS.md](docs/PROGRESS.md).
+
 ## Not built yet
 
 See the build order in [docs/architecture.md](docs/architecture.md). In short:
 
 - **Server-side handlers for everything except the owner records.** Other record
   types are accepted in DEBUG and **refused in production**, on purpose.
-- **Staff proposals and approval.** Today a non-owner cannot write a salary
-  through sync, which is correct; approving a proposal must happen on the
-  server, atomically.
 - **Payroll batches**, **invitations and account linking**
   ([contract](docs/contracts/invitations.md)), **pull sync** for other devices.
 - Email sending, file storage, background tasks.

@@ -13,4 +13,5 @@ urlpatterns = [
     path("", include("apps.access.urls")),
     path("sync/", include("apps.sync.urls")),
     path("owner/", include("apps.owner.urls")),
+    path("staff/", include("apps.staff.urls")),
 ]

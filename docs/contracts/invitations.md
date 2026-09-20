@@ -1,6 +1,7 @@
 # Contract: staff invitation, link and account linking
 
-**Status:** agreed design, not built yet. Written so the backend and the Flutter
+**Status:** agreed design, not built yet. The `staff` feature it depends on is built: approving a
+proposal sends the `staff_approved` signal (`apps/staff/signals.py`) that this feature listens to. Written so the backend and the Flutter
 app can be built to the same contract. Items marked **DECISION** are open and
 need an answer before that part is built (collected in section 12).
 

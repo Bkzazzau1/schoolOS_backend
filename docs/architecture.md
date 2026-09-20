@@ -28,7 +28,12 @@ apps/
     registry.py           EntityHandler: how features plug their rules in
     services.py           applies one mutation (membership, conflicts, retries)
     models.py             SyncRecord (server copy) and MutationLog (audit + retries)
-  owner/                FEATURE 1 (done)
+  staff/                proposals, server-side approval, profiles, unique phone and NIN (done)
+    identity.py           who holds each phone/NIN; database-enforced
+    proposals/            proposal handler; approve and reject in one transaction
+    profiles/             per-section rules: who may change what
+    directory/            the staff list
+  owner/                salaries, payroll authority, job assignments (done)
     handlers.py           list of the feature's sync handlers
     payroll/              salary profiles, payroll authorizers
     jobs/                 job assignments
@@ -99,9 +104,9 @@ Take "staff" as an example.
 | 0 | `domains`: school web addresses, DNS verification, app-link file | done |
 | 0 | `access` + `notifications`: activities per role, owner grants/blocks/reassigns, two-step blocks, people are told | done |
 | 1 | `owner`: salaries, payroll authority, job assignments | done |
-| 2 | `staff`: proposals, approval (owner or assigned approver), staff profiles, identity uniqueness (phone and NIN) | next |
+| 2 | `staff`: proposals, approval (owner or assigned approver), staff profiles, identity uniqueness (phone and NIN) | **done** |
 | 3 | `payroll`: batches (prepare, approve, release; approver is not the preparer) | |
-| 4 | `invitations`: see `contracts/invitations.md` | contract written |
+| 4 | `invitations`: see `contracts/invitations.md` | **next** (contract written; the `staff_approved` signal is ready) |
 | 5 | Sync **pull** so devices download records | |
 | 6 | `principal`, `administrator`, `finance`, `parent`, ... | |
 

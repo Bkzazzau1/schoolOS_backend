@@ -157,13 +157,13 @@ class PushTests(APITestCase):
 
     @override_settings(SYNC_ALLOW_UNLISTED_ENTITY_TYPES=False)
     def test_unlisted_types_are_refused_when_unlisted_types_are_off(self):
-        response = self.push(entity_type="staff_proposal", entity_id="p1")
+        response = self.push(entity_type="concession_request", entity_id="p1")
         self.assertEqual(response.status_code, 422)
         self.assertEqual(SyncRecord.objects.count(), 0)
 
     @override_settings(SYNC_ALLOW_UNLISTED_ENTITY_TYPES=True)
     def test_unlisted_types_are_allowed_only_when_switched_on(self):
-        self.assertEqual(self.push(entity_type="staff_proposal", entity_id="p1").status_code, 200)
+        self.assertEqual(self.push(entity_type="concession_request", entity_id="p1").status_code, 200)
 
     # -- validation ---------------------------------------------------------
 
