@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "apps.sync",
     # Features, built one at a time
     "apps.owner",
+    "apps.structure",
     "apps.staff",
     "apps.invitations",
 ]

@@ -107,6 +107,7 @@ Take "staff" as an example.
 | 2 | `staff`: proposals, approval (owner or assigned approver), staff profiles, identity uniqueness (phone and NIN) | **done** |
 | 3 | `payroll`: batches (prepare, approve, release; approver is not the preparer) | |
 | 4 | `invitations`: see `contracts/invitations.md` | **done** |
+| 4b | `structure`: sections, appointments, appearance | **done** |
 | 5 | Sync **pull** so devices download records | **done** (`docs/features/sync-pull.md`) |
 | 6 | `principal`, `administrator`, `finance`, `parent`, ... | |
 

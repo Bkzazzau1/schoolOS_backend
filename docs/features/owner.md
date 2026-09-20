@@ -39,7 +39,7 @@ store yet; the backend has to compute it from other features.
 
 ## Suggested order for the rest of the owner side
 
-1. **`structure` and `appearance`.** Small, owner-only, already persisted in the
+1. **`structure` and `appearance`. Done** (`features/structure.md`). Small, owner-only, already persisted in the
    app, no dependencies. Quick wins that also prove the handler recipe again.
    `structure` matters because section heads in job assignments point at it.
 2. **`staff`. Done.** Proposals, approval (owner or assigned approver, done on

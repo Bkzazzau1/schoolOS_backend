@@ -14,7 +14,7 @@ approvals, 7 dashboards, 8 school-life modules.
 | **1** | **Staff**: proposals, server-side approval, profiles, phone and NIN uniqueness | **done** | 339 in total | `apps/staff`, `docs/features/staff.md` |
 | **2** | **Invitations and account linking**: emailed link, accept, web page, unlink, onboarding | **done** | 415 in total | `apps/invitations`, `contracts/invitations.md` ("As built") |
 | **3** | **Sync pull**: devices download the records they may see | **done** | 438 in total | `apps/sync/pull.py`, `docs/features/sync-pull.md` |
-| 4 | Structure and appearance | not started | | Small, owner-only |
+| **4** | **Structure and appearance**: sections, leadership appointments, colour scheme | **done** | 462 in total | `apps/structure`, `docs/features/structure.md` |
 | 5 | Payroll batches | not started | | Approver is never the preparer |
 | 6 | Scholarship approvals | not started | | |
 | 7 | Dashboards (overview, finance, enrollment, reports) | not started | | Only after the data exists |
@@ -80,6 +80,14 @@ through the endpoints, stop pushing updates to proposals, send `?membership=`.
   the owner's alone; a proposal goes to its proposer, the owner and assigned approvers.
 - Existing records are numbered by a data migration (tried on old-shape data).
 - **Found and fixed**: two invitations created in the same clock tick could tie, so "newest" could be the revoked one.
+
+## Item 4: structure and appearance (done)
+
+- Sections, leadership appointments and the school's colour scheme: owner writes, the school reads (appointments
+  only staff-side). Section rules (one head, same-section managers, no loops, HOD needs a department) are kept on
+  the server.
+- **App change needed**: it seeds default sections on the device without queuing them, so they must be sent first.
+  Written up in `features/structure.md`.
 
 ## How to resume
 

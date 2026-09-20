@@ -142,6 +142,10 @@ change which part of a profile, and the app changes this needs, are in
 Emailed single-use link, accept (app or web page), unlink, and the staff registration form.
 Set `EMAIL_URL` in production. See [docs/contracts/invitations.md](docs/contracts/invitations.md) ("As built").
 
+## Structure and appearance (built)
+
+Sections, leadership posts and the school colour scheme. See [docs/features/structure.md](docs/features/structure.md).
+
 ## Not built yet
 
 See the build order in [docs/architecture.md](docs/architecture.md). In short:
