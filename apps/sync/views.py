@@ -2,7 +2,10 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .serializers import MutationSerializer
+from apps.core.permissions import require_membership
+
+from . import pull as pulling
+from .serializers import MutationSerializer, PullQuery
 from .services import ACCEPTED, CONFLICT, apply_mutation
 
 
@@ -31,3 +34,21 @@ class PushView(APIView):
             },
             status=http_status,
         )
+
+
+class PullView(APIView):
+    """GET /api/v1/sync/pull/?school=<id>&since=<cursor>&limit=<n>[&membership=<id>]
+
+    Returns {"records": [...], "cursor": n, "hasMore": bool}. Start with since=0,
+    apply the records, remember `cursor`, and ask again while `hasMore` is true;
+    afterwards ask with the last cursor to get only what changed. A deleted record
+    comes back with "deleted": true. Records the person may not see are left out.
+    """
+
+    def get(self, request):
+        query = PullQuery(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        q = query.validated_data
+        membership = require_membership(request.user, q["school"], membership_id=q.get("membership"))
+        page = pulling.pull(membership, q["since"], q["limit"])
+        return Response({"records": page.records, "cursor": page.cursor, "hasMore": page.has_more})

@@ -41,3 +41,9 @@ class AuthorizerHandler(EntityHandler):
         if status == REVOKED:
             cleaned["revokedByMembershipId"] = str(ctx.membership.id)
         return cleaned
+
+    def visible(self, membership, payload):
+        # The owner sees every assignment; a person sees their own.
+        if membership.role in self.roles or payload.get("membershipId") == str(membership.id):
+            return payload
+        return None

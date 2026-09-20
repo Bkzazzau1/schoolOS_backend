@@ -50,7 +50,7 @@ store yet; the backend has to compute it from other features.
 4. **`payroll` batches.** Prepare, approve, release, with the approver never the
    preparer.
 5. **`finance` concessions.** Owner decides; finance creates.
-6. **Sync pull** so a second device can load everything, not just owner records.
+6. ~~Sync pull~~ (built: `features/sync-pull.md`).
 7. **Read models** for overview, finance, enrollment, HR overview, reports,
    campuses. These only make sense once the data features above exist, because
    they are computed from them.

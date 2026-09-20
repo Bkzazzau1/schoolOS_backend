@@ -8,7 +8,7 @@ from apps.sync import records
 from apps.sync.registry import EntityHandler, MutationContext
 
 from .. import identity
-from ..constants import DIRECTORY, INVITE_PENDING, INVITER_ROLES, ONBOARDING_STATES, PROFILE, SUBMITTED
+from ..constants import DIRECTORY, EDITOR_ROLES, INVITE_PENDING, INVITER_ROLES, ONBOARDING_STATES, PROFILE, SUBMITTED
 from ..signals import registration_requested
 from . import rules, sections
 
@@ -39,6 +39,16 @@ class StaffProfileHandler(EntityHandler):
         who = self._who(ctx)
         if ctx.membership.role not in INVITER_ROLES and not who.self_:
             raise Rejected("Your role may not change this kind of record.")
+
+    def visible(self, membership, payload):
+        """Owner, principal and the person themselves see everything, bank details
+        included. The administrator reviews the file, so sees all but the bank
+        account. Nobody else sees a staff record."""
+        if membership.role in EDITOR_ROLES or payload.get("linkedMembershipId") == str(membership.id):
+            return payload
+        if membership.role == "administrator":
+            return {**payload, "payment": {key: "" for key in sections.PAYMENT_KEYS}}
+        return None
 
     @staticmethod
     def _who(ctx: MutationContext) -> rules.Who:

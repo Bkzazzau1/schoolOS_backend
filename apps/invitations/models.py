@@ -40,7 +40,7 @@ class StaffInvitation(models.Model):
     accepted_membership = models.ForeignKey(Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-created_at", "-id"]
         constraints = [
             models.UniqueConstraint(
                 fields=["school", "staff_id"], condition=Q(status="pending"), name="one_pending_invitation_per_staff"

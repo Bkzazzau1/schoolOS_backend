@@ -113,8 +113,6 @@ Repeating it is harmless. If any step fails, nothing changed.
 - **Invitations and account linking**, so a staff member can act on their own
   record. Designed in `contracts/invitations.md`. Until then the owner and principal
   can edit a profile, but nobody can enter bank details or submit a registration.
-- **Devices downloading these records** (sync pull). Only the owner's records can be
-  read back today.
 - **Staff attendance** (read into the profile) and the duplicates report screen.
 - Staff already on a device but not on the server have no numbers on record, so
   uniqueness applies to them only once their profile is saved.

@@ -13,7 +13,7 @@ approvals, 7 dashboards, 8 school-life modules.
 | - | Owner records: salaries, payroll authority, job assignments | done | | `apps/owner` |
 | **1** | **Staff**: proposals, server-side approval, profiles, phone and NIN uniqueness | **done** | 339 in total | `apps/staff`, `docs/features/staff.md` |
 | **2** | **Invitations and account linking**: emailed link, accept, web page, unlink, onboarding | **done** | 415 in total | `apps/invitations`, `contracts/invitations.md` ("As built") |
-| 3 | Sync pull | not started | | Devices download their own records |
+| **3** | **Sync pull**: devices download the records they may see | **done** | 438 in total | `apps/sync/pull.py`, `docs/features/sync-pull.md` |
 | 4 | Structure and appearance | not started | | Small, owner-only |
 | 5 | Payroll batches | not started | | Approver is never the preparer |
 | 6 | Scholarship approvals | not started | | |
@@ -71,6 +71,15 @@ through the endpoints, stop pushing updates to proposals, send `?membership=`.
 - **Found and fixed**: with production settings and no `EMAIL_URL` the settings crashed on an empty URL; they now
   fall back to the fail-loudly backend.
 - **Left**: documents cannot be uploaded from the web page yet (notes only); app screens not built.
+
+## Item 3: sync pull (done)
+
+- Every record carries a per-school change number that only goes up, handed out under a lock so changes are
+  numbered and committed in order. `GET sync/pull/?school=&since=` returns the next page after a cursor.
+- Each record type says who may read it (`visible`). Bank details are hidden from the administrator; salaries are
+  the owner's alone; a proposal goes to its proposer, the owner and assigned approvers.
+- Existing records are numbered by a data migration (tried on old-shape data).
+- **Found and fixed**: two invitations created in the same clock tick could tie, so "newest" could be the revoked one.
 
 ## How to resume
 

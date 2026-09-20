@@ -107,7 +107,7 @@ Take "staff" as an example.
 | 2 | `staff`: proposals, approval (owner or assigned approver), staff profiles, identity uniqueness (phone and NIN) | **done** |
 | 3 | `payroll`: batches (prepare, approve, release; approver is not the preparer) | |
 | 4 | `invitations`: see `contracts/invitations.md` | **done** |
-| 5 | Sync **pull** so devices download records | |
+| 5 | Sync **pull** so devices download records | **done** (`docs/features/sync-pull.md`) |
 | 6 | `principal`, `administrator`, `finance`, `parent`, ... | |
 
 Features 2 to 4 depend on each other: approving a proposal (2) creates the staff
@@ -121,5 +121,4 @@ record that an invitation (4) links to, and the delegated approvers from (2) and
   `apps/owner/` correctly refuse a non-owner writing a salary. Feature 2 must do
   approval **on the server, atomically**, instead of trusting the device to
   write those records.
-- There is no pull endpoint except the owner's read of owner records.
 - No file storage, no email backend, no background task runner yet.

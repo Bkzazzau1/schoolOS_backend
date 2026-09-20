@@ -26,3 +26,10 @@ class MutationSerializer(serializers.Serializer):
         if attrs["operation"] in ("create", "update") and not attrs.get("payload"):
             raise serializers.ValidationError({"payload": "A payload is required."})
         return attrs
+
+
+class PullQuery(serializers.Serializer):
+    school = serializers.UUIDField()
+    since = serializers.IntegerField(min_value=0, default=0)
+    limit = serializers.IntegerField(min_value=1, default=200)
+    membership = serializers.UUIDField(required=False)

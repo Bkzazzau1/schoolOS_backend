@@ -49,6 +49,15 @@ class EntityHandler:
         if ctx.operation == "delete" and not self.allow_delete:
             raise Rejected("This kind of record cannot be deleted.")
 
+    def visible(self, membership: Membership, payload: dict[str, Any]) -> dict[str, Any] | None:
+        """What this person may download of a stored record: the payload to send
+        (redact it here if part of it is private), or None if they may not see it.
+
+        The default is the people who may change the record. Handlers whose records
+        are also readable by others (the person a record is about, say) override it.
+        """
+        return payload if membership.role in self.roles else None
+
     def clean(self, ctx: MutationContext) -> dict[str, Any]:
         """Validate a create or update and return exactly what to store.
 

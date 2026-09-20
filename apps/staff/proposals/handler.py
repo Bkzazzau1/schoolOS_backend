@@ -8,6 +8,7 @@ from apps.schools.models import Membership
 from apps.sync.registry import EntityHandler, MutationContext
 
 from .. import identity
+from ..authority import can_approve_staff
 from ..constants import PENDING, PROPOSAL, PROPOSER_ROLES, SYSTEM_ROLES
 
 MAX_SALARY = 1_000_000_000
@@ -28,6 +29,12 @@ class StaffProposalHandler(EntityHandler):
 
     entity_type = PROPOSAL
     roles = PROPOSER_ROLES
+
+    def visible(self, membership, payload):
+        """The owner and anyone assigned to approve see every proposal; a proposer sees their own."""
+        if payload.get("proposedByMembershipId") == str(membership.id) or can_approve_staff(membership):
+            return payload
+        return None
 
     def authorize(self, ctx: MutationContext) -> None:
         super().authorize(ctx)

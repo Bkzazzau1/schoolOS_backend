@@ -22,6 +22,11 @@ class StaffDirectoryHandler(EntityHandler):
 
     entity_type = DIRECTORY
     roles = frozenset({"proprietor", "administrator"})
+    #: Who may read the staff list (changing it is narrower, above).
+    readers = frozenset({"proprietor", "principal", "administrator", "accountant"})
+
+    def visible(self, membership, payload):
+        return payload if membership.role in self.readers else None
 
     def authorize(self, ctx: MutationContext) -> None:
         super().authorize(ctx)

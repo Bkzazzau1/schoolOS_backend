@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 
 from apps.schools.models import Membership, School
 
@@ -21,14 +21,27 @@ class SyncRecord(models.Model):
         Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
     updated_at = models.DateTimeField(auto_now=True)
+    #: The school's change counter at the moment of the last change. Devices ask
+    #: for "everything after the number I last saw", so this must go up on every
+    #: change and never repeat within a school (see next_seq).
+    seq = models.PositiveBigIntegerField(default=0)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
                 fields=["school", "entity_type", "entity_id"], name="unique_sync_record"
-            )
+            ),
+            models.UniqueConstraint(fields=["school", "seq"], name="unique_sync_seq"),
         ]
         indexes = [models.Index(fields=["school", "entity_type"])]
+
+    def save(self, *args, **kwargs):
+        # Every save is a change devices must hear about, so it gets the next number.
+        with transaction.atomic():
+            self.seq = next_seq(self.school_id)
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = {*kwargs["update_fields"], "seq"}
+            super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.entity_type}/{self.entity_id} v{self.version}"
@@ -60,3 +73,26 @@ class MutationLog(models.Model):
 
     def __str__(self):
         return f"{self.mutation_id} {self.disposition}"
+
+
+class SchoolSequence(models.Model):
+    """The last change number handed out in a school."""
+
+    school = models.OneToOneField(School, on_delete=models.CASCADE, related_name="+")
+    last = models.PositiveBigIntegerField(default=0)
+
+
+def next_seq(school_id) -> int:
+    """The next change number for a school.
+
+    The counter row is locked until the surrounding transaction commits, so two
+    changes in one school are numbered and committed strictly in order. That is
+    what makes "everything after number N" safe: a change with a lower number can
+    never appear after a device has already read past it.
+    """
+    with transaction.atomic():
+        SchoolSequence.objects.get_or_create(school_id=school_id)
+        counter = SchoolSequence.objects.select_for_update().get(school_id=school_id)
+        counter.last += 1
+        counter.save(update_fields=["last"])
+        return counter.last
