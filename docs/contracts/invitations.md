@@ -1,7 +1,8 @@
 # Contract: staff invitation, link and account linking
 
-**Status:** agreed design, not built yet. The `staff` feature it depends on is built: approving a
-proposal sends the `staff_approved` signal (`apps/staff/signals.py`) that this feature listens to. Written so the backend and the Flutter
+**Status:** **built** (`apps/invitations`, `apps/staff/registration.py`), with 76 tests. Where the built version
+adds to or differs from this text, see "As built" at the end. Approving a proposal sends the `staff_approved`
+signal (`apps/staff/signals.py`) that this feature listens to. Written so the backend and the Flutter
 app can be built to the same contract. Items marked **DECISION** are open and
 need an answer before that part is built (collected in section 12).
 
@@ -536,3 +537,26 @@ implemented in the app.
    web pages are served.
 6. TLS for every school domain (reverse proxy with on-demand certificates, or a
    wildcard for the platform domain).
+
+## As built
+
+- **Where things are.** `apps/invitations/` (models, tokens, mail, service, accept, unlink, listeners, public and
+  owner views, server-rendered web pages and templates) and `apps/staff/registration.py` (the one function that
+  submits a registration).
+- **Public endpoints** (no sign-in): `GET invitations/<token>/` (preview) and `POST invitations/<token>/accept/`.
+  Accept returns `access`, `refresh`, `membership {id, schoolId, schoolName, role}` and `staffId`.
+- **Owner endpoints**: `GET/POST/DELETE owner/schools/<school>/staff/<staffId>/invitation/` (see, resend with an
+  optional corrected email, cancel; cancel is owner only) and `POST .../unlink/` (owner only).
+- **Onboarding from the app** after signing in: `GET/POST staff/me/onboarding/` (`?membership=` if the person holds
+  several roles). Same rules as the web form and as the sync path: all three go through the staff profile handler.
+- **Extra error codes**: `sign_in_required` (401, the email already has an account, so the person must sign in),
+  `not_linked` (404, unlink), `invalid_email` (400), `not_found` (404). Bad, expired, revoked and replaced links
+  are all the same `invitation_invalid` 404, and a link opened on another school's web address is one too.
+- **Rate limits**: preview 20/min and accept 5/min per address (DRF throttles), plus 10 wrong tries per link and
+  address per 15 minutes on the web page.
+- **Email**: sent after the change is saved, from the school's `official_email`. If sending fails, the failure is
+  recorded on the invitation (never the link) and the owner can send again. In production, without `EMAIL_URL`, every
+  send fails loudly instead of silently doing nothing. Settings: `EMAIL_URL`, `DEFAULT_FROM_EMAIL`,
+  `INVITATION_TTL_DAYS`, `INVITATION_LINK_SCHEME`, `INVITATION_FALLBACK_HOST`.
+- **Still open**: file upload of documents on the web page (it records a note for each required document instead),
+  and the app screens (accept page, onboarding form). No Flutter integration yet.

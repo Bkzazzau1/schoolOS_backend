@@ -22,7 +22,7 @@ from ..constants import (
     APPROVED, DEFAULT_DOCUMENTS, DELEGATE_ROLES, DIRECTORY, INVITE_PENDING, PENDING, PROFILE,
     PROPOSAL, REJECTED, SALARY, SYSTEM_ROLES,
 )
-from ..signals import staff_approved
+from ..signals import registration_requested, staff_approved
 
 MAX_SALARY = 1_000_000_000
 
@@ -122,6 +122,10 @@ def approve(actor: Membership, proposal_id: str, *, gross=None, deductions=None,
     staff_approved.send(
         sender=None, school=school, staff_id=staff_id, email=p["email"], system_role=role,
         name=p["name"], proposal_id=proposal_id,
+    )
+    registration_requested.send(
+        sender=None, school=school, staff_id=staff_id, email=p["email"], system_role=role,
+        name=p["name"], requested_by=actor,
     )
     return {"staffId": staff_id, "alreadyApproved": False}
 

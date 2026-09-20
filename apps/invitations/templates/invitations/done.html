@@ -1,0 +1,14 @@
+{% extends "invitations/base.html" %}
+{% block title %}Thank you{% endblock %}
+{% block content %}
+<div class="card">
+  {% if nothing %}
+    <h1>Nothing to complete</h1>
+    <p>There is no registration waiting for you. You can sign in to the SchoolOS app with your email and password.</p>
+  {% else %}
+    <h1>Thank you</h1>
+    <p>Your registration was sent to {{ school }} for review. Next time, sign in to the SchoolOS app with your email and
+       the password you chose.</p>
+  {% endif %}
+</div>
+{% endblock %}

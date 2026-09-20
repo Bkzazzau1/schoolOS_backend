@@ -106,7 +106,7 @@ Take "staff" as an example.
 | 1 | `owner`: salaries, payroll authority, job assignments | done |
 | 2 | `staff`: proposals, approval (owner or assigned approver), staff profiles, identity uniqueness (phone and NIN) | **done** |
 | 3 | `payroll`: batches (prepare, approve, release; approver is not the preparer) | |
-| 4 | `invitations`: see `contracts/invitations.md` | **next** (contract written; the `staff_approved` signal is ready) |
+| 4 | `invitations`: see `contracts/invitations.md` | **done** |
 | 5 | Sync **pull** so devices download records | |
 | 6 | `principal`, `administrator`, `finance`, `parent`, ... | |
 

@@ -1,0 +1,31 @@
+{% extends "invitations/base.html" %}
+{% block title %}Join {{ info.schoolName }}{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Welcome to {{ info.schoolName }}</h1>
+  <p>Hello{% if info.staffName %} {{ info.staffName }}{% endif %}. You have been invited to complete your registration
+     with the email <strong>{{ info.email }}</strong>.</p>
+  {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" autocomplete="off">
+    {% csrf_token %}
+    {% if info.accountExists %}
+      <p class="hint">You already have a SchoolOS account with this email. Enter your password to continue.</p>
+      <label for="password">Your password</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password">
+    {% else %}
+      <p class="hint">Choose a password. You will use it, with this email, to sign in next time.</p>
+      <label for="first_name">First name</label>
+      <input id="first_name" name="first_name" autocomplete="given-name">
+      <label for="last_name">Last name</label>
+      <input id="last_name" name="last_name" autocomplete="family-name">
+      <label for="password">Password (at least 10 characters)</label>
+      <input id="password" name="password" type="password" required minlength="10" autocomplete="new-password">
+      <label for="password2">Repeat the password</label>
+      <input id="password2" name="password2" type="password" required minlength="10" autocomplete="new-password">
+    {% endif %}
+    <button type="submit">Continue</button>
+  </form>
+  <p class="hint">This link works until {{ info.expiresAt|slice:":10" }}. Have the SchoolOS app?
+     <a href="schoolos://invite/{{ token }}">Open it in the app</a>.</p>
+</div>
+{% endblock %}

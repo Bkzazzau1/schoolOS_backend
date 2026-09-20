@@ -1,0 +1,9 @@
+{% extends "invitations/base.html" %}
+{% block title %}Link not valid{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>This link is not valid</h1>
+  <p>{% if message %}{{ message }}{% else %}It may have expired or been replaced by a newer one. Ask the school office to send
+     you a new invitation.{% endif %}</p>
+</div>
+{% endblock %}

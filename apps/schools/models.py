@@ -12,6 +12,11 @@ class School(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(unique=True)
     is_active = models.BooleanField(default=True)
+    #: The address emails to this school's people are sent from (for example
+    #: office@brightgate.school.ng), and the name shown beside it. Set up for each
+    #: school; if empty, the platform's default sender is used.
+    official_email = models.EmailField(blank=True)
+    official_sender_name = models.CharField(max_length=120, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

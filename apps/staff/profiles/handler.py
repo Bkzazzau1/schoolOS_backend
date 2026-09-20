@@ -9,6 +9,7 @@ from apps.sync.registry import EntityHandler, MutationContext
 
 from .. import identity
 from ..constants import DIRECTORY, INVITE_PENDING, INVITER_ROLES, ONBOARDING_STATES, PROFILE, SUBMITTED
+from ..signals import registration_requested
 from . import rules, sections
 
 
@@ -109,7 +110,18 @@ class StaffProfileHandler(EntityHandler):
             school, "staff", ctx.entity_id, directory.get("name", ctx.entity_id),
             phone=stored["personal"]["phone"] or None, nin=stored["personal"]["nin"] or None,
         )
-        was = (ctx.existing or {}).get("onboardingStatus")
+        old = ctx.existing or {}
+        was = old.get("onboardingStatus")
+        # A registration request was sent (or its email corrected): tell the
+        # invitations feature so it emails the link.
+        if stored["onboardingStatus"] == INVITE_PENDING and (
+            was != INVITE_PENDING or old.get("onboardingEmail") != stored["onboardingEmail"]
+        ):
+            registration_requested.send(
+                sender=None, school=school, staff_id=ctx.entity_id, email=stored["onboardingEmail"],
+                system_role=stored.get("systemRole") or "", name=directory.get("name", ""),
+                requested_by=ctx.membership,
+            )
         if stored["onboardingStatus"] == SUBMITTED and was != SUBMITTED:
             reviewers = Membership.objects.filter(
                 school=school, role__in=["proprietor", "principal"], is_active=True

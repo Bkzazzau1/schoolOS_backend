@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured  # noqa: F401
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -49,6 +50,7 @@ INSTALLED_APPS = [
     # Features, built one at a time
     "apps.owner",
     "apps.staff",
+    "apps.invitations",
 ]
 
 MIDDLEWARE = [
@@ -123,7 +125,12 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ),
-    "DEFAULT_THROTTLE_RATES": {"anon": "30/min", "user": "600/min"},
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "30/min", "user": "600/min",
+        # Public invitation links: per address, whether or not signed in.
+        "invite_preview": "20/min" if "test" not in sys.argv else "10000/min",
+        "invite_accept": "5/min" if "test" not in sys.argv else "10000/min",
+    },
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
     "DEFAULT_PARSER_CLASSES": ("rest_framework.parsers.JSONParser",),
 }
@@ -150,6 +157,24 @@ SYNC_MAX_PAYLOAD_BYTES = 256 * 1024
 # pending work, then the block takes effect. If the person's app never reports
 # back, the block takes effect anyway after this many hours.
 ACCESS_BLOCK_GRACE_HOURS = env.int("ACCESS_BLOCK_GRACE_HOURS", default=48)
+
+# --- Invitations and email ---------------------------------------------------
+# How long a staff invitation link works.
+INVITATION_TTL_DAYS = env.int("INVITATION_TTL_DAYS", default=14)
+# https in production; plain http only for local development.
+INVITATION_LINK_SCHEME = "http" if DEBUG else "https"
+# Used in links only when a school has no web address of its own yet.
+INVITATION_FALLBACK_HOST = env("INVITATION_FALLBACK_HOST", default="")
+
+# Email is configured with EMAIL_URL (for example smtp://user:pass@host:587/?tls=True).
+# In development it is printed to the console. In production, with no EMAIL_URL,
+# every send fails loudly and is recorded, instead of silently doing nothing.
+_email_url = env("EMAIL_URL", default="consolemail://" if DEBUG else "")
+if _email_url:
+    vars().update(env.email_url_config(_email_url))
+else:
+    EMAIL_BACKEND = "apps.invitations.mail.NotConfiguredBackend"
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="SchoolOS <no-reply@localhost>")
 
 # --- School domains ----------------------------------------------------------
 # Every school gets <slug>.PLATFORM_DOMAIN automatically, and may add its own

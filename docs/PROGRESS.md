@@ -12,7 +12,7 @@ approvals, 7 dashboards, 8 school-life modules.
 | - | Foundations: accounts, schools, sync door, domains, notifications, access (activities) | done | see below | Earlier work, all committed |
 | - | Owner records: salaries, payroll authority, job assignments | done | | `apps/owner` |
 | **1** | **Staff**: proposals, server-side approval, profiles, phone and NIN uniqueness | **done** | 339 in total | `apps/staff`, `docs/features/staff.md` |
-| 2 | Invitations and account linking | next | | Contract: `contracts/invitations.md`. Depends on 1 (the `staff_approved` signal is ready) |
+| **2** | **Invitations and account linking**: emailed link, accept, web page, unlink, onboarding | **done** | 415 in total | `apps/invitations`, `contracts/invitations.md` ("As built") |
 | 3 | Sync pull | not started | | Devices download their own records |
 | 4 | Structure and appearance | not started | | Small, owner-only |
 | 5 | Payroll batches | not started | | Approver is never the preparer |
@@ -58,6 +58,19 @@ downloading records to other devices, staff attendance in the profile.
 
 **App changes this needs** (not started; no integration yet): approve and reject
 through the endpoints, stop pushing updates to proposals, send `?membership=`.
+
+## Item 2: invitations and account linking (done)
+
+- Approving a proposal (or reopening a request) emails the person a single-use link, valid 14 days, from the
+  school's official address, pointing at the school's own web address. Only a hash of the link is stored.
+- Accepting creates or signs in the account, gives the role the owner approved, ties the login to the staff record
+  (one login, one staff record, enforced by the database), activates authority and jobs assigned earlier, and tells
+  the owner. The web page does the same for people without the app, then shows the registration form.
+- The registration form, the app's `staff/me/onboarding/` and the sync path share one set of rules.
+- Owner can see, resend (with a corrected email), cancel, and unlink.
+- **Found and fixed**: with production settings and no `EMAIL_URL` the settings crashed on an empty URL; they now
+  fall back to the fail-loudly backend.
+- **Left**: documents cannot be uploaded from the web page yet (notes only); app screens not built.
 
 ## How to resume
 

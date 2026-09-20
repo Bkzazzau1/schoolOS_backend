@@ -18,6 +18,10 @@ from .models import IdentityClaim
 LABELS = {"phone": "phone number", "nin": "NIN"}
 
 
+class Duplicate(Rejected):
+    """A phone number or NIN that already belongs to someone else."""
+
+
 def _wanted(phone, nin):
     return [(kind, value) for kind, value in (("phone", phone), ("nin", nin)) if value]
 
@@ -40,7 +44,7 @@ def check_available(school, holder_type: str, holder_id: str, *, phone=None, nin
         if clash:
             messages.append(_describe(clash))
     if messages:
-        raise Rejected(" ".join(messages))
+        raise Duplicate(" ".join(messages))
 
 
 @transaction.atomic
@@ -67,7 +71,7 @@ def set_claims(school, holder_type: str, holder_id: str, holder_name: str, *, ph
             created = False
         if not created:
             if (claim.holder_type, claim.holder_id) != (holder_type, holder_id):
-                raise Rejected(_describe(claim))
+                raise Duplicate(_describe(claim))
             if claim.holder_name != holder_name:
                 claim.holder_name = holder_name
                 claim.save(update_fields=["holder_name"])

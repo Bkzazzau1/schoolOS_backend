@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>{% block title %}Complete your registration{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f6f5f8; color: #1d1b20; margin: 0; }
+    main { max-width: 34rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+    .card { background: #fff; border-radius: .75rem; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+    h1 { font-size: 1.4rem; margin-top: 0; }
+    label { display: block; margin: .9rem 0 .25rem; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: .6rem; font-size: 1rem; border: 1px solid #c9c5d0; border-radius: .4rem; }
+    button, .button { display: inline-block; margin-top: 1.2rem; padding: .7rem 1.2rem; font-size: 1rem; background: #4a2d73;
+      color: #fff; border: 0; border-radius: .4rem; text-decoration: none; cursor: pointer; }
+    .secondary { background: #fff; color: #4a2d73; border: 1px solid #4a2d73; }
+    .error { background: #fdecea; color: #7a1c14; padding: .7rem; border-radius: .4rem; margin-bottom: 1rem; }
+    .hint { color: #5f5b66; font-size: .9rem; }
+  </style>
+</head>
+<body>
+<main>{% block content %}{% endblock %}</main>
+</body>
+</html>

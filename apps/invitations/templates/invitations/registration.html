@@ -1,0 +1,48 @@
+{% extends "invitations/base.html" %}
+{% block title %}Your details{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Your details</h1>
+  <p class="hint">{{ school }} needs a few details. Your phone number and NIN are unique to you, and only you can
+     enter or change your bank account.</p>
+  {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" autocomplete="off">
+    {% csrf_token %}
+    <label for="phone">Phone number</label>
+    <input id="phone" name="phone" type="tel" value="{{ values.phone }}" required>
+    <label for="nin">NIN (11 digits)</label>
+    <input id="nin" name="nin" inputmode="numeric" value="{{ values.nin }}" required>
+    <label for="email">Email address</label>
+    <input id="email" name="email" type="email" value="{{ values.email }}">
+    <label for="address">Home address</label>
+    <input id="address" name="address" value="{{ values.address }}" required>
+    <label for="dateOfBirth">Date of birth</label>
+    <input id="dateOfBirth" name="dateOfBirth" type="date" value="{{ values.dateOfBirth }}" required>
+    <label for="gender">Gender</label>
+    <input id="gender" name="gender" value="{{ values.gender }}">
+    <label for="stateOfOrigin">State of origin</label>
+    <input id="stateOfOrigin" name="stateOfOrigin" value="{{ values.stateOfOrigin }}">
+    <label for="nextOfKinName">Next of kin</label>
+    <input id="nextOfKinName" name="nextOfKinName" value="{{ values.nextOfKinName }}" required>
+    <label for="nextOfKinPhone">Next of kin phone</label>
+    <input id="nextOfKinPhone" name="nextOfKinPhone" type="tel" value="{{ values.nextOfKinPhone }}" required>
+    <h2>Bank account for your salary</h2>
+    <label for="bankName">Bank</label>
+    <input id="bankName" name="bankName" value="{{ values.bankName }}" required>
+    <label for="accountName">Account name</label>
+    <input id="accountName" name="accountName" value="{{ values.accountName }}" required>
+    <label for="accountNumber">Account number (10 digits)</label>
+    <input id="accountNumber" name="accountNumber" inputmode="numeric" value="{{ values.accountNumber }}" required>
+    {% if docs %}
+      <h2>Documents</h2>
+      <p class="hint">You cannot upload files here yet. For each document you have provided or will hand in, say how
+         (for example "handed to the school office on 21 Sept"). Leave blank if not yet.</p>
+      {% for d in docs %}
+        <label for="doc_{{ d.index }}">{{ d.name }}</label>
+        <input id="doc_{{ d.index }}" name="doc_{{ d.index }}">
+      {% endfor %}
+    {% endif %}
+    <button type="submit">Submit registration</button>
+  </form>
+</div>
+{% endblock %}

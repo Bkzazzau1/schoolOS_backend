@@ -137,15 +137,19 @@ belong to one person only. Approval happens on the server in one step. Who may
 change which part of a profile, and the app changes this needs, are in
 [docs/features/staff.md](docs/features/staff.md). Progress: [docs/PROGRESS.md](docs/PROGRESS.md).
 
+## Invitations and account linking (built)
+
+Emailed single-use link, accept (app or web page), unlink, and the staff registration form.
+Set `EMAIL_URL` in production. See [docs/contracts/invitations.md](docs/contracts/invitations.md) ("As built").
+
 ## Not built yet
 
 See the build order in [docs/architecture.md](docs/architecture.md). In short:
 
 - **Server-side handlers for everything except the owner records.** Other record
   types are accepted in DEBUG and **refused in production**, on purpose.
-- **Payroll batches**, **invitations and account linking**
-  ([contract](docs/contracts/invitations.md)), **pull sync** for other devices.
-- Email sending, file storage, background tasks.
+- **Payroll batches** and **pull sync** for other devices.
+- File storage, background tasks.
 - A Flutter `SyncTransport` that calls `sync/push/`.
 - Postgres is supported through `DATABASE_URL` but has not been exercised.
 
