@@ -16,7 +16,7 @@ approvals, 7 dashboards, 8 school-life modules.
 | **3** | **Sync pull**: devices download the records they may see | **done** | 438 in total | `apps/sync/pull.py`, `docs/features/sync-pull.md` |
 | **4** | **Structure and appearance**: sections, leadership appointments, colour scheme | **done** | 462 in total | `apps/structure`, `docs/features/structure.md` |
 | **5** | **Payroll batches**: prepare, approve or reject, instruct payment | **done** | 495 in total | `apps/payroll`, `docs/features/payroll.md` |
-| 6 | Scholarship approvals | not started | | |
+| **6** | **Scholarship approvals**: finance asks, owner decides | **done** | 515 in total | `apps/concessions`, `docs/features/concessions.md` |
 | 7 | Dashboards (overview, finance, enrollment, reports) | not started | | Only after the data exists |
 | 8 | School-life modules | not started | | One small handler each |
 
@@ -95,6 +95,13 @@ through the endpoints, stop pushing updates to proposals, send `?membership=`.
   included), each step needs its own authority, approved batches are final, every step is in an audit trail.
 - Salaries and batches now reach finance officers and authorised people through pull.
 - **Left**: attendance clearance, recording real payment, approval thresholds. See `features/payroll.md`.
+
+## Item 6: scholarship approvals (done)
+
+- Finance (or anyone given the duty) asks; only the owner decides; decisions are final; amounts are fixed once sent; who
+  and when are set by the server; the right people are told.
+- Added `apps/owner/jobs/access.py` (does this person hold a duty the owner gave them) for later features to reuse.
+- **Left**: student records, per-student limits, letting the owner delegate the decision. See `features/concessions.md`.
 
 ## How to resume
 

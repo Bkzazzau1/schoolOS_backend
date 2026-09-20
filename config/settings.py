@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "apps.owner",
     "apps.structure",
     "apps.payroll",
+    "apps.concessions",
     "apps.staff",
     "apps.invitations",
 ]

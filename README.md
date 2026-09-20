@@ -150,6 +150,10 @@ Sections, leadership posts and the school colour scheme. See [docs/features/stru
 
 Prepare, approve (never by the preparer), reject, instruct payment. See [docs/features/payroll.md](docs/features/payroll.md).
 
+## Scholarships and discounts (built)
+
+Finance asks, the owner decides. See [docs/features/concessions.md](docs/features/concessions.md).
+
 ## Not built yet
 
 See the build order in [docs/architecture.md](docs/architecture.md). In short:
