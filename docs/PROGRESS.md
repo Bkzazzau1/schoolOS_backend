@@ -15,7 +15,7 @@ approvals, 7 dashboards, 8 school-life modules.
 | **2** | **Invitations and account linking**: emailed link, accept, web page, unlink, onboarding | **done** | 415 in total | `apps/invitations`, `contracts/invitations.md` ("As built") |
 | **3** | **Sync pull**: devices download the records they may see | **done** | 438 in total | `apps/sync/pull.py`, `docs/features/sync-pull.md` |
 | **4** | **Structure and appearance**: sections, leadership appointments, colour scheme | **done** | 462 in total | `apps/structure`, `docs/features/structure.md` |
-| 5 | Payroll batches | not started | | Approver is never the preparer |
+| **5** | **Payroll batches**: prepare, approve or reject, instruct payment | **done** | 495 in total | `apps/payroll`, `docs/features/payroll.md` |
 | 6 | Scholarship approvals | not started | | |
 | 7 | Dashboards (overview, finance, enrollment, reports) | not started | | Only after the data exists |
 | 8 | School-life modules | not started | | One small handler each |
@@ -88,6 +88,13 @@ through the endpoints, stop pushing updates to proposals, send `?membership=`.
   the server.
 - **App change needed**: it seeds default sections on the device without queuing them, so they must be sent first.
   Written up in `features/structure.md`.
+
+## Item 5: payroll batches (done)
+
+- The app's workflow, enforced on the server: lines rebuilt from salary records, approver is never the preparer (owner
+  included), each step needs its own authority, approved batches are final, every step is in an audit trail.
+- Salaries and batches now reach finance officers and authorised people through pull.
+- **Left**: attendance clearance, recording real payment, approval thresholds. See `features/payroll.md`.
 
 ## How to resume
 

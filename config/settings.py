@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     # Features, built one at a time
     "apps.owner",
     "apps.structure",
+    "apps.payroll",
     "apps.staff",
     "apps.invitations",
 ]

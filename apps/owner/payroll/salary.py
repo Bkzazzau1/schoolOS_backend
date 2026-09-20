@@ -5,6 +5,7 @@ from apps.core.validation import boolean, integer, text
 from apps.schools.models import Role
 from apps.sync.registry import EntityHandler, MutationContext
 
+from .access import payroll_authorities
 from .constants import MAX_HISTORY_ENTRIES, MAX_MONTHLY_SALARY
 
 
@@ -23,6 +24,10 @@ class SalaryProfileHandler(EntityHandler):
 
     entity_type = "owner_payroll_profile"
     roles = frozenset({Role.PROPRIETOR})
+
+    def visible(self, membership, payload):
+        """Everyone who may work on payroll needs the salaries to do it."""
+        return payload if "view" in payroll_authorities(membership) else None
 
     def clean(self, ctx: MutationContext) -> dict[str, Any]:
         p = ctx.payload

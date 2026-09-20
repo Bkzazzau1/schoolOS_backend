@@ -47,7 +47,7 @@ store yet; the backend has to compute it from other features.
    rules. See `features/staff.md`. Unblocks invitations.
 3. **`invitations`.** Contract written. Needs staff, email, and the domains work
    already built.
-4. **`payroll` batches.** Prepare, approve, release, with the approver never the
+4. **`payroll` batches. Done** (`features/payroll.md`). Prepare, approve, release, with the approver never the
    preparer.
 5. **`finance` concessions.** Owner decides; finance creates.
 6. ~~Sync pull~~ (built: `features/sync-pull.md`).

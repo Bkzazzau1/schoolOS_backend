@@ -154,9 +154,10 @@ class WhatEachRoleSeesTests(PullTestCase):
         found = [r for r in self.pull(who).json()["records"] if r["entityType"] == "owner_staff_profile"]
         return found[0]["payload"]["payment"] if found else None
 
-    def test_salaries_are_for_the_owner_alone(self):
-        self.assertIn("owner_payroll_profile", self.kinds(self.owner))
-        for role in ("principal", "administrator", "accountant", "teacher", "staff", "parent", "student"):
+    def test_salaries_go_to_the_owner_and_finance_officers_only(self):
+        for role in ("proprietor", "accountant"):
+            self.assertIn("owner_payroll_profile", self.kinds(self.members[role]), role)
+        for role in ("principal", "administrator", "teacher", "staff", "parent", "student"):
             self.assertNotIn("owner_payroll_profile", self.kinds(self.members[role]), role)
 
     def test_the_staff_list_goes_to_those_who_run_the_school(self):

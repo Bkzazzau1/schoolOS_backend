@@ -146,13 +146,17 @@ Set `EMAIL_URL` in production. See [docs/contracts/invitations.md](docs/contract
 
 Sections, leadership posts and the school colour scheme. See [docs/features/structure.md](docs/features/structure.md).
 
+## Payroll batches (built)
+
+Prepare, approve (never by the preparer), reject, instruct payment. See [docs/features/payroll.md](docs/features/payroll.md).
+
 ## Not built yet
 
 See the build order in [docs/architecture.md](docs/architecture.md). In short:
 
 - **Server-side handlers for everything except the owner records.** Other record
   types are accepted in DEBUG and **refused in production**, on purpose.
-- **Payroll batches**. Pull sync is built ([docs/features/sync-pull.md](docs/features/sync-pull.md)).
+- Pull sync is built ([docs/features/sync-pull.md](docs/features/sync-pull.md)).
 - File storage, background tasks.
 - A Flutter `SyncTransport` that calls `sync/push/`.
 - Postgres is supported through `DATABASE_URL` but has not been exercised.

@@ -105,7 +105,7 @@ Take "staff" as an example.
 | 0 | `access` + `notifications`: activities per role, owner grants/blocks/reassigns, two-step blocks, people are told | done |
 | 1 | `owner`: salaries, payroll authority, job assignments | done |
 | 2 | `staff`: proposals, approval (owner or assigned approver), staff profiles, identity uniqueness (phone and NIN) | **done** |
-| 3 | `payroll`: batches (prepare, approve, release; approver is not the preparer) | |
+| 3 | `payroll`: batches (prepare, approve, release; approver is not the preparer) | **done** |
 | 4 | `invitations`: see `contracts/invitations.md` | **done** |
 | 4b | `structure`: sections, appointments, appearance | **done** |
 | 5 | Sync **pull** so devices download records | **done** (`docs/features/sync-pull.md`) |
