@@ -51,7 +51,7 @@ store yet; the backend has to compute it from other features.
    preparer.
 5. **`finance` concessions. Done** (`features/concessions.md`). Owner decides; finance creates.
 6. ~~Sync pull~~ (built: `features/sync-pull.md`).
-7. **Read models** for overview, finance, enrollment, HR overview, reports,
+7. **Read models (owner and finance built: `features/dashboards.md`; the rest wait for their data)** for overview, finance, enrollment, HR overview, reports,
    campuses. These only make sense once the data features above exist, because
    they are computed from them.
 8. **`schoollife`** modules, one handler each, following the same recipe.

@@ -154,6 +154,10 @@ Prepare, approve (never by the preparer), reject, instruct payment. See [docs/fe
 
 Finance asks, the owner decides. See [docs/features/concessions.md](docs/features/concessions.md).
 
+## Dashboards (built, for the data that exists)
+
+Owner and finance summaries and the "needs your attention" list. See [docs/features/dashboards.md](docs/features/dashboards.md).
+
 ## Not built yet
 
 See the build order in [docs/architecture.md](docs/architecture.md). In short:

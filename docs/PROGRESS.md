@@ -17,7 +17,7 @@ approvals, 7 dashboards, 8 school-life modules.
 | **4** | **Structure and appearance**: sections, leadership appointments, colour scheme | **done** | 462 in total | `apps/structure`, `docs/features/structure.md` |
 | **5** | **Payroll batches**: prepare, approve or reject, instruct payment | **done** | 495 in total | `apps/payroll`, `docs/features/payroll.md` |
 | **6** | **Scholarship approvals**: finance asks, owner decides | **done** | 515 in total | `apps/concessions`, `docs/features/concessions.md` |
-| 7 | Dashboards (overview, finance, enrollment, reports) | not started | | Only after the data exists |
+| **7** | **Dashboards** (owner and finance): what the server really knows, plus "needs your attention" | **done** (partly) | 532 in total | `apps/dashboards`, `docs/features/dashboards.md` |
 | 8 | School-life modules | not started | | One small handler each |
 
 ## Item 1: staff (done)
@@ -102,6 +102,13 @@ through the endpoints, stop pushing updates to proposals, send `?membership=`.
   and when are set by the server; the right people are told.
 - Added `apps/owner/jobs/access.py` (does this person hold a duty the owner gave them) for later features to reuse.
 - **Left**: student records, per-student limits, letting the owner delegate the decision. See `features/concessions.md`.
+
+## Item 7: dashboards (done for the data that exists)
+
+- Owner and finance summaries worked out on request from the real records: staff, payroll, scholarships and discounts,
+  sections, and an attention list. The dashboards never invent figures: `notAvailableYet` names what needs students,
+  attendance, results or fee payments, which are not on the server.
+- Enrollment, reports and campus comparison wait for those records. Each will be added to the same endpoints.
 
 ## How to resume
 
