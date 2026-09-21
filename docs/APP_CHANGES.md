@@ -85,7 +85,7 @@ A known gap: if someone loses access to a record, their device keeps its old cop
 
 ## H. Owner screens that are new
 
-- **Access & Activities** (`owner.access`): role defaults, a per-person page (grant, block after sync or now, end date,
+- **Access & Activities** (`owner.access`) (**done**): role defaults, a per-person page (grant, block after sync or now, end date,
   note), reassign, waiting blocks, audit list; warn before granting a `sensitive` activity.
 - **Invitation status** (C5) and a **needs your attention** list (G3).
 
