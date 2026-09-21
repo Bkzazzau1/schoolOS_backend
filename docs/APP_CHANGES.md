@@ -11,9 +11,9 @@ Base URL: `/api/v1/`. Everything except the invitation link and sign-in needs a 
 
 | # | Change | Detail |
 | --- | --- | --- |
-| A1 | A real `SyncTransport` that sends queued mutations to `POST sync/push/` | Answers: 200 accepted, 409 conflict, 422 rejected (with a message to show), 403 not a member. Same mutation id always gets the same answer, so retries are safe. `docs/architecture.md` |
-| A2 | Sign-in, token refresh, and secure token storage | `auth/token/`, `auth/token/refresh/`, `me/` |
-| A3 | Download with `GET sync/pull/?school=&since=` | Start at 0, apply records, keep `cursor`, repeat while `hasMore`. `"deleted": true` means remove locally. Send the record's `version` back as `baseVersion` when editing. `features/sync-pull.md` |
+| A1 (**done**) | A real `SyncTransport` that sends queued mutations to `POST sync/push/` | Answers: 200 accepted, 409 conflict, 422 rejected (with a message to show), 403 not a member. Same mutation id always gets the same answer, so retries are safe. `docs/architecture.md` |
+| A2 (**done**) | Sign-in, token refresh, and secure token storage | `auth/token/`, `auth/token/refresh/`, `me/` |
+| A3 (**done**) | Download with `GET sync/pull/?school=&since=` | Start at 0, apply records, keep `cursor`, repeat while `hasMore`. `"deleted": true` means remove locally. Send the record's `version` back as `baseVersion` when editing. `features/sync-pull.md` |
 | A4 | Access: call `access/me/` after sign-in and on every sync; hide screens not in the list; handle `blocking` (fetch, push, `access/acknowledge/`, then delete local data); treat a 403 as "no longer allowed" | `contracts/access-control.md` section 8 |
 | A5 | Notifications inbox with an unread badge | Opens on `access_changed`. In-app only for now |
 | A6 | Show the server's message whenever a change is refused (422) | Every feature relies on this |
