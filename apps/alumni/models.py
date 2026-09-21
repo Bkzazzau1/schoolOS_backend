@@ -43,6 +43,9 @@ class AlumniProfile(models.Model):
     location_text = models.CharField(max_length=160, blank=True)
     bio = models.TextField(blank=True)
     directory_visible = models.BooleanField(default=False)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    verification_note = models.CharField(max_length=500, blank=True)
     verified_at = models.DateTimeField(null=True, blank=True)
     verified_by = models.ForeignKey(
         Membership,
@@ -73,6 +76,8 @@ class AlumniProfile(models.Model):
         if self.verified_by_id and self.school_id:
             if self.verified_by.school_id != self.school_id:
                 raise ValidationError("The alumni verifier must belong to the same school.")
+        if self.directory_visible and self.verification_status != AlumniVerificationStatus.VERIFIED:
+            raise ValidationError("Only verified alumni can appear in the alumni directory.")
 
     def save(self, *args, **kwargs):
         self.full_clean()
