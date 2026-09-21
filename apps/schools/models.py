@@ -36,6 +36,7 @@ class Role(models.TextChoices):
     ACCOUNTANT = "accountant"
     PARENT = "parent"
     STUDENT = "student"
+    ALUMNI = "alumni"
     STAFF = "staff"
     DRIVER = "driver"
 
