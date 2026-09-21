@@ -19,6 +19,11 @@ Base URL: `/api/v1/`. Everything except the invitation link and sign-in needs a 
 | A6 | Show the server's message whenever a change is refused (422) | Every feature relies on this |
 | A7 | Stop trusting anything the server owns | Statuses, "who did it", "when", account links and totals now come from the server. Show what comes back after the next pull |
 
+**Contract note for the sender.** The server remembers its answer to every mutation id, so sending the same id again gets
+the same answer even if the payload changed. A change edited after it was first sent, or edited after it was refused, must
+go under a **new** id. (The app does this; see `schoolOS-app/docs/BACKEND_INTEGRATION.md`.) Changes must also reach the
+server in the order they were first made, because some records point at others (an appointment needs its section).
+
 A known gap: if someone loses access to a record, their device keeps its old copy until the record next changes.
 
 ## B. Staff (`features/staff.md`)
