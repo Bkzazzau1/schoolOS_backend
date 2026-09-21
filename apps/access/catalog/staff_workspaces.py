@@ -1,5 +1,22 @@
 from .base import workspace
 
+DRIVER = workspace(
+    "driver",
+    "Driver",
+    {"driver"},
+    [
+        ("dashboard", "Dashboard", "essential"),
+        ("morning", "Morning Run"),
+        ("afternoon", "Afternoon Run"),
+        ("riders", "Riders"),
+        ("route", "Route & Stops"),
+        ("vehicle-check", "Vehicle Check"),
+        ("incidents", "Incidents"),
+        ("messages", "Messages & Alerts"),
+        ("history", "Trip History & Profile"),
+    ],
+)
+
 # Screen keys match the navigation lists in the app:
 #   principal_dashboard_demo_data.dart, administrator_dashboard_demo_data.dart,
 #   finance_office_dashboard_demo_data.dart, teacher_dashboard_demo_data.dart.

@@ -9,17 +9,17 @@ blocks (see models.py).
 from .base import Activity
 from .family_and_general import GENERAL, PARENT, SCHOOL_LIFE
 from .owner import OWNER
-from .staff_workspaces import ADMINISTRATOR, FINANCE, PRINCIPAL, TEACHER
+from .staff_workspaces import ADMINISTRATOR, DRIVER, FINANCE, PRINCIPAL, TEACHER
 
 ACTIVITIES: dict[str, Activity] = {}
-for _group in (OWNER, PRINCIPAL, ADMINISTRATOR, FINANCE, TEACHER, PARENT, SCHOOL_LIFE, GENERAL):
+for _group in (OWNER, PRINCIPAL, ADMINISTRATOR, FINANCE, TEACHER, DRIVER, PARENT, SCHOOL_LIFE, GENERAL):
     for _activity in _group:
         if _activity.key in ACTIVITIES:
             raise ValueError(f"Duplicate activity key: {_activity.key}")
         ACTIVITIES[_activity.key] = _activity
 
 #: The workspaces in display order, for grouping.
-GROUPS = [OWNER, PRINCIPAL, ADMINISTRATOR, FINANCE, TEACHER, PARENT, SCHOOL_LIFE, GENERAL]
+GROUPS = [OWNER, PRINCIPAL, ADMINISTRATOR, FINANCE, TEACHER, DRIVER, PARENT, SCHOOL_LIFE, GENERAL]
 
 
 def get(key: str) -> Activity | None:

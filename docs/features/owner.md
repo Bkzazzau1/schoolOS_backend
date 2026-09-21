@@ -33,7 +33,7 @@ store yet; the backend has to compute it from other features.
 - **Sync door** with per-type rules (`apps/sync`, `apps/owner/handlers.py`).
 - **Salaries, payroll authority, job assignments**: owner-only, server-owned
   status and account link, append-only salary history.
-- **Access control**: the catalog of 106 activities, role defaults, per-person
+- **Access control**: the catalog of 115 activities, role defaults, per-person
   grants and blocks, reassign, audit. See `contracts/access-control.md`.
 - **School web addresses** and the app-link file (`apps/domains`).
 

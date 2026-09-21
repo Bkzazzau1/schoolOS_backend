@@ -20,7 +20,7 @@ apps/
     views.py              /.well-known/assetlinks.json (platform subdomains only)
   notifications/        a person's in-app inbox; any feature can call notify()
   access/               which activities (screens) each person may see
-    catalog/              the 106 activities, one file per workspace
+    catalog/              the 115 activities, one file per workspace
     services.py           effective access; role defaults; grant/block/reassign; audit
     permissions.py        require_activity(): what other features call to enforce it
     views_owner.py        the owner's management endpoints

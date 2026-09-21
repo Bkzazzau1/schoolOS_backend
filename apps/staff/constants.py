@@ -10,6 +10,7 @@ AUTHORIZER = "owner_payroll_authorizer"
 #: parent or a student. Mirrors staffSystemRoles in the app.
 SYSTEM_ROLES = {
     "teacher": "Teacher",
+    "driver": "Driver",
     "staff": "Support / other staff",
     "accountant": "Finance officer",
     "administrator": "Administrator",
@@ -18,7 +19,7 @@ SYSTEM_ROLES = {
 
 #: Roles someone the owner assigned to approve staff may approve. The others
 #: reach money and student records, so only the owner approves them.
-DELEGATE_ROLES = frozenset({"teacher", "staff"})
+DELEGATE_ROLES = frozenset({"teacher", "driver", "staff"})
 
 #: Who may propose new staff. (A head of section may too, once logins are linked
 #: to job assignments; that link does not exist yet.)

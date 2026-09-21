@@ -37,6 +37,7 @@ class Role(models.TextChoices):
     PARENT = "parent"
     STUDENT = "student"
     STAFF = "staff"
+    DRIVER = "driver"
 
 
 class Membership(models.Model):

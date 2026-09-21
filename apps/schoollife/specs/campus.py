@@ -39,7 +39,7 @@ VISITORS = Spec(
 LOST_FOUND = Spec(
     "lost_found_item",
     manage=MANAGERS | {"staff"},
-    contribute=frozenset({"teacher", "parent", "student", "accountant"}),
+    contribute=frozenset({"teacher", "parent", "student", "accountant", "driver"}),
     required=("item",),
     guarded={"claimant": MANAGERS | {"staff"}, "status": MANAGERS | {"staff"}},
 )

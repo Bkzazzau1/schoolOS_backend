@@ -7,7 +7,7 @@ backend feature that must respect it.
 ## 1. The idea
 
 An **activity** is one screen of the app a person can be allowed to see. There are
-106. Every role has a **default set**. The owner can then, for their school:
+115. Every role has a **default set**. The owner can then, for their school:
 
 - **change a role's defaults** ("teachers here also get the Receipts screen");
 - **give someone an activity** their role does not have (a **grant**);

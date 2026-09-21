@@ -77,10 +77,10 @@ class CatalogAndRolesApiTests(AccessTestCase):
         body = self.call("get", self.owner_path("catalog/"), self.owner).json()
         self.assertEqual(
             [g["area"] for g in body["groups"]],
-            ["Owner", "Principal", "Administrator", "Finance office", "Teacher", "Parent", "School life", "General"],
+            ["Owner", "Principal", "Administrator", "Finance office", "Teacher", "Driver", "Parent", "School life", "General"],
         )
         every = [a for g in body["groups"] for a in g["activities"]]
-        self.assertEqual(len(every), 106)
+        self.assertEqual(len(every), 115)
         payroll = next(a for a in every if a["key"] == "finance.payroll")
         self.assertEqual(
             payroll,
@@ -100,7 +100,7 @@ class CatalogAndRolesApiTests(AccessTestCase):
     def test_roles_show_what_each_gets_and_whether_it_was_changed(self):
         roles = {r["role"]: r for r in self.call("get", self.owner_path("roles/"), self.owner).json()["roles"]}
         self.assertNotIn("proprietor", roles)
-        self.assertEqual(set(roles), {"administrator", "principal", "teacher", "accountant", "parent", "student", "staff"})
+        self.assertEqual(set(roles), {"administrator", "principal", "teacher", "accountant", "parent", "student", "staff", "driver"})
         self.assertFalse(any(r["customized"] for r in roles.values()))
         self.call("put", self.owner_path("roles/teacher/"), self.owner,
                   {"activities": sorted(catalog.default_keys("teacher") - {"teacher.cbt"})})

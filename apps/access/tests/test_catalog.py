@@ -24,6 +24,9 @@ APP_SCREENS = {
         "dashboard", "fee-structure", "scholarships", "collections", "reminders", "store", "mandates",
         "debt-aging", "receipts", "accounts", "reconciliation", "expenses", "payroll", "reports", "ai",
     ],
+    "driver": [
+        "dashboard", "morning", "afternoon", "riders", "route", "vehicle-check", "incidents", "messages", "history",
+    ],
     "teacher": [
         "dashboard", "timetable", "classes", "attendance", "lesson-plans", "weekly-progress", "syllabus",
         "assignments", "assessments", "cbt", "learning-progress", "students", "messages", "ai",
@@ -59,10 +62,10 @@ class CatalogShapeTests(SimpleTestCase):
             if workspace == "owner":
                 expected.add("owner.access")  # new: the screen for managing this feature
             self.assertEqual(keys(workspace), expected, workspace)
-        self.assertEqual(len(catalog.ACTIVITIES), 106)
+        self.assertEqual(len(catalog.ACTIVITIES), 115)
 
     def test_every_workspace_has_a_landing_screen_that_cannot_be_removed(self):
-        for workspace in ["owner", "principal", "administrator", "finance", "teacher", "parent", "general"]:
+        for workspace in ["owner", "principal", "administrator", "finance", "teacher", "driver", "parent", "general"]:
             landing = [a for a in catalog.ACTIVITIES.values() if a.key.startswith(workspace + ".") and a.essential]
             self.assertEqual(len(landing), 1, workspace)
 

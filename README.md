@@ -106,7 +106,7 @@ Three record types, owner only. Anyone else's write is `rejected`.
 
 ## Who sees what (activities)
 
-There are 106 activities, one per app screen, and each role has a default set. The
+There are 115 activities, one per app screen, and each role has a default set. The
 owner can change a role's defaults for their school, give a person an activity,
 block one, or move one between people, with optional end dates and a full audit
 trail. School life is for everyone by default. A block waits for the person's app

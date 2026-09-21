@@ -73,7 +73,9 @@ post. If a post is deleted, its comments go only to moderators.
    ("school life is for everyone").
 3. **Section and class audiences are not enforced** (Primary, JSS 3, a class): the server does not know which children
    are in which section yet, so they are treated as whole school. Only staff-only and parents-only are enforced.
-4. **Parents receive everything except** boarding, visitors and teaching models (and internal-only pictures and awards,
+4. **Drivers** are an adult member: they read what everyone reads (transport, events, notices), post to Community and
+   report found items, but not boarding, visitors or teaching models, and add nothing else.
+5. **Parents receive everything except** boarding, visitors and teaching models (and internal-only pictures and awards,
    and staff-only posts and notices).
 
 ## What the app must change (no integration yet)

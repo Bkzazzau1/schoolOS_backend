@@ -28,7 +28,7 @@ from apps.sync.registry import EntityHandler, MutationContext
 MANAGERS = frozenset({"proprietor", "principal", "administrator"})
 LEADERS = frozenset({"proprietor", "principal"})
 STAFF_SIDE = MANAGERS | {"accountant", "teacher", "staff"}
-EVERYONE = STAFF_SIDE | {"parent", "student"}
+EVERYONE = STAFF_SIDE | {"driver", "parent", "student"}
 
 MAX_BYTES = 60_000
 MAX_TEXT = 5_000
