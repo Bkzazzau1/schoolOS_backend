@@ -14,6 +14,7 @@ urlpatterns = [
     path("sync/", include("apps.sync.urls")),
     path("owner/", include("apps.owner.urls")),
     path("staff/", include("apps.staff.urls")),
+    path("alumni/", include("apps.alumni.urls")),
     path("", include("apps.invitations.urls")),
     path("dashboards/", include("apps.dashboards.urls")),
 ]
