@@ -4,6 +4,7 @@ from apps.sync.models import SyncRecord
 SECTION = "academic_section"
 POST = "leadership_appointment"
 LOOK = "school_appearance"
+PNG_MAGIC = bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
 
 
 def section(id="primary", **over):
@@ -146,6 +147,35 @@ class AppearanceTests(StructureTestCase):
         self.assertEqual((stored["themeId"], stored["updatedByMembershipId"]), ("ocean", str(self.owner.id)))
         self.ok(self.push(LOOK, "theme", {"themeId": "rose"}, operation="update"))
         self.assertEqual(self.stored(LOOK, "theme").payload["themeId"], "rose")
+
+    def test_the_owner_can_use_any_ready_made_scheme(self):
+        from apps.structure.constants import THEMES
+
+        for number, theme in enumerate(sorted(THEMES)):
+            self.ok(self.push(LOOK, "theme", {"themeId": theme}, operation="update" if number else "create"))
+
+    def test_the_owner_can_choose_their_own_colours(self):
+        custom = {"themeId": "custom", "primaryArgb": 0xFF112233, "accentArgb": 0xFFEEDDCC}
+        self.ok(self.push(LOOK, "theme", custom))
+        stored = self.stored(LOOK, "theme").payload
+        self.assertEqual((stored["primaryArgb"], stored["accentArgb"]), (0xFF112233, 0xFFEEDDCC))
+
+    def test_own_colours_must_be_real_colours(self):
+        self.rejected(self.push(LOOK, "theme", {"themeId": "custom"}))
+        self.rejected(self.push(LOOK, "theme", {"themeId": "custom", "primaryArgb": "red", "accentArgb": 1}))
+        self.rejected(self.push(LOOK, "theme", {"themeId": "custom", "primaryArgb": 5, "accentArgb": 0xFFEEDDCC}))
+
+    def test_the_owner_can_set_a_logo_and_only_a_real_small_picture(self):
+        import base64
+
+        png = base64.b64encode(PNG_MAGIC + b"0" * 50).decode()
+        self.ok(self.push(LOOK, "theme", {"themeId": "ocean", "logo": png}))
+        self.assertEqual(self.stored(LOOK, "theme").payload["logo"], png)
+        self.rejected(self.push(LOOK, "theme", {"themeId": "ocean", "logo": "not base64!!"}, operation="update"))
+        text = base64.b64encode(b"just some text").decode()
+        self.rejected(self.push(LOOK, "theme", {"themeId": "ocean", "logo": text}, operation="update"))
+        huge = base64.b64encode(PNG_MAGIC + b"0" * 160_000).decode()
+        self.rejected(self.push(LOOK, "theme", {"themeId": "ocean", "logo": huge}, operation="update"))
 
     def test_only_the_owner_may_and_only_real_schemes_and_one_record(self):
         for role in ("principal", "administrator", "teacher", "parent"):

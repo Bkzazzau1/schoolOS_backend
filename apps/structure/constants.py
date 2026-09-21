@@ -8,7 +8,17 @@ APPEARANCE = "school_appearance"
 APPEARANCE_ID = "theme"
 
 #: The colour schemes the app offers (SchoolThemePreset ids).
-THEMES = frozenset({"forest", "ocean", "violet", "rose", "amber"})
+THEMES = frozenset({
+    "forest", "ocean", "violet", "rose", "amber", "royal", "navy-gold", "navy-red", "crimson", "maroon", "emerald",
+    "green-white", "teal", "turquoise", "sky", "indigo", "purple", "magenta", "sunset", "gold", "coffee", "olive",
+    "slate", "graphite",
+})
+
+#: The owner's own two colours instead of a ready-made scheme.
+CUSTOM_THEME = "custom"
+
+#: The largest logo (as base64 text) a school may keep. The app shrinks logos well below this.
+MAX_LOGO_BASE64 = 200_000
 
 LEVELS = ("sectionHead", "deputy", "hod", "coordinator")
 SECTION_HEAD = "sectionHead"
