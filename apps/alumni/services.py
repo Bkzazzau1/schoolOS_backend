@@ -251,7 +251,7 @@ def reject_profile(manager: Membership, alumni_membership_id, note: str) -> Alum
 
     profile.verification_status = AlumniVerificationStatus.REJECTED
     profile.directory_visible = False
-    profile.verified_by = manager
+    profile.verified_by = None
     profile.verified_at = None
     profile.reviewed_at = timezone.now()
     profile.verification_note = note.strip()
@@ -274,9 +274,10 @@ def reject_profile(manager: Membership, alumni_membership_id, note: str) -> Alum
 
 
 def transition_candidates(school):
-    alumni_user_ids = Membership.objects.filter(
+    active_alumni_user_ids = Membership.objects.filter(
         school=school,
         role=Role.ALUMNI,
+        is_active=True,
     ).values_list("user_id", flat=True)
     return (
         Membership.objects.filter(
@@ -284,7 +285,7 @@ def transition_candidates(school):
             role=Role.STUDENT,
             is_active=True,
         )
-        .exclude(user_id__in=alumni_user_ids)
+        .exclude(user_id__in=active_alumni_user_ids)
         .select_related("user")
         .order_by("user__last_name", "user__first_name", "user__email")
     )
