@@ -26,7 +26,7 @@ server in the order they were first made, because some records point at others (
 
 A known gap: if someone loses access to a record, their device keeps its old copy until the record next changes.
 
-## B. Staff (`features/staff.md`)
+## B. Staff (`features/staff.md`) (**done** in the app)
 
 1. **Approve and reject proposals by calling the endpoints** `POST staff/schools/{school}/proposals/{id}/approve/` and
    `.../reject/`, not by writing records. They need a connection; offline, the owner sees the proposal and decides later.
@@ -34,7 +34,7 @@ A known gap: if someone loses access to a record, their device keeps its old cop
 3. The proposal form already has the system-role dropdown; keep it.
 4. Registration: the staff member fills their details and bank account; only they can enter the account number.
 
-## C. Invitations and account linking (`contracts/invitations.md`, "As built")
+## C. Invitations and account linking (`contracts/invitations.md`, "As built") (**done**, except opening the link from the phone: no Android project yet)
 
 1. **Open the link.** Register the HTTPS app link (Android App Links, and the Windows equivalent) for the school's web
    address, and accept a pasted link. Without the app the link opens the web page instead.
