@@ -70,6 +70,9 @@ class AlumniProfile(models.Model):
                 raise ValidationError("Alumni profiles require an alumni membership.")
             if self.school_id and self.membership.school_id != self.school_id:
                 raise ValidationError("The alumni profile and membership must belong to the same school.")
+        if self.verified_by_id and self.school_id:
+            if self.verified_by.school_id != self.school_id:
+                raise ValidationError("The alumni verifier must belong to the same school.")
 
     def save(self, *args, **kwargs):
         self.full_clean()
