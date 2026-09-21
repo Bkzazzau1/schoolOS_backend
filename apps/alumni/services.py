@@ -7,7 +7,11 @@ from apps.core.permissions import require_membership
 from apps.notifications.services import notify
 from apps.schools.models import Membership, Role
 
-from .models import AlumniProfile, AlumniVerificationStatus
+from .models import (
+    AlumniProfile,
+    AlumniVerificationEvent,
+    AlumniVerificationStatus,
+)
 
 IDENTITY_FIELDS = {
     "original_student_reference",
@@ -55,6 +59,15 @@ def _check_admission_number(profile, admission_number: str):
         raise AlumniError("That admission number already belongs to another alumni profile.")
 
 
+def _event(profile, event, *, actor=None, note=""):
+    AlumniVerificationEvent.objects.create(
+        profile=profile,
+        actor=actor,
+        event=event,
+        note=note.strip(),
+    )
+
+
 @transaction.atomic
 def save_self_profile(membership: Membership, data: dict) -> AlumniProfile:
     if membership.role != Role.ALUMNI:
@@ -67,6 +80,7 @@ def save_self_profile(membership: Membership, data: dict) -> AlumniProfile:
     if profile.school_id != membership.school_id:
         raise AlumniError("The alumni profile belongs to a different school.")
 
+    previous_status = profile.verification_status
     clean = {key: _clean_text(value) for key, value in data.items()}
     _check_admission_number(profile, clean.get("admission_number", profile.admission_number))
 
@@ -98,6 +112,14 @@ def save_self_profile(membership: Membership, data: dict) -> AlumniProfile:
             profile.submitted_at = timezone.now()
 
     profile.save()
+    if identity_changed:
+        _event(
+            profile,
+            AlumniVerificationEvent.Event.SUBMITTED
+            if created or previous_status == AlumniVerificationStatus.PENDING
+            else AlumniVerificationEvent.Event.RESUBMITTED,
+            actor=membership,
+        )
     return profile
 
 
@@ -146,6 +168,12 @@ def transition_student(manager: Membership, data: dict) -> AlumniProfile:
     profile.verification_note = ""
     profile.submitted_at = timezone.now()
     profile.save()
+    _event(
+        profile,
+        AlumniVerificationEvent.Event.TRANSITIONED,
+        actor=manager,
+        note=f"Created from Student membership {student.id}.",
+    )
 
     notify(
         alumni_membership,
@@ -188,6 +216,12 @@ def verify_profile(manager: Membership, alumni_membership_id, note: str = "") ->
     profile.reviewed_at = now
     profile.verification_note = note.strip()
     profile.save()
+    _event(
+        profile,
+        AlumniVerificationEvent.Event.VERIFIED,
+        actor=manager,
+        note=note,
+    )
 
     notify(
         profile.membership,
@@ -222,6 +256,12 @@ def reject_profile(manager: Membership, alumni_membership_id, note: str) -> Alum
     profile.reviewed_at = timezone.now()
     profile.verification_note = note.strip()
     profile.save()
+    _event(
+        profile,
+        AlumniVerificationEvent.Event.REJECTED,
+        actor=manager,
+        note=note,
+    )
 
     notify(
         profile.membership,
