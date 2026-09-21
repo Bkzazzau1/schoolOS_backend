@@ -45,21 +45,21 @@ A known gap: if someone loses access to a record, their device keeps its old cop
 5. **Owner screen** for invitation status, resend (with a corrected email), cancel and unlink:
    `owner/schools/{school}/staff/{staffId}/invitation/` and `.../unlink/`.
 
-## D. Structure and appearance (`features/structure.md`)
+## D. Structure and appearance (`features/structure.md`) (**done** in the app)
 
 1. **Send the default sections and appointments.** The app seeds them on the device only, so the server never gets them.
    Until they are sent as `create` mutations (sections first, then appointments), editing a section or making an
    appointment is refused.
 2. Replacing a head sends two updates; send the appointment first.
 
-## E. Payroll batches (`features/payroll.md`)
+## E. Payroll batches (`features/payroll.md`) (**done** in the app)
 
 1. Send `update` (the stored record with a new `status`) for each step; `create` only for a new month. If a device has no
    copy of a month and sends `create`, the server says it exists: pull, then try again.
 2. Do not work out approver, preparer or totals as trusted values. Show what the server returns.
 3. Salary records now reach finance officers through pull, so they can build a batch on their own device.
 
-## F. Scholarships and discounts (`features/concessions.md`)
+## F. Scholarships and discounts (`features/concessions.md`) (**done** in the app)
 
 1. Choose a request number that will not collide across devices; on a conflict, choose another. The app now uses the
    number of requests on the device plus 41.
