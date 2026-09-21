@@ -71,7 +71,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="alumniprofile",
             constraint=models.UniqueConstraint(
-                condition=~models.Q(("admission_number", "")),
+                condition=~models.Q(admission_number=""),
                 fields=("school", "admission_number"),
                 name="unique_alumni_admission_number_per_school",
             ),
