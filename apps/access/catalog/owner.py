@@ -10,6 +10,7 @@ OWNER = workspace(
         ("finance", "Owner Finance", "sensitive"),
         ("finance-approvals", "Concession Approvals", "sensitive"),
         ("enrollment", "Enrollment & Admissions"),
+        ("alumni", "Alumni Management", "sensitive"),
         ("staff", "Staff & HR"),
         ("jobs", "Jobs & Delegation", "sensitive"),
         ("staff-profiles", "Staff Profiles", "sensitive"),
