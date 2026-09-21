@@ -85,3 +85,44 @@ class AlumniProfile(models.Model):
 
     def __str__(self):
         return f"{self.membership.user} · alumni · {self.school}"
+
+
+class AlumniVerificationEvent(models.Model):
+    """Append-only history of Alumni identity review decisions and resubmissions."""
+
+    class Event(models.TextChoices):
+        TRANSITIONED = "transitioned", "Transitioned"
+        SUBMITTED = "submitted", "Submitted"
+        RESUBMITTED = "resubmitted", "Resubmitted"
+        VERIFIED = "verified", "Verified"
+        REJECTED = "rejected", "Rejected"
+
+    profile = models.ForeignKey(
+        AlumniProfile,
+        on_delete=models.CASCADE,
+        related_name="verification_events",
+    )
+    actor = models.ForeignKey(
+        Membership,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="alumni_verification_events",
+    )
+    event = models.CharField(max_length=20, choices=Event.choices)
+    note = models.CharField(max_length=500, blank=True)
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["at", "id"]
+
+    def clean(self):
+        if self.actor_id and self.actor.school_id != self.profile.school_id:
+            raise ValidationError("The Alumni verification actor must belong to the same school.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.profile_id} · {self.event} · {self.at}"
