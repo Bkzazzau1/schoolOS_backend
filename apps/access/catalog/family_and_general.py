@@ -22,16 +22,25 @@ PARENT = workspace(
     ],
 )
 
-# The shared modules of school life (proprietor_school_life_data.dart). Everyone
-# in the school has them by default: parents, teachers and staff can take part.
-# The owner can still block any of them for a role or a person.
-#
-# Seeing a module is separate from posting in it. Who may post what is decided by
-# each module's own rules when it is built on the server.
+# The shared modules of school life. Existing school roles keep their current
+# defaults. Alumni has its own community/events surfaces and is deliberately not
+# included here until the school chooses what school-life access alumni should have.
+_SCHOOL_LIFE_DEFAULT_ROLES = {
+    Role.PROPRIETOR.value,
+    Role.ADMINISTRATOR.value,
+    Role.PRINCIPAL.value,
+    Role.TEACHER.value,
+    Role.ACCOUNTANT.value,
+    Role.PARENT.value,
+    Role.STUDENT.value,
+    Role.STAFF.value,
+    Role.DRIVER.value,
+}
+
 SCHOOL_LIFE = workspace(
     "schoollife",
     "School life",
-    {role.value for role in Role},
+    _SCHOOL_LIFE_DEFAULT_ROLES,
     [
         ("community", "Community"),
         ("noticeboard", "Noticeboard"),
