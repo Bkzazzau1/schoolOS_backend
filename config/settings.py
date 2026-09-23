@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "apps.core",
     "apps.accounts",
+    "apps.organizations",
     "apps.schools",
     "apps.domains",
     "apps.notifications",
