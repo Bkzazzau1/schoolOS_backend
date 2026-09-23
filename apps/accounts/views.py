@@ -6,8 +6,13 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.organizations.services import serialize_organization_membership
 
+from .email_verification import confirm_email_verification, issue_email_verification
 from .onboarding import register_proprietor_account
-from .throttles import RegistrationThrottle
+from .throttles import (
+    EmailVerificationConfirmThrottle,
+    EmailVerificationSendThrottle,
+    RegistrationThrottle,
+)
 
 
 class ProprietorRegisterView(APIView):
@@ -31,6 +36,10 @@ class ProprietorRegisterView(APIView):
             organization_name=request.data.get("organizationName"),
         )
 
+        # Mail delivery is best-effort. The account remains valid if SMTP is
+        # temporarily unavailable; Account Home can request another code later.
+        verification = issue_email_verification(user)
+
         refresh = RefreshToken.for_user(user)
         return Response(
             {
@@ -44,6 +53,31 @@ class ProprietorRegisterView(APIView):
                 "organizationMembership": serialize_organization_membership(
                     organization_membership
                 ),
+                "emailVerification": verification,
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class EmailVerificationSendView(APIView):
+    """Issue a fresh verification code to the signed-in person's email."""
+
+    throttle_classes = (EmailVerificationSendThrottle,)
+
+    def post(self, request):
+        return Response(
+            issue_email_verification(request.user, enforce_cooldown=True),
+            status=status.HTTP_200_OK,
+        )
+
+
+class EmailVerificationConfirmView(APIView):
+    """Confirm the signed-in person's six-digit email verification code."""
+
+    throttle_classes = (EmailVerificationConfirmThrottle,)
+
+    def post(self, request):
+        return Response(
+            confirm_email_verification(request.user, request.data.get("code")),
+            status=status.HTTP_200_OK,
         )
