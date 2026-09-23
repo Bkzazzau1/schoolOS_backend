@@ -89,55 +89,65 @@ def issue_email_verification(user, *, enforce_cooldown: bool = False) -> dict:
     }
 
 
-@transaction.atomic
 def confirm_email_verification(user, code) -> dict:
-    """Verify one code, locking the account so attempts cannot race."""
+    """Verify one code, locking the account so attempts cannot race.
 
-    user = type(user).objects.select_for_update().get(pk=user.pk)
-    if user.email_verified_at is not None:
-        return {"verified": True, "verifiedAt": user.email_verified_at.isoformat()}
+    Incorrect-attempt state is committed before the validation error is raised;
+    otherwise raising inside an atomic block would roll the counter back.
+    """
 
     if not isinstance(code, str) or len(code.strip()) != 6 or not code.strip().isdigit():
         raise ValidationError({"message": "Enter the 6-digit verification code."})
 
-    now = timezone.now()
-    if (
-        not user.email_verification_code_hash
-        or user.email_verification_expires_at is None
-        or user.email_verification_expires_at <= now
-    ):
-        raise ValidationError(
-            {"message": "This verification code has expired. Request a new code."}
-        )
+    error_message = None
+    verified_at = None
 
-    if user.email_verification_attempts >= MAX_ATTEMPTS:
-        raise ValidationError(
-            {"message": "Too many incorrect attempts. Request a new verification code."}
-        )
+    with transaction.atomic():
+        locked_user = type(user).objects.select_for_update().get(pk=user.pk)
+        if locked_user.email_verified_at is not None:
+            verified_at = locked_user.email_verified_at
+        else:
+            now = timezone.now()
+            if (
+                not locked_user.email_verification_code_hash
+                or locked_user.email_verification_expires_at is None
+                or locked_user.email_verification_expires_at <= now
+            ):
+                error_message = "This verification code has expired. Request a new code."
+            elif locked_user.email_verification_attempts >= MAX_ATTEMPTS:
+                error_message = "Too many incorrect attempts. Request a new verification code."
+            else:
+                locked_user.email_verification_attempts += 1
+                expected = _digest(locked_user.id, code.strip())
+                if not hmac.compare_digest(
+                    expected,
+                    locked_user.email_verification_code_hash,
+                ):
+                    locked_user.save(update_fields=["email_verification_attempts"])
+                    remaining = MAX_ATTEMPTS - locked_user.email_verification_attempts
+                    error_message = (
+                        "Too many incorrect attempts. Request a new verification code."
+                        if remaining <= 0
+                        else f"That verification code is not correct. {remaining} attempt{'s' if remaining != 1 else ''} remaining."
+                    )
+                else:
+                    locked_user.email_verified_at = now
+                    locked_user.email_verification_code_hash = ""
+                    locked_user.email_verification_expires_at = None
+                    locked_user.email_verification_attempts = 0
+                    locked_user.save(
+                        update_fields=[
+                            "email_verified_at",
+                            "email_verification_code_hash",
+                            "email_verification_expires_at",
+                            "email_verification_attempts",
+                        ]
+                    )
+                    verified_at = now
 
-    user.email_verification_attempts += 1
-    expected = _digest(user.id, code.strip())
-    if not hmac.compare_digest(expected, user.email_verification_code_hash):
-        user.save(update_fields=["email_verification_attempts"])
-        remaining = MAX_ATTEMPTS - user.email_verification_attempts
-        if remaining <= 0:
-            raise ValidationError(
-                {"message": "Too many incorrect attempts. Request a new verification code."}
-            )
-        raise ValidationError(
-            {"message": f"That verification code is not correct. {remaining} attempt{'s' if remaining != 1 else ''} remaining."}
-        )
-
-    user.email_verified_at = now
-    user.email_verification_code_hash = ""
-    user.email_verification_expires_at = None
-    user.email_verification_attempts = 0
-    user.save(
-        update_fields=[
-            "email_verified_at",
-            "email_verification_code_hash",
-            "email_verification_expires_at",
-            "email_verification_attempts",
-        ]
-    )
-    return {"verified": True, "verifiedAt": now.isoformat()}
+    if error_message is not None:
+        raise ValidationError({"message": error_message})
+    return {
+        "verified": True,
+        "verifiedAt": verified_at.isoformat() if verified_at is not None else None,
+    }
