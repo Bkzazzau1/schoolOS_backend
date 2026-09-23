@@ -118,6 +118,16 @@ def provision_school(
             "Your account role cannot create schools for this organization."
         )
 
+    # Let a brand-new proprietor create the first school immediately, but require
+    # verified account identity before expanding the organization further.
+    if (
+        organization.schools.filter(is_active=True).exists()
+        and getattr(actor, "email_verified_at", None) is None
+    ):
+        raise PermissionDenied(
+            "Verify your email address before creating another school."
+        )
+
     clean_name = name.strip()
     clean_location = location.strip()
     if len(clean_name) < 3:
