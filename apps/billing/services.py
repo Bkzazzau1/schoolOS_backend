@@ -108,6 +108,17 @@ def _plan_entitlement_map(subscription: OrganizationSubscription) -> dict[str, P
     }
 
 
+def serialize_plan_entitlements(plan: Plan) -> dict[str, dict]:
+    return {
+        entitlement.code: {
+            "enabled": entitlement.enabled,
+            "limit": entitlement.limit_value,
+            "metadata": entitlement.metadata,
+        }
+        for entitlement in plan.entitlements.all()
+    }
+
+
 def resolved_entitlements(subscription: OrganizationSubscription) -> dict[str, dict]:
     mode = access_mode(subscription)
     return {
@@ -172,10 +183,10 @@ def can_manage_billing(role: str) -> bool:
     }
 
 
-def serialize_plan(plan: Plan | None) -> dict | None:
+def serialize_plan(plan: Plan | None, *, include_entitlements: bool = False) -> dict | None:
     if plan is None:
         return None
-    return {
+    payload = {
         "id": str(plan.id),
         "code": plan.code,
         "name": plan.name,
@@ -185,6 +196,9 @@ def serialize_plan(plan: Plan | None) -> dict | None:
         "baseAmountMinor": plan.base_amount_minor,
         "studentUnitAmountMinor": plan.student_unit_amount_minor,
     }
+    if include_entitlements:
+        payload["entitlements"] = serialize_plan_entitlements(plan)
+    return payload
 
 
 def serialize_subscription(
