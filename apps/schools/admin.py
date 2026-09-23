@@ -5,9 +5,19 @@ from .models import Membership, School
 
 @admin.register(School)
 class SchoolAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "is_active", "created_at")
+    list_display = (
+        "name",
+        "organization",
+        "school_type",
+        "location",
+        "slug",
+        "is_active",
+        "created_at",
+    )
+    list_filter = ("organization", "school_type", "is_active")
     prepopulated_fields = {"slug": ("name",)}
-    search_fields = ("name", "slug")
+    search_fields = ("name", "slug", "organization__name", "location")
+    autocomplete_fields = ("organization",)
 
 
 @admin.register(Membership)
