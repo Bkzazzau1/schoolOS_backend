@@ -17,13 +17,13 @@ from .models import (
 def _unique_slug(value: str, *, fallback: str) -> str:
     """Return a human-readable slug with enough entropy for concurrent creates.
 
-    Organization and school slugs are public identifiers in some deployments,
-    so provisioning never derives identity from a row count or another
-    process-local value.
+    Both Organization.slug and School.slug use Django's default 50-character
+    SlugField, so the readable prefix is capped before the random suffix is
+    appended.
     """
 
     base = slugify(value).strip("-") or fallback
-    base = base[:48].rstrip("-")
+    base = base[:40].rstrip("-")
     return f"{base}-{uuid.uuid4().hex[:8]}"
 
 
