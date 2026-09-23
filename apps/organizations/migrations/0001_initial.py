@@ -127,8 +127,8 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="organizationmembership",
             constraint=models.UniqueConstraint(
-                fields=("user", "organization", "role"),
-                name="unique_org_role_per_user",
+                fields=("user", "organization"),
+                name="unique_org_membership_per_user",
             ),
         ),
         migrations.AddIndex(
