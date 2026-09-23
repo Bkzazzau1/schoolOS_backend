@@ -28,17 +28,34 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractUser):
-    """A person who signs in. Which schools they belong to, and in what role,
-    is held by schools.Membership, so one person can hold several."""
+    """A person who signs in.
+
+    Which schools they belong to, and in what role, is held by
+    ``schools.Membership`` so one person can hold several. Email verification is
+    account-level trust state and therefore belongs here rather than inside any
+    school tenant.
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = None
     email = models.EmailField(unique=True)
 
+    # Verification codes are never stored in plaintext. These fields hold only
+    # the digest and lifecycle metadata for the currently active code.
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+    email_verification_code_hash = models.CharField(max_length=64, blank=True)
+    email_verification_expires_at = models.DateTimeField(null=True, blank=True)
+    email_verification_sent_at = models.DateTimeField(null=True, blank=True)
+    email_verification_attempts = models.PositiveSmallIntegerField(default=0)
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS: list[str] = []
 
     objects = UserManager()
+
+    @property
+    def is_email_verified(self) -> bool:
+        return self.email_verified_at is not None
 
     def __str__(self):
         return self.email

@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 
 from apps.organizations.models import OrganizationMembership
 
-from .models import Membership
+from .models import Membership, School
 
 
 class MeView(APIView):
@@ -16,7 +16,7 @@ class MeView(APIView):
     """
 
     def get(self, request):
-        memberships = (
+        memberships = list(
             Membership.objects.filter(
                 user=request.user,
                 is_active=True,
@@ -25,7 +25,7 @@ class MeView(APIView):
             .select_related("school", "school__organization")
             .order_by("school__name", "role")
         )
-        organizations = (
+        organizations = list(
             OrganizationMembership.objects.filter(
                 user=request.user,
                 is_active=True,
@@ -34,11 +34,57 @@ class MeView(APIView):
             .select_related("organization")
             .order_by("organization__name", "role")
         )
+
+        email_verified = request.user.email_verified_at is not None
+        organization_ids = [membership.organization_id for membership in organizations]
+        has_first_school = bool(organization_ids) and School.objects.filter(
+            organization_id__in=organization_ids,
+            is_active=True,
+        ).exists()
+        onboarding_applicable = bool(organizations)
+        completed_count = (
+            1 + int(email_verified) + int(has_first_school)
+            if onboarding_applicable
+            else 0
+        )
+
         return Response(
             {
                 "id": str(request.user.id),
                 "email": request.user.email,
                 "name": request.user.get_full_name(),
+                "emailVerified": email_verified,
+                "onboarding": {
+                    "applicable": onboarding_applicable,
+                    "ready": (
+                        email_verified and has_first_school
+                        if onboarding_applicable
+                        else True
+                    ),
+                    "completedCount": completed_count,
+                    "totalCount": 3 if onboarding_applicable else 0,
+                    "steps": (
+                        [
+                            {
+                                "key": "account_created",
+                                "label": "SchoolOS account created",
+                                "completed": True,
+                            },
+                            {
+                                "key": "email_verified",
+                                "label": "Email address verified",
+                                "completed": email_verified,
+                            },
+                            {
+                                "key": "first_school_created",
+                                "label": "First school created",
+                                "completed": has_first_school,
+                            },
+                        ]
+                        if onboarding_applicable
+                        else []
+                    ),
+                },
                 "memberships": [
                     {
                         "id": str(m.id),

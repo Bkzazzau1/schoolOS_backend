@@ -47,9 +47,33 @@ def serialize_organization_membership(membership: OrganizationMembership) -> dic
     }
 
 
+def _has_managed_school(actor) -> bool:
+    return OrganizationMembership.objects.filter(
+        user=actor,
+        is_active=True,
+        organization__is_active=True,
+        organization__schools__is_active=True,
+    ).exists()
+
+
 @transaction.atomic
 def create_organization(*, actor, name: str) -> tuple[Organization, OrganizationMembership]:
     """Create an account and make the signed-in person its first owner."""
+
+    # Self-service signup creates the first organization before verification.
+    # Once an account already owns/administers an organization, verification is
+    # required before expanding into another commercial account.
+    if (
+        getattr(actor, "email_verified_at", None) is None
+        and OrganizationMembership.objects.filter(
+            user=actor,
+            is_active=True,
+            organization__is_active=True,
+        ).exists()
+    ):
+        raise PermissionDenied(
+            "Verify your email address before creating another organization."
+        )
 
     clean_name = name.strip()
     if len(clean_name) < 2:
@@ -116,6 +140,14 @@ def provision_school(
     if organization_membership is None:
         raise PermissionDenied(
             "Your account role cannot create schools for this organization."
+        )
+
+    # A new owner may create one first school immediately. Once any school exists
+    # under an organization they manage, verified email is required before the
+    # account expands further, including through another organization.
+    if getattr(actor, "email_verified_at", None) is None and _has_managed_school(actor):
+        raise PermissionDenied(
+            "Verify your email address before creating another school."
         )
 
     clean_name = name.strip()
