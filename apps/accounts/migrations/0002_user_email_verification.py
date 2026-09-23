@@ -1,4 +1,12 @@
 from django.db import migrations, models
+from django.utils import timezone
+
+
+def mark_existing_accounts_verified(apps, schema_editor):
+    User = apps.get_model("accounts", "User")
+    User.objects.filter(email_verified_at__isnull=True).update(
+        email_verified_at=timezone.now()
+    )
 
 
 class Migration(migrations.Migration):
@@ -31,5 +39,9 @@ class Migration(migrations.Migration):
             model_name="user",
             name="email_verification_attempts",
             field=models.PositiveSmallIntegerField(default=0),
+        ),
+        migrations.RunPython(
+            mark_existing_accounts_verified,
+            reverse_code=migrations.RunPython.noop,
         ),
     ]
