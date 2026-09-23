@@ -99,6 +99,13 @@ def create_organization(*, actor, name: str) -> tuple[Organization, Organization
         target_id=str(organization.id),
         detail={"name": organization.name, "ownerMembershipId": str(membership.id)},
     )
+
+    # Local import keeps the account domain independent at import time while the
+    # transaction still guarantees organization + owner + subscription are born
+    # together.
+    from apps.billing.services import ensure_organization_subscription
+
+    ensure_organization_subscription(organization)
     return organization, membership
 
 
@@ -150,6 +157,17 @@ def provision_school(
             "Verify your email address before creating another school."
         )
 
+    current_school_count = School.objects.filter(
+        organization=organization,
+        is_active=True,
+    ).count()
+    from apps.billing.services import require_school_provisioning
+
+    subscription = require_school_provisioning(
+        organization,
+        current_school_count=current_school_count,
+    )
+
     clean_name = name.strip()
     clean_location = location.strip()
     if len(clean_name) < 3:
@@ -188,6 +206,8 @@ def provision_school(
             "location": school.location,
             "proprietorMembershipId": str(proprietor_membership.id),
             "organizationMembershipId": str(organization_membership.id),
+            "subscriptionId": str(subscription.id),
+            "planCode": subscription.plan.code if subscription.plan_id else None,
         },
     )
 
