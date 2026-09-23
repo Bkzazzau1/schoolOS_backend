@@ -35,13 +35,14 @@ class Migration(migrations.Migration):
                     ("college", "College"),
                     ("other", "Other"),
                 ],
+                default="",
                 max_length=32,
             ),
         ),
         migrations.AddField(
             model_name="school",
             name="location",
-            field=models.CharField(blank=True, max_length=250),
+            field=models.CharField(blank=True, default="", max_length=250),
         ),
         migrations.AddIndex(
             model_name="school",
