@@ -71,8 +71,14 @@ class OrganizationMembership(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=["user", "is_active"]),
-            models.Index(fields=["organization", "is_active"]),
+            models.Index(
+                fields=["user", "is_active"],
+                name="orgmem_user_active_idx",
+            ),
+            models.Index(
+                fields=["organization", "is_active"],
+                name="orgmem_org_active_idx",
+            ),
         ]
 
     @property
@@ -109,7 +115,12 @@ class OrganizationAuditEvent(models.Model):
 
     class Meta:
         ordering = ["-at", "-id"]
-        indexes = [models.Index(fields=["organization", "-at"])]
+        indexes = [
+            models.Index(
+                fields=["organization", "-at"],
+                name="orgaudit_org_at_idx",
+            )
+        ]
 
     def __str__(self):
         return f"{self.organization} · {self.action} · {self.at}"
