@@ -28,10 +28,19 @@ class PlanListView(APIView):
     """Read-only public plan catalog for signed-in SchoolOS accounts."""
 
     def get(self, request):
-        plans = Plan.objects.filter(is_active=True, is_public=True).order_by(
-            "sort_order", "name"
+        plans = (
+            Plan.objects.filter(is_active=True, is_public=True)
+            .prefetch_related("entitlements")
+            .order_by("sort_order", "name")
         )
-        return Response({"plans": [serialize_plan(plan) for plan in plans]})
+        return Response(
+            {
+                "plans": [
+                    serialize_plan(plan, include_entitlements=True)
+                    for plan in plans
+                ]
+            }
+        )
 
 
 class OrganizationSubscriptionView(APIView):
