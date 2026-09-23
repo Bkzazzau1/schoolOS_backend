@@ -49,7 +49,12 @@ class School(models.Model):
 
     class Meta:
         ordering = ["name"]
-        indexes = [models.Index(fields=["organization", "is_active"])]
+        indexes = [
+            models.Index(
+                fields=["organization", "is_active"],
+                name="school_org_active_idx",
+            )
+        ]
 
     def __str__(self):
         return self.name
