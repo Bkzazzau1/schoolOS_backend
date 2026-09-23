@@ -1,3 +1,5 @@
+from collections.abc import Mapping
+
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -12,6 +14,12 @@ from .services import (
     serialize_organization_membership,
     serialize_school_membership,
 )
+
+
+def _request_payload(request) -> Mapping:
+    if not isinstance(request.data, Mapping):
+        raise ValidationError({"message": "The request body must be a JSON object."})
+    return request.data
 
 
 def _organization_membership(user, organization_id):
@@ -59,7 +67,8 @@ class OrganizationListCreateView(APIView):
         )
 
     def post(self, request):
-        name = request.data.get("name")
+        payload = _request_payload(request)
+        name = payload.get("name")
         if not isinstance(name, str):
             raise ValidationError({"message": "Enter an organization name."})
         organization, membership = create_organization(actor=request.user, name=name)
@@ -88,9 +97,10 @@ class OrganizationSchoolsView(APIView):
         return Response({"schools": [_school_payload(school) for school in schools]})
 
     def post(self, request, organization_id):
-        name = request.data.get("name")
-        school_type = request.data.get("schoolType")
-        location = request.data.get("location")
+        payload = _request_payload(request)
+        name = payload.get("name")
+        school_type = payload.get("schoolType")
+        location = payload.get("location")
         if not isinstance(name, str):
             raise ValidationError({"message": "Enter the school name."})
         if not isinstance(school_type, str):
