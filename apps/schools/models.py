@@ -37,8 +37,13 @@ class School(models.Model):
     )
     name = models.CharField(max_length=200)
     slug = models.SlugField(unique=True)
-    school_type = models.CharField(max_length=32, choices=SchoolType.choices, blank=True)
-    location = models.CharField(max_length=250, blank=True)
+    school_type = models.CharField(
+        max_length=32,
+        choices=SchoolType.choices,
+        blank=True,
+        default="",
+    )
+    location = models.CharField(max_length=250, blank=True, default="")
     is_active = models.BooleanField(default=True)
     #: The address emails to this school's people are sent from (for example
     #: office@brightgate.school.ng), and the name shown beside it. Set up for each
