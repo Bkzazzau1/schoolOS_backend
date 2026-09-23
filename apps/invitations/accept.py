@@ -120,7 +120,19 @@ def _resolve_user(invitation, signed_in_user, password, first_name, last_name):
             raise InvitationError("wrong_account", "You are signed in as a different account than the one invited.", 403)
         if getattr(signed_in_user, "email_verified_at", None) is None:
             signed_in_user.email_verified_at = timezone.now()
-            signed_in_user.save(update_fields=["email_verified_at"])
+            signed_in_user.email_verification_code_hash = ""
+            signed_in_user.email_verification_expires_at = None
+            signed_in_user.email_verification_sent_at = None
+            signed_in_user.email_verification_attempts = 0
+            signed_in_user.save(
+                update_fields=[
+                    "email_verified_at",
+                    "email_verification_code_hash",
+                    "email_verification_expires_at",
+                    "email_verification_sent_at",
+                    "email_verification_attempts",
+                ]
+            )
         return signed_in_user
     if account_exists(email):
         raise InvitationError("sign_in_required", "An account with this email already exists. Sign in to accept.", 401)
