@@ -39,13 +39,13 @@ def _send_code_email(user, code: str) -> bool:
         "The code expires in 15 minutes. If you did not request this, you can ignore this email.\n"
     )
     try:
-        EmailMultiAlternatives(
+        delivered = EmailMultiAlternatives(
             subject,
             body,
             settings.DEFAULT_FROM_EMAIL,
             [user.email],
         ).send()
-        return True
+        return delivered > 0
     except Exception:  # noqa: BLE001 - signup remains valid if mail is temporarily unavailable
         return False
 
