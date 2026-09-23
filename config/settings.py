@@ -160,6 +160,12 @@ else:
     EMAIL_BACKEND = "apps.invitations.mail.NotConfiguredBackend"
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="SchoolOS <no-reply@localhost>")
 
+# SchoolOS SaaS payment collection. Secret keys are server-only; native/web
+# clients receive only provider checkout URLs/access codes created by this API.
+PAYSTACK_SECRET_KEY = env("PAYSTACK_SECRET_KEY", default="")
+PAYSTACK_API_BASE_URL = env("PAYSTACK_API_BASE_URL", default="https://api.paystack.co")
+PAYSTACK_CALLBACK_URL = env("PAYSTACK_CALLBACK_URL", default="")
+
 PLATFORM_DOMAIN = env("PLATFORM_DOMAIN", default="")
 ANDROID_APP_PACKAGE = env("ANDROID_APP_PACKAGE", default="")
 ANDROID_CERT_SHA256 = env.list("ANDROID_CERT_SHA256", default=[])

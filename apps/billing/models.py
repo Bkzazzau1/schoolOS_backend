@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 from apps.organizations.models import Organization
@@ -20,6 +21,29 @@ class SubscriptionStatus(models.TextChoices):
     RESTRICTED = "restricted", "Restricted"
     SUSPENDED = "suspended", "Suspended"
     CANCELLED = "cancelled", "Cancelled"
+
+
+class InvoiceStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    OPEN = "open", "Open"
+    PAID = "paid", "Paid"
+    VOID = "void", "Void"
+    UNCOLLECTIBLE = "uncollectible", "Uncollectible"
+
+
+class PaymentAttemptStatus(models.TextChoices):
+    INITIALIZED = "initialized", "Initialized"
+    PENDING = "pending", "Pending"
+    SUCCEEDED = "succeeded", "Succeeded"
+    FAILED = "failed", "Failed"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class WebhookProcessingStatus(models.TextChoices):
+    RECEIVED = "received", "Received"
+    PROCESSED = "processed", "Processed"
+    IGNORED = "ignored", "Ignored"
+    FAILED = "failed", "Failed"
 
 
 class Plan(models.Model):
@@ -52,13 +76,7 @@ class Plan(models.Model):
 
 
 class PlanEntitlement(models.Model):
-    """One feature/limit included by a plan.
-
-    New entitlements can be introduced without changing the subscription schema.
-    ``limit_value`` is optional: for example, a school-provisioning entitlement
-    may cap the total schools in an organization while an unlimited plan leaves
-    it null.
-    """
+    """One feature/limit included by a plan."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     plan = models.ForeignKey(
@@ -85,11 +103,7 @@ class PlanEntitlement(models.Model):
 
 
 class OrganizationSubscription(models.Model):
-    """The organization's current SchoolOS commercial state.
-
-    This record is intentionally account-level. It never grants a school role
-    and never replaces ``schools.School`` as the operational tenant boundary.
-    """
+    """The organization's current SchoolOS commercial state."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.OneToOneField(
@@ -123,7 +137,10 @@ class OrganizationSubscription(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["status"], name="billing_sub_status_idx"),
-            models.Index(fields=["provider", "provider_subscription_ref"], name="billing_provider_sub_idx"),
+            models.Index(
+                fields=["provider", "provider_subscription_ref"],
+                name="billing_provider_sub_idx",
+            ),
         ]
 
     def __str__(self):
@@ -157,12 +174,7 @@ class SubscriptionEvent(models.Model):
 
 
 class UsageSnapshot(models.Model):
-    """Immutable billing-meter observation for an organization.
-
-    ``billable_student_count`` is deliberately not inferred from login
-    memberships. SchoolOS may have students who do not own accounts; the future
-    meter must capture the authoritative student population from school data.
-    """
+    """Immutable billing-meter observation for an organization."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
@@ -193,3 +205,145 @@ class UsageSnapshot(models.Model):
                 name="billing_usage_org_at_idx",
             )
         ]
+
+
+class BillingInvoice(models.Model):
+    """An immutable-priced SchoolOS SaaS invoice for one usage observation.
+
+    Amount inputs are copied onto the invoice at issue time so later plan changes
+    cannot rewrite historical charges.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.PROTECT,
+        related_name="billing_invoices",
+    )
+    subscription = models.ForeignKey(
+        OrganizationSubscription,
+        on_delete=models.PROTECT,
+        related_name="invoices",
+    )
+    usage_snapshot = models.OneToOneField(
+        UsageSnapshot,
+        on_delete=models.PROTECT,
+        related_name="invoice",
+    )
+    number = models.CharField(max_length=40, unique=True)
+    currency = models.CharField(max_length=3)
+    base_amount_minor = models.PositiveBigIntegerField(default=0)
+    student_unit_amount_minor = models.PositiveBigIntegerField(default=0)
+    billable_student_count = models.PositiveIntegerField(default=0)
+    amount_due_minor = models.PositiveBigIntegerField()
+    amount_paid_minor = models.PositiveBigIntegerField(default=0)
+    status = models.CharField(
+        max_length=16,
+        choices=InvoiceStatus.choices,
+        default=InvoiceStatus.OPEN,
+    )
+    period_start = models.DateTimeField(null=True, blank=True)
+    period_end = models.DateTimeField(null=True, blank=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    due_at = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-issued_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["organization", "status", "-issued_at"],
+                name="billing_inv_org_status_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.number} · {self.organization} · {self.status}"
+
+
+class PaymentAttempt(models.Model):
+    """One server-created attempt to pay one invoice through a provider."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invoice = models.ForeignKey(
+        BillingInvoice,
+        on_delete=models.PROTECT,
+        related_name="payment_attempts",
+    )
+    provider = models.CharField(max_length=32)
+    reference = models.CharField(max_length=100, unique=True)
+    amount_minor = models.PositiveBigIntegerField()
+    currency = models.CharField(max_length=3)
+    status = models.CharField(
+        max_length=16,
+        choices=PaymentAttemptStatus.choices,
+        default=PaymentAttemptStatus.INITIALIZED,
+    )
+    checkout_url = models.URLField(max_length=500, blank=True)
+    access_code = models.CharField(max_length=160, blank=True)
+    provider_transaction_id = models.CharField(max_length=128, blank=True)
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    failure_message = models.CharField(max_length=250, blank=True)
+    provider_detail = models.JSONField(default=dict, blank=True)
+    succeeded_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["invoice", "status", "-created_at"],
+                name="billing_pay_inv_status_idx",
+            ),
+            models.Index(
+                fields=["provider", "provider_transaction_id"],
+                name="billing_pay_provider_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.reference} · {self.provider} · {self.status}"
+
+
+class ProviderWebhookEvent(models.Model):
+    """Idempotency record for provider callbacks; raw payment payloads are not retained."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=32)
+    payload_hash = models.CharField(max_length=64)
+    event_type = models.CharField(max_length=80, blank=True)
+    provider_object_ref = models.CharField(max_length=128, blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=WebhookProcessingStatus.choices,
+        default=WebhookProcessingStatus.RECEIVED,
+    )
+    detail = models.JSONField(default=dict, blank=True)
+    received_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-received_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "payload_hash"],
+                name="unique_provider_webhook_payload",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["provider", "status", "-received_at"],
+                name="billing_webhook_status_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.provider} · {self.event_type} · {self.status}"

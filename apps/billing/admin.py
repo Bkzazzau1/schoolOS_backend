@@ -1,9 +1,12 @@
 from django.contrib import admin
 
 from .models import (
+    BillingInvoice,
     OrganizationSubscription,
+    PaymentAttempt,
     Plan,
     PlanEntitlement,
+    ProviderWebhookEvent,
     SubscriptionEvent,
     UsageSnapshot,
 )
@@ -94,20 +97,7 @@ class OrganizationSubscriptionAdmin(admin.ModelAdmin):
             )
 
 
-@admin.register(SubscriptionEvent)
-class SubscriptionEventAdmin(admin.ModelAdmin):
-    list_display = ("subscription", "event", "from_status", "to_status", "at")
-    list_filter = ("event", "from_status", "to_status")
-    search_fields = ("subscription__organization__name", "event")
-    readonly_fields = (
-        "subscription",
-        "event",
-        "from_status",
-        "to_status",
-        "detail",
-        "at",
-    )
-
+class _AppendOnlyAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         return False
 
@@ -118,8 +108,15 @@ class SubscriptionEventAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(SubscriptionEvent)
+class SubscriptionEventAdmin(_AppendOnlyAdmin):
+    list_display = ("subscription", "event", "from_status", "to_status", "at")
+    list_filter = ("event", "from_status", "to_status")
+    search_fields = ("subscription__organization__name", "event")
+
+
 @admin.register(UsageSnapshot)
-class UsageSnapshotAdmin(admin.ModelAdmin):
+class UsageSnapshotAdmin(_AppendOnlyAdmin):
     list_display = (
         "organization",
         "active_school_count",
@@ -129,23 +126,50 @@ class UsageSnapshotAdmin(admin.ModelAdmin):
     )
     list_filter = ("source",)
     search_fields = ("organization__name",)
-    readonly_fields = (
+
+
+@admin.register(BillingInvoice)
+class BillingInvoiceAdmin(_AppendOnlyAdmin):
+    list_display = (
+        "number",
         "organization",
-        "subscription",
-        "period_start",
-        "period_end",
-        "active_school_count",
+        "status",
+        "currency",
+        "amount_due_minor",
+        "amount_paid_minor",
         "billable_student_count",
-        "source",
-        "metadata",
-        "captured_at",
+        "issued_at",
+        "paid_at",
     )
+    list_filter = ("status", "currency")
+    search_fields = ("number", "organization__name")
 
-    def has_add_permission(self, request):
-        return False
 
-    def has_change_permission(self, request, obj=None):
-        return False
+@admin.register(PaymentAttempt)
+class PaymentAttemptAdmin(_AppendOnlyAdmin):
+    list_display = (
+        "reference",
+        "invoice",
+        "provider",
+        "status",
+        "amount_minor",
+        "currency",
+        "created_at",
+        "succeeded_at",
+    )
+    list_filter = ("provider", "status", "currency")
+    search_fields = ("reference", "invoice__number", "invoice__organization__name")
 
-    def has_delete_permission(self, request, obj=None):
-        return False
+
+@admin.register(ProviderWebhookEvent)
+class ProviderWebhookEventAdmin(_AppendOnlyAdmin):
+    list_display = (
+        "provider",
+        "event_type",
+        "provider_object_ref",
+        "status",
+        "received_at",
+        "processed_at",
+    )
+    list_filter = ("provider", "event_type", "status")
+    search_fields = ("provider_object_ref", "payload_hash")
