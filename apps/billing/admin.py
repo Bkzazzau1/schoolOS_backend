@@ -49,6 +49,50 @@ class OrganizationSubscriptionAdmin(admin.ModelAdmin):
     )
     readonly_fields = ("created_at", "updated_at")
 
+    def save_model(self, request, obj, form, change):
+        previous = None
+        if change and obj.pk:
+            previous = OrganizationSubscription.objects.filter(pk=obj.pk).values(
+                "status", "plan_id"
+            ).first()
+        super().save_model(request, obj, form, change)
+
+        actor = {
+            "adminUserId": str(request.user.id),
+            "adminEmail": request.user.email,
+        }
+        if previous is None:
+            SubscriptionEvent.objects.create(
+                subscription=obj,
+                event="admin_subscription_created",
+                to_status=obj.status,
+                detail={**actor, "planId": str(obj.plan_id) if obj.plan_id else None},
+            )
+            return
+
+        if previous["status"] != obj.status:
+            SubscriptionEvent.objects.create(
+                subscription=obj,
+                event="admin_status_changed",
+                from_status=previous["status"],
+                to_status=obj.status,
+                detail=actor,
+            )
+        if previous["plan_id"] != obj.plan_id:
+            SubscriptionEvent.objects.create(
+                subscription=obj,
+                event="admin_plan_changed",
+                from_status=obj.status,
+                to_status=obj.status,
+                detail={
+                    **actor,
+                    "fromPlanId": (
+                        str(previous["plan_id"]) if previous["plan_id"] else None
+                    ),
+                    "toPlanId": str(obj.plan_id) if obj.plan_id else None,
+                },
+            )
+
 
 @admin.register(SubscriptionEvent)
 class SubscriptionEventAdmin(admin.ModelAdmin):
