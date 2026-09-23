@@ -5,6 +5,7 @@ def seed_standard_plan(apps, schema_editor):
     Plan = apps.get_model("billing", "Plan")
     PlanEntitlement = apps.get_model("billing", "PlanEntitlement")
     OrganizationSubscription = apps.get_model("billing", "OrganizationSubscription")
+    SubscriptionEvent = apps.get_model("billing", "SubscriptionEvent")
     Organization = apps.get_model("organizations", "Organization")
 
     plan, _ = Plan.objects.get_or_create(
@@ -29,10 +30,17 @@ def seed_standard_plan(apps, schema_editor):
         )
 
     for organization in Organization.objects.filter(is_active=True).iterator():
-        OrganizationSubscription.objects.get_or_create(
+        subscription, created = OrganizationSubscription.objects.get_or_create(
             organization=organization,
             defaults={"plan": plan, "status": "active"},
         )
+        if created:
+            SubscriptionEvent.objects.create(
+                subscription=subscription,
+                event="subscription_migrated",
+                to_status="active",
+                detail={"planCode": "standard", "source": "billing_foundation_migration"},
+            )
 
 
 def noop_reverse(apps, schema_editor):
