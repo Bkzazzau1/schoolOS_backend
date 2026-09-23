@@ -41,7 +41,7 @@ class OrganizationRole(models.TextChoices):
 
 
 class OrganizationMembership(models.Model):
-    """A person's account-level authority across an organization.
+    """A person's single account-level role in one organization.
 
     This is intentionally separate from ``schools.Membership``. Being an
     organization owner/admin decides account-level actions such as provisioning
@@ -66,8 +66,8 @@ class OrganizationMembership(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "organization", "role"],
-                name="unique_org_role_per_user",
+                fields=["user", "organization"],
+                name="unique_org_membership_per_user",
             )
         ]
         indexes = [
