@@ -114,9 +114,13 @@ def accept(token: str, *, signed_in_user=None, password: str = "", first_name: s
 def _resolve_user(invitation, signed_in_user, password, first_name, last_name):
     email = invitation.email
     if signed_in_user is not None and signed_in_user.is_authenticated:
-        # Holding the link is not enough to attach a staff record to someone's account.
+        # Holding the valid link delivered to this same email, together with an
+        # authenticated matching account, proves control of the email address.
         if signed_in_user.email.lower() != email.lower():
             raise InvitationError("wrong_account", "You are signed in as a different account than the one invited.", 403)
+        if getattr(signed_in_user, "email_verified_at", None) is None:
+            signed_in_user.email_verified_at = timezone.now()
+            signed_in_user.save(update_fields=["email_verified_at"])
         return signed_in_user
     if account_exists(email):
         raise InvitationError("sign_in_required", "An account with this email already exists. Sign in to accept.", 401)
@@ -125,7 +129,13 @@ def _resolve_user(invitation, signed_in_user, password, first_name, last_name):
         validate_password(password, candidate)
     except ValidationError as problem:
         raise InvitationError("invalid_password", "Choose a stronger password.", 400, details=list(problem.messages))
-    return User.objects.create_user(email, password, first_name=candidate.first_name, last_name=candidate.last_name)
+    return User.objects.create_user(
+        email,
+        password,
+        first_name=candidate.first_name,
+        last_name=candidate.last_name,
+        email_verified_at=timezone.now(),
+    )
 
 
 def _activate_assignments(school, staff_id: str, membership) -> None:
