@@ -70,18 +70,22 @@ def issue_email_verification(user, *, enforce_cooldown: bool = False) -> dict:
     expires_at = now + CODE_TTL
     user.email_verification_code_hash = _digest(user.id, code)
     user.email_verification_expires_at = expires_at
-    user.email_verification_sent_at = now
     user.email_verification_attempts = 0
     user.save(
         update_fields=[
             "email_verification_code_hash",
             "email_verification_expires_at",
-            "email_verification_sent_at",
             "email_verification_attempts",
         ]
     )
 
     sent = _send_code_email(user, code)
+    # Only a successfully delivered attempt starts the short resend cooldown.
+    # If SMTP is unavailable, the owner can retry immediately (subject to the
+    # endpoint's broader per-user rate limit).
+    user.email_verification_sent_at = now if sent else None
+    user.save(update_fields=["email_verification_sent_at"])
+
     return {
         "verified": False,
         "sent": sent,
