@@ -1,13 +1,13 @@
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.organizations.services import serialize_organization_membership
 
 from .onboarding import register_proprietor_account
+from .throttles import RegistrationThrottle
 
 
 class ProprietorRegisterView(APIView):
@@ -20,8 +20,7 @@ class ProprietorRegisterView(APIView):
 
     authentication_classes = ()
     permission_classes = (AllowAny,)
-    throttle_classes = (ScopedRateThrottle,)
-    throttle_scope = "registration"
+    throttle_classes = (RegistrationThrottle,)
 
     def post(self, request):
         user, organization, organization_membership = register_proprietor_account(
