@@ -54,6 +54,8 @@ def create_organization(*, actor, name: str) -> tuple[Organization, Organization
     clean_name = name.strip()
     if len(clean_name) < 2:
         raise ValidationError({"message": "Enter an organization name."})
+    if len(clean_name) > 200:
+        raise ValidationError({"message": "The organization name is too long."})
 
     organization = Organization.objects.create(
         name=clean_name,
