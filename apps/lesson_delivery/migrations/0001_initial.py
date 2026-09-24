@@ -52,6 +52,7 @@ class Migration(migrations.Migration):
                 ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ("external_id", models.CharField(max_length=128)),
                 ("plan_version", models.PositiveIntegerField()),
+                ("plan_snapshot", models.JSONField(default=dict)),
                 ("decision", models.CharField(choices=[("approved", "Approved"), ("needs_changes", "Needs changes")], max_length=20)),
                 ("comment", models.TextField(blank=True)),
                 ("reviewed_at", models.DateTimeField(auto_now_add=True)),
