@@ -37,7 +37,9 @@ def _topic_payload(item: TimetableEntry) -> list[dict]:
     return [
         {
             "id": str(topic.id),
+            "sequence": topic.sequence,
             "title": topic.title,
+            "description": topic.description,
         }
         for topic in item.class_subject.topics.filter(term=item.term).order_by(
             "sequence", "title"
@@ -47,6 +49,8 @@ def _topic_payload(item: TimetableEntry) -> list[dict]:
 
 def _teacher_entry_payload(item: TimetableEntry) -> dict:
     payload = serialize_entry(item)
+    payload["termStartsOn"] = item.term.starts_on.isoformat()
+    payload["termEndsOn"] = item.term.ends_on.isoformat()
     payload["eligibleStudents"] = eligible_student_payload(item.class_subject)
     payload["topics"] = _topic_payload(item)
     occurrence_date = _current_week_occurrence_date(item)
@@ -64,6 +68,8 @@ def _teacher_entry_payload(item: TimetableEntry) -> dict:
 def _teacher_override_payload(item: TimetableOverride) -> dict:
     payload = serialize_override(item)
     lesson = payload["lesson"]
+    lesson["termStartsOn"] = item.timetable_entry.term.starts_on.isoformat()
+    lesson["termEndsOn"] = item.timetable_entry.term.ends_on.isoformat()
     lesson["eligibleStudents"] = eligible_student_payload(
         item.timetable_entry.class_subject
     )
@@ -77,18 +83,15 @@ def _teacher_override_payload(item: TimetableOverride) -> dict:
     return payload
 
 
-def _attendance_occurrences(teacher: Membership) -> list[dict]:
-    """Resolve this week's lesson authority date-by-date for one Teacher."""
-
-    week_start, week_end = _week_bounds()
+def _candidate_entries(teacher: Membership, start_date, end_date):
     assignment_subject_ids = TeachingAssignment.objects.filter(
         teacher_membership=teacher,
-        started_at__date__lte=week_end,
+        started_at__date__lte=end_date,
     ).filter(
-        Q(ended_at__isnull=True) | Q(ended_at__date__gte=week_start)
+        Q(ended_at__isnull=True) | Q(ended_at__date__gte=start_date)
     ).values_list("class_subject_id", flat=True)
 
-    entries = (
+    return (
         TimetableEntry.objects.filter(
             school=teacher.school,
             term__status=AcademicLifecycleStatus.ACTIVE,
@@ -98,8 +101,8 @@ def _attendance_occurrences(teacher: Membership) -> list[dict]:
             Q(class_subject_id__in=assignment_subject_ids)
             | Q(
                 overrides__substitute_teacher_membership=teacher,
-                overrides__lesson_date__gte=week_start,
-                overrides__lesson_date__lte=week_end,
+                overrides__lesson_date__gte=start_date,
+                overrides__lesson_date__lte=end_date,
             )
         )
         .select_related(
@@ -112,40 +115,88 @@ def _attendance_occurrences(teacher: Membership) -> list[dict]:
         .distinct()
     )
 
+
+def _occurrence_payload(item, lesson_date, teacher, *, include_roster=False):
+    effective_teacher, override = effective_teacher_for_occurrence(item, lesson_date)
+    if effective_teacher is None or effective_teacher.id != teacher.id:
+        return None
+    payload = serialize_entry(item)
+    payload["lessonDate"] = lesson_date.isoformat()
+    payload["teacherId"] = str(teacher.id)
+    payload["effectiveTeacherId"] = str(teacher.id)
+    payload["topics"] = _topic_payload(item)
+    if include_roster:
+        payload["eligibleStudents"] = eligible_student_payload(
+            item.class_subject,
+            on_date=lesson_date,
+        )
+    if override is not None:
+        if override.room:
+            payload["room"] = override.room
+        payload["status"] = (
+            "substitution"
+            if override.substitute_teacher_membership_id
+            else "scheduled"
+        )
+        payload["note"] = override.note
+    else:
+        payload["status"] = "scheduled"
+        payload["note"] = None
+    return payload
+
+
+def _attendance_occurrences(teacher: Membership) -> list[dict]:
+    """Resolve this week's attendance authority date-by-date."""
+
+    week_start, week_end = _week_bounds()
+    entries = _candidate_entries(teacher, week_start, week_end)
     occurrences = []
     for item in entries:
         lesson_date = week_start + timedelta(days=item.day_of_week - 1)
         if lesson_date < item.term.starts_on or lesson_date > item.term.ends_on:
             continue
-        effective_teacher, override = effective_teacher_for_occurrence(
+        payload = _occurrence_payload(
             item,
             lesson_date,
+            teacher,
+            include_roster=True,
         )
-        if effective_teacher is None or effective_teacher.id != teacher.id:
-            continue
-
-        payload = serialize_entry(item)
-        payload["lessonDate"] = lesson_date.isoformat()
-        payload["teacherId"] = str(teacher.id)
-        payload["eligibleStudents"] = eligible_student_payload(
-            item.class_subject,
-            on_date=lesson_date,
+        if payload is not None:
+            occurrences.append(payload)
+    occurrences.sort(
+        key=lambda item: (
+            item["lessonDate"],
+            item["startTime"],
+            item["periodNumber"],
+            item["className"],
         )
-        payload["topics"] = _topic_payload(item)
-        if override is not None:
-            if override.room:
-                payload["room"] = override.room
-            payload["status"] = (
-                "substitution"
-                if override.substitute_teacher_membership_id
-                else "scheduled"
-            )
-            payload["note"] = override.note
-        else:
-            payload["status"] = "scheduled"
-            payload["note"] = None
-        occurrences.append(payload)
+    )
+    return occurrences
 
+
+def _planning_occurrences(teacher: Membership, *, days=21) -> list[dict]:
+    """Publish a convenient near-term planning window.
+
+    Clients also receive recurring entry term bounds and overrides, so they can
+    reconstruct the rolling window if this cached snapshot becomes older than
+    its generated date while offline.
+    """
+
+    start_date = timezone.localdate()
+    end_date = start_date + timedelta(days=max(days - 1, 0))
+    entries = _candidate_entries(teacher, start_date, end_date)
+    occurrences = []
+    for item in entries:
+        current = start_date
+        while current <= end_date:
+            if (
+                current.isoweekday() == item.day_of_week
+                and item.term.starts_on <= current <= item.term.ends_on
+            ):
+                payload = _occurrence_payload(item, current, teacher)
+                if payload is not None:
+                    occurrences.append(payload)
+            current += timedelta(days=1)
     occurrences.sort(
         key=lambda item: (
             item["lessonDate"],
@@ -158,13 +209,7 @@ def _attendance_occurrences(teacher: Membership) -> list[dict]:
 
 
 def teacher_timetable_payload(teacher: Membership) -> dict:
-    """Private current-term schedule for exactly one Teacher membership.
-
-    `entries`/`overrides` power the timetable screen. `attendanceOccurrences`
-    resolves one week's lesson ownership explicitly by date. The accompanying
-    week key lets clients reject an old occurrence snapshot after a week rolls
-    over and safely fall back to recurring schedule authority.
-    """
+    """Private current-term timetable and occurrence authority for one Teacher."""
 
     entries = TimetableEntry.objects.none()
     if teacher.role == Role.TEACHER and teacher.is_active:
@@ -211,6 +256,7 @@ def teacher_timetable_payload(teacher: Membership) -> dict:
         .order_by("lesson_date", "timetable_entry__starts_at")
     )
     week_start, _ = _week_bounds()
+    today = timezone.localdate()
 
     return {
         "teacherMembershipId": str(teacher.id),
@@ -219,6 +265,13 @@ def teacher_timetable_payload(teacher: Membership) -> dict:
         "attendanceWeekStart": week_start.isoformat(),
         "attendanceOccurrences": (
             _attendance_occurrences(teacher)
+            if teacher.role == Role.TEACHER and teacher.is_active
+            else []
+        ),
+        "planningGeneratedOn": today.isoformat(),
+        "planningHorizonDays": 21,
+        "planningOccurrences": (
+            _planning_occurrences(teacher)
             if teacher.role == Role.TEACHER and teacher.is_active
             else []
         ),
