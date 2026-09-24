@@ -1,8 +1,9 @@
-from .models import EnrollmentStatus, LifecycleStatus
+from .models import EnrollmentStatus
 
 
 _CLASS_PROGRESS_WORKFLOWS = {
     "Promotion",
+    "Repeat",
     "Class change",
     "Transfer out",
     "Alumni",
