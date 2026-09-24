@@ -6,13 +6,14 @@ from apps.sync.models import SyncRecord
 from apps.sync.registry import EntityHandler
 
 from .models import EnrollmentStatus
+from .workspace_payloads import student_workspace_payload
 
 
 STUDENT_CLASS_LINK_ENTITY = "student_class_link"
 
 
 class StudentClassLinkHandler(EntityHandler):
-    """Read-only server link between a Student membership and canonical class."""
+    """Read-only server link between a Student membership and canonical profile/class."""
 
     entity_type = STUDENT_CLASS_LINK_ENTITY
     roles = frozenset()
@@ -73,11 +74,7 @@ def publish_student_class_link(student, *, actor=None) -> None:
 
     payload = {
         "studentMembershipId": str(membership.id),
-        "canonicalStudentId": str(student.id),
-        "studentId": student.student_code,
-        "admissionNumber": student.admission_number,
-        "academicSection": enrollment.academic_section,
-        "className": enrollment.class_name,
+        **student_workspace_payload(student),
     }
     if record is None:
         SyncRecord.objects.create(
