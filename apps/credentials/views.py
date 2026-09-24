@@ -4,9 +4,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.models import LoginIdentityKind
 from apps.core.permissions import require_membership
 from apps.schools.models import Role
-from apps.students.models import Student
+from apps.students.models import GuardianLink, Student
 
 from .models import CredentialRecoveryRequest, RecoveryStatus
 from .services import (
@@ -51,6 +52,22 @@ def _run(action):
         raise ValidationError({"message": exc.message}) from exc
 
 
+def _recovery_payload(item):
+    payload = serialize_recovery_request(item)
+    if item.identity_kind == LoginIdentityKind.STUDENT_ADMISSION:
+        linked_ids = Student.objects.filter(
+            school=item.school,
+            account_user=item.user,
+        ).values_list("id", flat=True)
+    else:
+        linked_ids = GuardianLink.objects.filter(
+            student__school=item.school,
+            account_user=item.user,
+        ).values_list("student_id", flat=True).distinct()
+    payload["linkedStudentIds"] = [str(student_id) for student_id in linked_ids]
+    return payload
+
+
 class PublicRecoveryRequestView(APIView):
     """Accept a forgotten-password request without account enumeration."""
 
@@ -82,9 +99,7 @@ class SchoolRecoveryRequestListView(APIView):
             school=manager.school,
             status=requested_status,
         )
-        return Response(
-            {"requests": [serialize_recovery_request(item) for item in items]}
-        )
+        return Response({"requests": [_recovery_payload(item) for item in items]})
 
 
 class SchoolRecoveryRequestDismissView(APIView):
