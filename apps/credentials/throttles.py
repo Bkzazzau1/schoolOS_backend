@@ -9,13 +9,15 @@ class RecoveryIdentifierThrottle(AnonRateThrottle):
     rate = "5/hour"
 
     def get_cache_key(self, request, view):
-        identifier = ""
-        if isinstance(request.data, dict):
-            identifier = str(request.data.get("identifier") or "").strip().casefold()
+        getter = getattr(request.data, "get", None)
+        identifier = str(getter("identifier") or "").strip().casefold() if getter else ""
         if not identifier:
             return None
         digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()
-        return self.cache_format % {"scope": "credential_recovery_id", "ident": digest}
+        return self.cache_format % {
+            "scope": "credential_recovery_id",
+            "ident": digest,
+        }
 
 
 class RecoveryNetworkThrottle(AnonRateThrottle):
