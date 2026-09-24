@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("academics", "0002_subjects_curriculum_teaching"),
+        ("academics", "0003_elective_selection_history"),
         ("students", "0003_student_guardian_account_links"),
         ("timetable", "0001_initial"),
     ]
