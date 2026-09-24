@@ -1,3 +1,5 @@
+import uuid
+
 from django.core.management.base import BaseCommand
 
 from apps.academics.curriculum_services import (
@@ -32,7 +34,6 @@ class Command(BaseCommand):
             .iterator()
         ):
             school = record.school
-            payload = record.payload
             existing = TeachingAssignment.objects.filter(
                 school=school,
                 external_id=record.entity_id,
@@ -64,7 +65,7 @@ class Command(BaseCommand):
             if actor is None:
                 skipped += 1
                 self.stderr.write(
-                    f"SKIP {school_id(record)} / {record.entity_id}: no active Principal/Proprietor actor"
+                    f"SKIP {record.school_id} / {record.entity_id}: no active Principal/Proprietor actor"
                 )
                 continue
 
@@ -73,13 +74,13 @@ class Command(BaseCommand):
             if class_subject is None or teacher is None:
                 skipped += 1
                 self.stderr.write(
-                    f"SKIP {school_id(record)} / {record.entity_id}: curriculum or linked Teacher membership is unresolved"
+                    f"SKIP {record.school_id} / {record.entity_id}: curriculum or linked Teacher membership is unresolved"
                 )
                 continue
             if len(record.entity_id) > 64:
                 skipped += 1
                 self.stderr.write(
-                    f"SKIP {school_id(record)} / {record.entity_id}: assignment id exceeds canonical length"
+                    f"SKIP {record.school_id} / {record.entity_id}: assignment id exceeds canonical length"
                 )
                 continue
 
@@ -112,8 +113,8 @@ class Command(BaseCommand):
 
     def _class_subject(self, record):
         payload = record.payload
-        explicit = payload.get("classSubjectId")
-        if explicit:
+        explicit = _uuid_or_none(payload.get("classSubjectId"))
+        if explicit is not None:
             item = ClassSubject.objects.filter(
                 id=explicit,
                 session__school=record.school,
@@ -121,7 +122,7 @@ class Command(BaseCommand):
             ).first()
             if item is not None:
                 return item
-        session_id = payload.get("sessionId")
+        session_id = _uuid_or_none(payload.get("sessionId"))
         matches = ClassSubject.objects.filter(
             session__school=record.school,
             session__status=AcademicLifecycleStatus.ACTIVE,
@@ -129,7 +130,7 @@ class Command(BaseCommand):
             subject__name__iexact=(payload.get("subject") or "").strip(),
             is_active=True,
         )
-        if session_id:
+        if session_id is not None:
             matches = matches.filter(session_id=session_id)
         return matches.first()
 
@@ -137,12 +138,15 @@ class Command(BaseCommand):
         raw = str(record.payload.get("teacherId") or "").strip()
         if not raw:
             return None
-        direct = Membership.objects.filter(
-            id=raw,
-            school=record.school,
-            role=Role.TEACHER,
-            is_active=True,
-        ).first()
+        direct_id = _uuid_or_none(raw)
+        direct = None
+        if direct_id is not None:
+            direct = Membership.objects.filter(
+                id=direct_id,
+                school=record.school,
+                role=Role.TEACHER,
+                is_active=True,
+            ).first()
         if direct is not None:
             return direct
         profile = SyncRecord.objects.filter(
@@ -151,11 +155,14 @@ class Command(BaseCommand):
             entity_id=raw,
             deleted=False,
         ).first()
-        linked = str((profile.payload if profile else {}).get("linkedMembershipId") or "").strip()
-        if not linked:
+        linked = str(
+            (profile.payload if profile else {}).get("linkedMembershipId") or ""
+        ).strip()
+        linked_id = _uuid_or_none(linked)
+        if linked_id is None:
             return None
         return Membership.objects.filter(
-            id=linked,
+            id=linked_id,
             school=record.school,
             role=Role.TEACHER,
             is_active=True,
@@ -171,5 +178,8 @@ class Command(BaseCommand):
         record.save(update_fields=["payload", "deleted", "version"])
 
 
-def school_id(record):
-    return str(record.school_id)
+def _uuid_or_none(value):
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return None
