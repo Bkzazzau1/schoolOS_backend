@@ -11,6 +11,7 @@ from .services import (
     LESSON_PLAN_ENTITY,
     LESSON_PLAN_REVIEW_ENTITY,
     SYLLABUS_PROGRESS_ENTITY,
+    replace_current_sync_payload,
     review_plan,
     serialize_delivery,
     serialize_plan,
@@ -63,8 +64,19 @@ class LessonPlanHandler(EntityHandler):
         }
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
-        plan = upsert_plan(membership=ctx.membership, payload=stored)
+        plan = upsert_plan(
+            membership=ctx.membership,
+            payload=stored,
+            publish_sync=False,
+        )
         canonical = serialize_plan(plan)
+        replace_current_sync_payload(
+            school=ctx.membership.school,
+            entity_type=self.entity_type,
+            entity_id=ctx.entity_id,
+            payload=canonical,
+            actor=ctx.membership,
+        )
         stored.clear()
         stored.update(canonical)
 
@@ -101,8 +113,19 @@ class LessonPlanReviewHandler(EntityHandler):
         }
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
-        review = review_plan(membership=ctx.membership, payload=stored)
+        review = review_plan(
+            membership=ctx.membership,
+            payload=stored,
+            publish_review_sync=False,
+        )
         canonical = serialize_review(review)
+        replace_current_sync_payload(
+            school=ctx.membership.school,
+            entity_type=self.entity_type,
+            entity_id=ctx.entity_id,
+            payload=canonical,
+            actor=ctx.membership,
+        )
         stored.clear()
         stored.update(canonical)
 
@@ -147,8 +170,19 @@ class LessonDeliveryHandler(EntityHandler):
         }
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
-        item = upsert_delivery(membership=ctx.membership, payload=stored)
+        item = upsert_delivery(
+            membership=ctx.membership,
+            payload=stored,
+            publish_sync=False,
+        )
         canonical = serialize_delivery(item)
+        replace_current_sync_payload(
+            school=ctx.membership.school,
+            entity_type=self.entity_type,
+            entity_id=ctx.entity_id,
+            payload=canonical,
+            actor=ctx.membership,
+        )
         stored.clear()
         stored.update(canonical)
 
@@ -164,15 +198,18 @@ class SyllabusProgressHandler(EntityHandler):
         if membership.role in {Role.PROPRIETOR, Role.ADMINISTRATOR}:
             return payload
         if membership.role == Role.PRINCIPAL:
-            # Progress records are scoped through a class-subject; the payload is
-            # visible to Principal only for Secondary rows.
             if str(payload.get("className") or ""):
                 from apps.academics.models import ClassSubject
 
-                item = ClassSubject.objects.filter(id=payload.get("classSubjectId")).select_related(
-                    "academic_class"
-                ).first()
-                if item is not None and item.academic_class.section.strip().casefold() == "secondary":
+                item = (
+                    ClassSubject.objects.filter(id=payload.get("classSubjectId"))
+                    .select_related("academic_class")
+                    .first()
+                )
+                if (
+                    item is not None
+                    and item.academic_class.section.strip().casefold() == "secondary"
+                ):
                     return payload
             return None
         if membership.role == Role.TEACHER and teacher_can_view_progress(
