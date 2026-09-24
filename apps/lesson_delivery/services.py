@@ -196,6 +196,7 @@ def serialize_review(review):
         "approvalId": f"{LESSON_PLAN_ENTITY}:{review.plan.external_id}:v{review.plan_version}",
         "planId": review.plan.external_id,
         "planVersion": review.plan_version,
+        "planSnapshot": review.plan_snapshot,
         "previousStatus": "Pending",
         "newStatus": "Approved" if approved else "Returned",
         "reviewerMembershipId": str(review.reviewer_membership_id),
@@ -324,12 +325,7 @@ def _sync_record(*, school, entity_type, entity_id, payload, actor=None):
 
 
 def replace_current_sync_payload(*, school, entity_type, entity_id, payload, actor=None):
-    """Replace payload after handler validation without creating a second version.
-
-    The generic sync engine has already accepted and versioned the mutation.
-    This function swaps its cleaned client payload for the richer server-owned
-    canonical representation inside the same transaction/version.
-    """
+    """Replace payload after handler validation without creating a second version."""
 
     SyncRecord.objects.filter(
         school=school,
@@ -435,8 +431,6 @@ def upsert_plan(*, membership: Membership, payload: dict, publish_sync=True):
     if existing is not None:
         if existing.timetable_entry_id != entry.id or existing.lesson_date != lesson_date:
             raise Rejected("A lesson plan cannot be moved to another occurrence.")
-        if existing.curriculum_topic_id != topic.id:
-            raise Rejected("A lesson plan topic cannot be replaced after the plan is created.")
         if existing.state in {LessonPlanState.SUBMITTED, LessonPlanState.APPROVED}:
             raise Rejected("Submitted or approved lesson plans are locked for Teacher editing.")
 
@@ -471,6 +465,7 @@ def upsert_plan(*, membership: Membership, payload: dict, publish_sync=True):
         )
     else:
         item = existing
+        item.curriculum_topic = topic
         item.last_edited_by = membership
         item.state = target_state
         item.objectives = payload["objectives"]
@@ -487,6 +482,7 @@ def upsert_plan(*, membership: Membership, payload: dict, publish_sync=True):
             item.review_comment = ""
         item.save(
             update_fields=[
+                "curriculum_topic",
                 "last_edited_by",
                 "state",
                 "objectives",
@@ -522,12 +518,14 @@ def review_plan(*, membership: Membership, payload: dict, publish_review_sync=Tr
     if payload["decision"] == LessonPlanReviewDecision.NEEDS_CHANGES and not payload["comment"].strip():
         raise Rejected("Explain the changes needed before returning the lesson plan.")
 
+    reviewed_snapshot = serialize_plan(plan)
     review = LessonPlanReview.objects.create(
         school=membership.school,
         external_id=payload["id"],
         plan=plan,
         reviewer_membership=membership,
         plan_version=plan.version,
+        plan_snapshot=reviewed_snapshot,
         decision=payload["decision"],
         comment=payload["comment"].strip(),
     )
@@ -550,8 +548,6 @@ def review_plan(*, membership: Membership, payload: dict, publish_review_sync=Tr
     )
     if publish_review_sync:
         publish_review(review, actor=membership)
-    # Review changes the plan independently of a Teacher plan mutation, so the
-    # plan SyncRecord receives its own new canonical version here.
     publish_plan(plan, actor=membership)
     return review
 
