@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 
 from apps.core.errors import Rejected
+from apps.sync.models import SyncRecord
 from apps.students.models import (
     EnrollmentStatus,
     LifecycleStatus,
@@ -27,6 +28,9 @@ from .models import (
     ProgressionDecision,
     ProgressionOutcome,
 )
+
+
+_LIFECYCLE_SYNC_ENTITY = "administrator_student_lifecycle"
 
 
 def _date(value: str, field: str) -> date:
@@ -74,6 +78,16 @@ def upsert_academic_session(*, membership, payload: dict) -> AcademicSession:
     _validate_range(starts_on, ends_on, "Academic session")
     status = payload["status"]
 
+    overlap = AcademicSession.objects.filter(
+        school=school,
+        starts_on__lte=ends_on,
+        ends_on__gte=starts_on,
+    )
+    if existing is not None:
+        overlap = overlap.exclude(pk=existing.pk)
+    if overlap.exists():
+        raise Rejected("Academic session dates cannot overlap another session.")
+
     if existing is not None and existing.status == AcademicLifecycleStatus.CLOSED:
         if status != AcademicLifecycleStatus.CLOSED:
             raise Rejected("A closed academic session cannot be reopened.")
@@ -119,6 +133,16 @@ def upsert_academic_term(*, membership, payload: dict) -> AcademicTerm:
     existing = AcademicTerm.objects.select_for_update().filter(
         session=session, id=payload["id"]
     ).first()
+
+    overlap = AcademicTerm.objects.filter(
+        session=session,
+        starts_on__lte=ends_on,
+        ends_on__gte=starts_on,
+    )
+    if existing is not None:
+        overlap = overlap.exclude(pk=existing.pk)
+    if overlap.exists():
+        raise Rejected("Academic term dates cannot overlap another term in the session.")
 
     if existing is not None and existing.status == AcademicLifecycleStatus.CLOSED:
         if status != AcademicLifecycleStatus.CLOSED:
@@ -327,6 +351,47 @@ def _require_context(student, batch):
     return enrollment, context
 
 
+def _publish_lifecycle_sync_record(batch, event, student):
+    payload = {
+        "id": event.external_id,
+        "studentName": student.full_name,
+        "workflow": event.workflow,
+        "change": event.change,
+        "status": "Completed",
+        "studentId": student.student_code,
+        "fromClass": event.from_class,
+        "toClass": event.to_class,
+        "requestedAt": event.requested_at.isoformat(),
+        "completedAt": event.completed_at.isoformat() if event.completed_at else "",
+        "approvedBy": event.approved_by,
+        "recordsPackReady": event.records_pack_ready,
+        "note": event.note,
+    }
+    record = SyncRecord.objects.select_for_update().filter(
+        school=batch.school,
+        entity_type=_LIFECYCLE_SYNC_ENTITY,
+        entity_id=event.external_id,
+    ).first()
+    if record is None:
+        SyncRecord.objects.create(
+            school=batch.school,
+            entity_type=_LIFECYCLE_SYNC_ENTITY,
+            entity_id=event.external_id,
+            payload=payload,
+            version=1,
+            deleted=False,
+            updated_by=batch.created_by,
+        )
+        return
+    if record.payload == payload and not record.deleted:
+        return
+    record.payload = payload
+    record.deleted = False
+    record.version += 1
+    record.updated_by = batch.created_by
+    record.save(update_fields=["payload", "deleted", "version", "updated_by"])
+
+
 def _lifecycle_event(
     *,
     batch,
@@ -359,6 +424,7 @@ def _lifecycle_event(
             "created_by": batch.created_by,
         },
     )
+    _publish_lifecycle_sync_record(batch, event, student)
     return event
 
 
