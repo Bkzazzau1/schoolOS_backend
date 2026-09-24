@@ -196,7 +196,9 @@ def subject_eligibility_payload(student: Student) -> dict:
         .order_by("subject__name")
     )
     selected_ids = set(
-        context.subject_selections.values_list("class_subject_id", flat=True)
+        context.subject_selections.filter(deselected_at__isnull=True).values_list(
+            "class_subject_id", flat=True
+        )
     )
 
     def item_payload(item: ClassSubject) -> dict:
@@ -229,7 +231,6 @@ def subject_eligibility_payload(student: Student) -> dict:
 
 
 def _refresh_students_for_class_subject(item: ClassSubject):
-    # Lazy imports avoid an academics <-> students workspace import cycle.
     from apps.students.parent_sync import publish_parent_family_links_for_student
     from apps.students.student_sync import publish_student_class_link
 
@@ -534,6 +535,8 @@ def set_student_elective(*, membership: Membership, payload: dict):
     context = _active_context_for_student(student)
     if context is None:
         raise Rejected("Student has no active academic enrollment context.")
+    if context.session.status == AcademicLifecycleStatus.CLOSED:
+        raise Rejected("Elective choices cannot be changed in a closed academic session.")
     class_subject = _class_subject(school, payload["classSubjectId"])
     if (
         class_subject.session_id != context.session_id
@@ -543,16 +546,25 @@ def set_student_elective(*, membership: Membership, payload: dict):
     if class_subject.requirement != CurriculumRequirement.ELECTIVE:
         raise Rejected("Only elective subjects require an individual student selection.")
 
-    if payload["selected"]:
-        StudentSubjectSelection.objects.get_or_create(
+    active = (
+        StudentSubjectSelection.objects.select_for_update()
+        .filter(
             enrollment_context=context,
             class_subject=class_subject,
-            defaults={"selected_by": membership},
+            deselected_at__isnull=True,
         )
-    else:
-        StudentSubjectSelection.objects.filter(
-            enrollment_context=context, class_subject=class_subject
-        ).delete()
+        .first()
+    )
+    if payload["selected"]:
+        if active is None:
+            StudentSubjectSelection.objects.create(
+                enrollment_context=context,
+                class_subject=class_subject,
+                selected_by=membership,
+            )
+    elif active is not None:
+        active.deselected_at = timezone.now()
+        active.save(update_fields=["deselected_at"])
 
     from apps.students.parent_sync import publish_parent_family_links_for_student
     from apps.students.student_sync import publish_student_class_link

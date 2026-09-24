@@ -458,7 +458,7 @@ class TeachingAssignment(models.Model):
 
 
 class StudentSubjectSelection(models.Model):
-    """Explicit elective choice for one immutable enrollment context."""
+    """Effective-dated elective choice for one immutable enrollment context."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     enrollment_context = models.ForeignKey(
@@ -479,15 +479,27 @@ class StudentSubjectSelection(models.Model):
         related_name="+",
     )
     selected_at = models.DateTimeField(auto_now_add=True)
+    deselected_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["class_subject__subject__name"]
+        ordering = ["class_subject__subject__name", "-selected_at"]
         constraints = [
             models.UniqueConstraint(
                 fields=["enrollment_context", "class_subject"],
-                name="student_elective_uq",
+                condition=Q(deselected_at__isnull=True),
+                name="student_elective_active_uq",
             )
         ]
+        indexes = [
+            models.Index(
+                fields=["enrollment_context", "class_subject", "deselected_at"],
+                name="student_elective_hist_idx",
+            )
+        ]
+
+    @property
+    def is_active(self):
+        return self.deselected_at is None
 
     def __str__(self):
         return f"{self.enrollment_context} · {self.class_subject.subject.name}"

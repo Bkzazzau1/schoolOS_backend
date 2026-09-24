@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "apps.students",
     "apps.academics",
     "apps.timetable",
+    "apps.lesson_attendance",
     "apps.domains",
     "apps.notifications",
     "apps.access",
