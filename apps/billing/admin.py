@@ -1,12 +1,14 @@
 from django.contrib import admin
 
 from .models import (
+    BillingCyclePolicy,
     BillingInvoice,
     OrganizationSubscription,
     PaymentAttempt,
     Plan,
     PlanEntitlement,
     ProviderWebhookEvent,
+    SchoolBillingMeterSnapshot,
     SubscriptionEvent,
     UsageSnapshot,
 )
@@ -15,6 +17,12 @@ from .models import (
 class PlanEntitlementInline(admin.TabularInline):
     model = PlanEntitlement
     extra = 0
+
+
+class BillingCyclePolicyInline(admin.StackedInline):
+    model = BillingCyclePolicy
+    extra = 0
+    max_num = 1
 
 
 @admin.register(Plan)
@@ -30,7 +38,7 @@ class PlanAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_active", "is_public", "billing_interval", "currency")
     search_fields = ("code", "name")
-    inlines = (PlanEntitlementInline,)
+    inlines = (PlanEntitlementInline, BillingCyclePolicyInline)
 
 
 @admin.register(OrganizationSubscription)
@@ -126,6 +134,20 @@ class UsageSnapshotAdmin(_AppendOnlyAdmin):
     )
     list_filter = ("source",)
     search_fields = ("organization__name",)
+
+
+@admin.register(SchoolBillingMeterSnapshot)
+class SchoolBillingMeterSnapshotAdmin(_AppendOnlyAdmin):
+    list_display = (
+        "school",
+        "billable_student_count",
+        "source",
+        "source_version",
+        "authoritative",
+        "measured_at",
+    )
+    list_filter = ("authoritative", "source")
+    search_fields = ("school__name", "source", "source_version")
 
 
 @admin.register(BillingInvoice)
