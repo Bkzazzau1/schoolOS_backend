@@ -7,7 +7,7 @@ from apps.academics.models import (
     StudentSubjectSelection,
     TeachingAssignment,
 )
-from apps.lesson_delivery.models import LessonDeliveryRecord
+from apps.lesson_delivery.models import LessonDeliveryRecord, LessonPlan
 from apps.students.models import GuardianLink
 from apps.sync.models import SyncRecord
 
@@ -35,6 +35,19 @@ def _touch_visibility(items, *, actor=None):
         record.version += 1
         record.updated_by = actor
         record.save(update_fields=["version", "updated_by"])
+
+
+@receiver(post_save, sender=LessonPlan)
+def refresh_weekly_learning_from_plan(sender, instance, **kwargs):
+    drafts = WeeklyLearningUpdate.objects.filter(
+        class_subject=instance.class_subject,
+        term=instance.timetable_entry.term,
+        week_start__lte=instance.lesson_date,
+        week_end__gte=instance.lesson_date,
+        state=WeeklyLearningState.DRAFT,
+    )
+    for item in drafts:
+        publish_update(item, actor=instance.last_edited_by or instance.submitted_by)
 
 
 @receiver(post_save, sender=LessonDeliveryRecord)
