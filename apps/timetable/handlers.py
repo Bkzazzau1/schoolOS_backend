@@ -17,6 +17,10 @@ from .services import (
     upsert_entry,
     upsert_override,
 )
+from .teacher_sync import (
+    TEACHER_TIMETABLE_LINK_ENTITY,
+    publish_school_teacher_timetable_links,
+)
 
 
 TEACHER_TIMETABLE_INTENT_ENTITY = "teacher_timetable_intent"
@@ -53,23 +57,17 @@ def _principal_can_see(membership, payload):
     )
 
 
-def _teacher_can_see_entry(membership, payload):
-    return (
-        membership.role == Role.TEACHER
-        and payload.get("teacherId") == str(membership.id)
-    )
-
-
 class TimetableEntryHandler(EntityHandler):
     entity_type = TIMETABLE_ENTRY_ENTITY
     roles = _TIMETABLE_WRITE_ROLES
 
     def visible(self, membership, payload):
+        # Teachers intentionally do not read global rows. They receive one private
+        # teacher_timetable_schedule record that can actively remove old lessons
+        # after a handover instead of leaving stale cached rows behind.
         if membership.role in _TIMETABLE_READ_ROLES:
             return payload
         if _principal_can_see(membership, payload):
-            return payload
-        if _teacher_can_see_entry(membership, payload):
             return payload
         return None
 
@@ -104,6 +102,10 @@ class TimetableEntryHandler(EntityHandler):
             actor=ctx.membership,
             exclude_external_id=item.external_id,
         )
+        publish_school_teacher_timetable_links(
+            item.school,
+            actor=ctx.membership,
+        )
 
 
 class TimetableOverrideHandler(EntityHandler):
@@ -115,11 +117,6 @@ class TimetableOverrideHandler(EntityHandler):
         if membership.role in _TIMETABLE_READ_ROLES:
             return payload
         if _principal_can_see(membership, lesson):
-            return payload
-        if membership.role == Role.TEACHER and str(membership.id) in {
-            payload.get("teacherId"),
-            payload.get("originalTeacherId"),
-        }:
             return payload
         return None
 
@@ -152,6 +149,10 @@ class TimetableOverrideHandler(EntityHandler):
             "substitute_teacher_membership__user",
         ).get(pk=item.pk)
         _canonicalize_record(ctx, serialize_override(item))
+        publish_school_teacher_timetable_links(
+            item.school,
+            actor=ctx.membership,
+        )
 
 
 class TeacherTimetableIntentHandler(EntityHandler):
@@ -225,8 +226,27 @@ class TeacherTimetableIntentHandler(EntityHandler):
         }
 
 
+class TeacherTimetableLinkHandler(EntityHandler):
+    entity_type = TEACHER_TIMETABLE_LINK_ENTITY
+    roles = frozenset()
+
+    def authorize(self, ctx) -> None:
+        raise Rejected("Teacher timetable schedules are managed by the SchoolOS server.")
+
+    def clean(self, ctx):
+        raise Rejected("Teacher timetable schedules are managed by the SchoolOS server.")
+
+    def visible(self, membership, payload):
+        if membership.role != Role.TEACHER:
+            return None
+        if payload.get("teacherMembershipId") != str(membership.id):
+            return None
+        return payload
+
+
 HANDLERS = [
     TimetableEntryHandler(),
     TimetableOverrideHandler(),
     TeacherTimetableIntentHandler(),
+    TeacherTimetableLinkHandler(),
 ]
