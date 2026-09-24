@@ -209,11 +209,26 @@ class StudentRegistrationHandler(EntityHandler):
             membership=ctx.membership,
             payload=stored,
         )
-        if (
-            stored["status"] == "Active"
-            and registration.status != RegistrationStatus.ACTIVE
-        ):
+        if stored["status"] != "Active":
+            return
+        if registration.status != RegistrationStatus.ACTIVE or registration.student_id is None:
             raise Rejected("The student registration could not be activated.")
+
+        # Enrich the same accepted sync version after canonical activation. This
+        # direct update deliberately does not allocate another sync sequence: it
+        # is server-owned output of this mutation, not a second mutation.
+        from apps.sync.models import SyncRecord
+
+        enriched = {
+            **stored,
+            "canonicalActive": True,
+            "canonicalStudentId": str(registration.student_id),
+        }
+        SyncRecord.objects.filter(
+            school=ctx.membership.school,
+            entity_type=self.entity_type,
+            entity_id=ctx.entity_id,
+        ).update(payload=enriched)
 
 
 class StudentLifecycleHandler(EntityHandler):
