@@ -60,9 +60,6 @@ def _has_managed_school(actor) -> bool:
 def create_organization(*, actor, name: str) -> tuple[Organization, OrganizationMembership]:
     """Create an account and make the signed-in person its first owner."""
 
-    # Self-service signup creates the first organization before verification.
-    # Once an account already owns/administers an organization, verification is
-    # required before expanding into another commercial account.
     if (
         getattr(actor, "email_verified_at", None) is None
         and OrganizationMembership.objects.filter(
@@ -100,9 +97,6 @@ def create_organization(*, actor, name: str) -> tuple[Organization, Organization
         detail={"name": organization.name, "ownerMembershipId": str(membership.id)},
     )
 
-    # Local import keeps the account domain independent at import time while the
-    # transaction still guarantees organization + owner + subscription are born
-    # together.
     from apps.billing.services import ensure_organization_subscription
 
     ensure_organization_subscription(organization)
@@ -118,13 +112,7 @@ def provision_school(
     school_type: str,
     location: str,
 ) -> tuple[School, Membership]:
-    """Create one isolated school tenant and the creator's proprietor access.
-
-    Authorization is re-read inside the transaction. The school and proprietor
-    membership therefore either both exist or neither exists. Access defaults
-    do not need rows: SchoolOS stores only per-school overrides, so a new school
-    automatically starts from the built-in role defaults.
-    """
+    """Create one isolated school tenant and the creator's proprietor access."""
 
     try:
         organization = Organization.objects.select_for_update().get(
@@ -149,9 +137,6 @@ def provision_school(
             "Your account role cannot create schools for this organization."
         )
 
-    # A new owner may create one first school immediately. Once any school exists
-    # under an organization they manage, verified email is required before the
-    # account expands further, including through another organization.
     if getattr(actor, "email_verified_at", None) is None and _has_managed_school(actor):
         raise PermissionDenied(
             "Verify your email address before creating another school."
@@ -193,6 +178,13 @@ def provision_school(
         school=school,
         role=Role.PROPRIETOR,
     )
+
+    # A new tenant has a real canonical roster of zero students. Publishing that
+    # zero immediately means automatic billing never waits for a fake/manual
+    # student count before the school's first admission.
+    from apps.students.services import bootstrap_school_roster_meter
+
+    bootstrap_school_roster_meter(school)
 
     OrganizationAuditEvent.objects.create(
         organization=organization,
