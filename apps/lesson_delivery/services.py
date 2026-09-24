@@ -114,20 +114,33 @@ def _state_for_client(value):
 
 
 def _occurrence_payload(entry, lesson_date):
+    """Serialize an occurrence without requiring it to remain actionable.
+
+    Historical plan/delivery evidence must stay readable after a cancellation,
+    handover, Teacher deactivation, or loss of coverage. Strict Teacher authority
+    is enforced only on mutation paths through `_effective_teacher`.
+    """
+
     payload = serialize_entry(entry)
-    teacher, override = _effective_teacher(entry, lesson_date)
+    teacher, override = effective_teacher_for_occurrence(entry, lesson_date)
     payload["lessonDate"] = lesson_date.isoformat()
-    payload["effectiveTeacherId"] = str(teacher.id)
+    if override is not None and override.is_cancelled:
+        teacher = None
+        status = "cancelled"
+    elif override is not None and override.substitute_teacher_membership_id:
+        status = "substitution"
+    elif teacher is None:
+        status = "uncovered"
+    else:
+        status = "scheduled"
+    payload["effectiveTeacherId"] = str(teacher.id) if teacher else ""
     payload["effectiveTeacher"] = _membership_name(teacher)
     if override is not None:
         payload["room"] = override.room or entry.room
-        payload["occurrenceStatus"] = (
-            "substitution" if override.substitute_teacher_membership_id else "scheduled"
-        )
         payload["occurrenceNote"] = override.note
     else:
-        payload["occurrenceStatus"] = "scheduled"
         payload["occurrenceNote"] = ""
+    payload["occurrenceStatus"] = status
     return payload, teacher
 
 
@@ -157,7 +170,7 @@ def serialize_plan(plan):
         "time": occurrence["time"],
         "room": occurrence["room"],
         "occurrenceStatus": occurrence["occurrenceStatus"],
-        "effectiveTeacherId": str(effective_teacher.id),
+        "effectiveTeacherId": str(effective_teacher.id) if effective_teacher else "",
         "effectiveTeacher": _membership_name(effective_teacher),
         "authorMembershipId": str(plan.author_membership_id),
         "author": _membership_name(plan.author_membership),
@@ -230,9 +243,10 @@ def serialize_delivery(item):
         "subject": occurrence["subject"],
         "time": occurrence["time"],
         "room": occurrence["room"],
+        "occurrenceStatus": occurrence["occurrenceStatus"],
         "teacherId": str(item.teacher_membership_id),
         "teacher": _membership_name(item.teacher_membership),
-        "currentEffectiveTeacherId": str(effective_teacher.id),
+        "currentEffectiveTeacherId": str(effective_teacher.id) if effective_teacher else "",
         "state": item.state,
         "reflection": item.reflection,
         "homework": item.homework,
