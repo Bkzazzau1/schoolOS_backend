@@ -221,6 +221,8 @@ class StudentRegistrationHandler(EntityHandler):
 
         enriched = {
             **stored,
+            "admissionNumber": registration.admission_number,
+            "studentId": registration.student_code,
             "canonicalActive": True,
             "canonicalStudentId": str(registration.student_id),
         }
