@@ -50,8 +50,10 @@ class ReportCard(models.Model):
     # this student has no subject line with evidence to rank by.
     class_position = models.PositiveSmallIntegerField(null=True, blank=True)
     class_size = models.PositiveSmallIntegerField(null=True, blank=True)
-    # No canonical per-term attendance-percent source exists yet (see
-    # apps.lesson_attendance); left null rather than approximated.
+    # From apps.lesson_attendance.services.student_term_attendance_percent:
+    # this student's percent of SUBMITTED subject registers marked present
+    # or late across the term's date range. Null when no submitted register
+    # has ever marked them, never approximated to 0 or 100.
     attendance_percent = models.PositiveSmallIntegerField(null=True, blank=True)
     principal_comment = models.TextField(blank=True)
     generated_by = models.ForeignKey(

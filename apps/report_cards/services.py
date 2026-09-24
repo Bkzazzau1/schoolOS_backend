@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 
 from apps.academics.models import (
@@ -14,6 +13,7 @@ from apps.academics.models import (
 from apps.assessments.models import AssessmentDefinition, AssessmentScore, AssessmentState
 from apps.assessments.services import grade_for_percent
 from apps.core.errors import Rejected
+from apps.lesson_attendance.services import student_term_attendance_percent
 from apps.schools.models import Membership, Role
 from apps.students.models import EnrollmentStatus, Student
 from apps.sync.models import SyncRecord
@@ -157,6 +157,7 @@ def generate_report_card(*, school, student: Student, term: AcademicTerm, actor:
 
     overall_average = (sum(percents) / len(percents)).quantize(Decimal("0.1")) if percents else None
     overall_grade = grade_for_percent(overall_average)
+    attendance_percent = student_term_attendance_percent(student, term)
 
     now = timezone.now()
     if existing is None:
@@ -169,6 +170,7 @@ def generate_report_card(*, school, student: Student, term: AcademicTerm, actor:
             state=ReportCardState.DRAFT,
             overall_average=overall_average,
             overall_grade=overall_grade,
+            attendance_percent=attendance_percent,
             generated_by=actor,
             generated_at=now,
             version=1,
@@ -178,6 +180,7 @@ def generate_report_card(*, school, student: Student, term: AcademicTerm, actor:
         item.academic_class = academic_class
         item.overall_average = overall_average
         item.overall_grade = overall_grade
+        item.attendance_percent = attendance_percent
         item.generated_by = actor
         item.generated_at = now
         item.version += 1

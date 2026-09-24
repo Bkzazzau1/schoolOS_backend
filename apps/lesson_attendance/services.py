@@ -399,3 +399,29 @@ def upsert_register(*, membership: Membership, payload: dict):
     ).get(pk=register.pk)
     _sync_record_payload(register, actor=membership)
     return register
+
+
+def student_term_attendance_percent(student, term) -> int | None:
+    """This student's attendance percent across every SUBMITTED subject
+    register in this term's date range, or None if no submitted register has
+    ever marked them (never approximated to 0 or 100).
+
+    A draft register is not yet a confirmed attendance record, so it is
+    excluded, matching the same "queued is not confirmed" rule this app
+    already applies everywhere else. EXCUSED marks are excluded from both the
+    numerator and the denominator - an excused absence should not count
+    against a student, but it is not attendance either.
+    """
+    entries = LessonAttendanceEntry.objects.filter(
+        student=student,
+        register__school=student.school,
+        register__state=LessonAttendanceState.SUBMITTED,
+        register__lesson_date__gte=term.starts_on,
+        register__lesson_date__lte=term.ends_on,
+    ).exclude(status=AttendanceMark.EXCUSED)
+
+    total = entries.exclude(status=AttendanceMark.UNMARKED).count()
+    if total == 0:
+        return None
+    present = entries.filter(status__in=[AttendanceMark.PRESENT, AttendanceMark.LATE]).count()
+    return round(present * 100 / total)
