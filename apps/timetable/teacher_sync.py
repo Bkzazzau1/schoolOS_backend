@@ -33,9 +33,22 @@ def _current_week_occurrence_date(item: TimetableEntry):
     return lesson_date
 
 
+def _topic_payload(item: TimetableEntry) -> list[dict]:
+    return [
+        {
+            "id": str(topic.id),
+            "title": topic.title,
+        }
+        for topic in item.class_subject.topics.filter(term=item.term).order_by(
+            "sequence", "title"
+        )
+    ]
+
+
 def _teacher_entry_payload(item: TimetableEntry) -> dict:
     payload = serialize_entry(item)
     payload["eligibleStudents"] = eligible_student_payload(item.class_subject)
+    payload["topics"] = _topic_payload(item)
     occurrence_date = _current_week_occurrence_date(item)
     payload["eligibleStudentsByDate"] = {}
     if occurrence_date is not None:
@@ -60,6 +73,7 @@ def _teacher_override_payload(item: TimetableOverride) -> dict:
             on_date=item.lesson_date,
         )
     }
+    lesson["topics"] = _topic_payload(item.timetable_entry)
     return payload
 
 
@@ -117,6 +131,7 @@ def _attendance_occurrences(teacher: Membership) -> list[dict]:
             item.class_subject,
             on_date=lesson_date,
         )
+        payload["topics"] = _topic_payload(item)
         if override is not None:
             if override.room:
                 payload["room"] = override.room
