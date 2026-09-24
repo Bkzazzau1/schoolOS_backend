@@ -100,16 +100,16 @@ def submission_visible_payload(membership, payload):
     if item is None:
         return None
 
-    # A Student's in-progress draft is private. The canonical history remains on
-    # the server, but teaching/family oversight begins only at actual submission.
-    draft_private = item.state == SubmissionState.DRAFT
+    # A Student's in-progress draft is private to that Student. The canonical
+    # history remains on the server, but every oversight role begins only after
+    # actual submission.
+    if membership.role == Role.STUDENT:
+        return payload if item.student.account_user_id == membership.user_id else None
+    if item.state == SubmissionState.DRAFT:
+        return None
 
     if membership.role in {Role.PROPRIETOR, Role.ADMINISTRATOR}:
         return payload
-    if membership.role == Role.STUDENT:
-        return payload if item.student.account_user_id == membership.user_id else None
-    if draft_private:
-        return None
     if (
         membership.role == Role.PRINCIPAL
         and item.assignment.class_subject.academic_class.section.strip().casefold()
