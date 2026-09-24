@@ -28,9 +28,9 @@ class LessonDeliveryState(models.TextChoices):
 class LessonPlan(models.Model):
     """Teacher preparation for exactly one timetable occurrence.
 
-    The occurrence identity and curriculum topic are immutable. Content may be
-    revised while draft/returned. Original authorship is retained even if a
-    later handover means another effective Teacher edits or submits the plan.
+    Occurrence identity is immutable. The curriculum topic and plan content may
+    be corrected only while draft/returned. Original authorship is retained even
+    if a later handover means another effective Teacher edits or submits it.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -116,7 +116,7 @@ class LessonPlan(models.Model):
 
 
 class LessonPlanReview(models.Model):
-    """Append-only Principal decision against one submitted plan version."""
+    """Append-only Principal decision against one exact submitted version."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(
@@ -132,6 +132,7 @@ class LessonPlanReview(models.Model):
         related_name="lesson_plan_review_events",
     )
     plan_version = models.PositiveIntegerField()
+    plan_snapshot = models.JSONField(default=dict)
     decision = models.CharField(
         max_length=20,
         choices=LessonPlanReviewDecision.choices,
