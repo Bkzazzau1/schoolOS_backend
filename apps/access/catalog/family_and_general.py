@@ -12,6 +12,7 @@ PARENT = workspace(
         ("children", "My Children", "sensitive"),
         ("progress", "Learning Progress"),
         ("weekly-learning", "Weekly Learning"),
+        ("assignments", "Assignments"),
         ("attendance", "Attendance"),
         ("finance", "Finance & Payments", "sensitive"),
         ("messages", "Messages"),
