@@ -15,19 +15,64 @@ def _iso(value):
     return value.isoformat() if value else None
 
 
+def _academic_context(enrollment):
+    if enrollment is None:
+        return None
+    context = getattr(enrollment, "academic_context", None)
+    if context is None:
+        return None
+    session = context.session
+    academic_class = context.academic_class
+    term = context.entry_term
+    return {
+        "session": {
+            "id": str(session.id),
+            "code": session.code,
+            "name": session.name,
+            "startsOn": _iso(session.starts_on),
+            "endsOn": _iso(session.ends_on),
+            "status": session.status,
+        },
+        "entryTerm": None
+        if term is None
+        else {
+            "id": str(term.id),
+            "code": term.code,
+            "name": term.name,
+            "sequence": term.sequence,
+            "startsOn": _iso(term.starts_on),
+            "endsOn": _iso(term.ends_on),
+            "status": term.status,
+        },
+        "academicClass": {
+            "id": str(academic_class.id),
+            "code": academic_class.code,
+            "name": academic_class.name,
+            "section": academic_class.section,
+            "levelOrder": academic_class.level_order,
+            "stream": academic_class.stream,
+            "isTerminal": academic_class.is_terminal,
+        },
+        "source": context.source,
+    }
+
+
 def _enrollment_history(student) -> list[dict]:
-    return [
-        {
-            "id": str(item.id),
-            "academicSection": item.academic_section,
-            "className": item.class_name,
-            "status": item.status,
-            "billable": item.is_billable,
-            "startedAt": _iso(item.started_at),
-            "endedAt": _iso(item.ended_at),
-        }
-        for item in student.enrollments.order_by("-started_at", "-id")
-    ]
+    history = []
+    for item in student.enrollments.order_by("-started_at", "-id"):
+        history.append(
+            {
+                "id": str(item.id),
+                "academicSection": item.academic_section,
+                "className": item.class_name,
+                "status": item.status,
+                "billable": item.is_billable,
+                "startedAt": _iso(item.started_at),
+                "endedAt": _iso(item.ended_at),
+                "academicContext": _academic_context(item),
+            }
+        )
+    return history
 
 
 def _progression_history(student) -> list[dict]:
@@ -86,6 +131,7 @@ def student_workspace_payload(student) -> dict:
         "academicSection": current.academic_section if current else None,
         "className": current.class_name if current else None,
         "enrollmentActive": current is not None,
+        "currentAcademicContext": _academic_context(current),
         "primaryGuardian": guardian.name if guardian else None,
         "guardianRelationship": guardian.relationship if guardian else None,
         "enrollmentHistory": _enrollment_history(student),
@@ -108,6 +154,7 @@ def parent_child_workspace_payload(student) -> dict:
         "active": bool(current and current.status == EnrollmentStatus.ACTIVE),
         "academicSection": current.academic_section if current else None,
         "className": current.class_name if current else None,
+        "currentAcademicContext": _academic_context(current),
         "enrollmentHistory": _enrollment_history(student),
         "progressionHistory": _progression_history(student),
     }
