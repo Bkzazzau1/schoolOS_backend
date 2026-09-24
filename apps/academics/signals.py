@@ -1,6 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+from apps.core.errors import Rejected
 from apps.staff.constants import PROFILE as STAFF_PROFILE
 from apps.students.models import StudentEnrollment
 from apps.students.parent_sync import publish_parent_family_links_for_student
@@ -10,8 +11,10 @@ from apps.sync.models import SyncRecord
 from .curriculum_models import TeachingAssignment
 from .curriculum_services import (
     publish_teacher_class_assignment,
+    refresh_teacher_links_for_school,
     resolve_teacher_membership,
 )
+from .models import AcademicSession
 from .services import attach_current_enrollment_context
 
 
@@ -26,6 +29,13 @@ def attach_academic_context_to_active_enrollment(sender, instance, created, **kw
         return
     publish_student_class_link(instance.student)
     publish_parent_family_links_for_student(instance.student)
+
+
+@receiver(post_save, sender=AcademicSession)
+def refresh_teacher_links_after_session_state_change(sender, instance, **kwargs):
+    """Republish private Teacher assignments when a session activates or closes."""
+
+    refresh_teacher_links_for_school(instance.school)
 
 
 @receiver(post_save, sender=SyncRecord)
@@ -52,7 +62,7 @@ def reconcile_teacher_access_after_staff_profile_change(sender, instance, **kwar
         return
     try:
         membership = resolve_teacher_membership(instance.school, instance.entity_id)
-    except Exception:
+    except Rejected:
         return
     if membership is None:
         return
