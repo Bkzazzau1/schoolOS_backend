@@ -12,7 +12,7 @@ from apps.academics.models import (
 )
 from apps.core.errors import Rejected
 from apps.schools.models import Membership, Role
-from apps.students.models import EnrollmentStatus, Student
+from apps.students.models import EnrollmentStatus
 from apps.sync.models import SyncRecord
 from apps.timetable.models import TimetableEntry, TimetableOverride
 from apps.timetable.services import serialize_entry
@@ -63,14 +63,17 @@ def eligible_students_for_class_subject(class_subject, *, on_date=None):
     return students
 
 
-def eligible_student_payload(class_subject):
+def eligible_student_payload(class_subject, *, on_date=None):
     return [
         {
             "studentId": student.student_code,
             "studentName": student.full_name,
             "admissionNumber": student.admission_number,
         }
-        for student in eligible_students_for_class_subject(class_subject)
+        for student in eligible_students_for_class_subject(
+            class_subject,
+            on_date=on_date,
+        )
     ]
 
 
@@ -135,6 +138,8 @@ def _lesson_date(entry, raw):
     value = parse_date(str(raw or ""))
     if value is None:
         raise Rejected("lessonDate must be a valid date.")
+    if value > timezone.localdate():
+        raise Rejected("Attendance cannot be recorded for a future lesson occurrence.")
     if value < entry.term.starts_on or value > entry.term.ends_on:
         raise Rejected("Lesson date falls outside the timetable term.")
     if value.isoweekday() != entry.day_of_week:
@@ -225,10 +230,10 @@ def upsert_register(*, membership: Membership, payload: dict):
         if existing.state == LessonAttendanceState.SUBMITTED:
             raise Rejected("Submitted subject attendance is historical and cannot be rewritten.")
 
+    if entry.term.status == AcademicLifecycleStatus.CLOSED:
+        raise Rejected("A closed term's subject attendance is historical and cannot be changed.")
     if not entry.is_active and existing is None:
         raise Rejected("Attendance cannot be opened for an inactive timetable lesson.")
-    if entry.term.status == AcademicLifecycleStatus.CLOSED and existing is None:
-        raise Rejected("A closed term cannot receive a new attendance register.")
 
     teacher, override = effective_teacher_for_occurrence(entry, lesson_date)
     if override is not None and override.is_cancelled:
