@@ -56,14 +56,31 @@ def assignment_visible_payload(membership, payload):
             return payload
         return None
     if membership.role == Role.PARENT:
-        linked_ids = GuardianLink.objects.filter(
-            account_user=membership.user,
-            student__school=membership.school,
-        ).values_list("student_id", flat=True)
-        if AssignmentRecipient.objects.filter(
-            assignment=item, student_id__in=linked_ids
-        ).exists():
-            return payload
+        linked_ids = list(
+            GuardianLink.objects.filter(
+                account_user=membership.user,
+                student__school=membership.school,
+            ).values_list("student_id", flat=True)
+        )
+        recipients = list(
+            AssignmentRecipient.objects.filter(
+                assignment=item,
+                student_id__in=linked_ids,
+            ).order_by("student_name", "student_code")
+        )
+        if recipients:
+            # Families need to know which of their own linked children received
+            # this assignment, but must never receive the frozen class roster.
+            visible = dict(payload)
+            visible["familyRecipients"] = [
+                {
+                    "studentId": recipient.student_code,
+                    "studentName": recipient.student_name,
+                    "admissionNumber": recipient.admission_number,
+                }
+                for recipient in recipients
+            ]
+            return visible
     return None
 
 
