@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 
 from apps.organizations.models import OrganizationMembership
 
+from .cycle import automation_summary
 from .models import BillingInvoice, PaymentAttempt, Plan
 from .services import (
     can_manage_billing,
@@ -74,12 +75,12 @@ class OrganizationSubscriptionView(APIView):
             .prefetch_related("plan__entitlements")
             .get(pk=subscription.pk)
         )
-        return Response(
-            serialize_subscription(
-                subscription,
-                membership_role=membership.role,
-            )
+        payload = serialize_subscription(
+            subscription,
+            membership_role=membership.role,
         )
+        payload["automation"] = automation_summary(subscription)
+        return Response(payload)
 
 
 class OrganizationInvoiceListView(APIView):
