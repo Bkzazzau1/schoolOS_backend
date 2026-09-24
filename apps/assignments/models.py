@@ -128,6 +128,15 @@ class AssignmentPublication(models.Model):
     )
     published_at = models.DateTimeField(auto_now_add=True)
 
+    def save(self, *args, **kwargs):
+        # The snapshot is an audit record of what learners received at this
+        # exact revision. Stamp the revision onto the stored snapshot itself so
+        # revision 1 cannot accidentally retain the pre-publication value 0.
+        snapshot = dict(self.snapshot or {})
+        snapshot["publicationRevision"] = self.revision
+        self.snapshot = snapshot
+        super().save(*args, **kwargs)
+
     class Meta:
         ordering = ["-revision"]
         constraints = [
