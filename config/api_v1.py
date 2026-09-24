@@ -11,6 +11,7 @@ urlpatterns = [
     path("", include("apps.organizations.urls")),
     path("", include("apps.billing.urls")),
     path("", include("apps.schools.urls")),
+    path("", include("apps.students.urls")),
     path("", include("apps.notifications.urls")),
     path("", include("apps.access.urls")),
     path("sync/", include("apps.sync.urls")),

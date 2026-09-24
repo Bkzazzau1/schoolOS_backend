@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "apps.organizations",
     "apps.billing",
     "apps.schools",
+    "apps.students",
     "apps.domains",
     "apps.notifications",
     "apps.access",
