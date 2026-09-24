@@ -64,12 +64,7 @@ def _teacher_override_payload(item: TimetableOverride) -> dict:
 
 
 def _attendance_occurrences(teacher: Membership) -> list[dict]:
-    """Resolve this week's lesson authority date-by-date for one Teacher.
-
-    This deliberately does not infer attendance ownership from the Teacher's
-    current recurring schedule. A midweek handover or substitution therefore
-    leaves earlier occurrences with the Teacher who actually owned them.
-    """
+    """Resolve this week's lesson authority date-by-date for one Teacher."""
 
     week_start, week_end = _week_bounds()
     assignment_subject_ids = TeachingAssignment.objects.filter(
@@ -151,8 +146,9 @@ def teacher_timetable_payload(teacher: Membership) -> dict:
     """Private current-term schedule for exactly one Teacher membership.
 
     `entries`/`overrides` power the timetable screen. `attendanceOccurrences`
-    resolves current-week lesson ownership explicitly by date so attendance
-    survives substitutions and midweek Teacher handovers without guessing.
+    resolves one week's lesson ownership explicitly by date. The accompanying
+    week key lets clients reject an old occurrence snapshot after a week rolls
+    over and safely fall back to recurring schedule authority.
     """
 
     entries = TimetableEntry.objects.none()
@@ -199,11 +195,13 @@ def teacher_timetable_payload(teacher: Membership) -> dict:
         )
         .order_by("lesson_date", "timetable_entry__starts_at")
     )
+    week_start, _ = _week_bounds()
 
     return {
         "teacherMembershipId": str(teacher.id),
         "entries": [_teacher_entry_payload(item) for item in entries],
         "overrides": [_teacher_override_payload(item) for item in overrides],
+        "attendanceWeekStart": week_start.isoformat(),
         "attendanceOccurrences": (
             _attendance_occurrences(teacher)
             if teacher.role == Role.TEACHER and teacher.is_active
