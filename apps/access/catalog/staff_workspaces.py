@@ -54,6 +54,7 @@ ADMINISTRATOR = workspace(
         ("website", "Website Manager"),
         ("registration", "Student Registration"),
         ("students", "Students & Families"),
+        ("academics", "Academic Structure"),
         ("alumni", "Alumni Management", "sensitive"),
         ("staff", "Staff Records"),
         ("staff-profiles", "Staff Profiles", "sensitive"),
