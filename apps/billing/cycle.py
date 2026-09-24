@@ -28,7 +28,6 @@ AUTOMATIC_ACCESS_STATUSES = {
     SubscriptionStatus.ACTIVE,
     SubscriptionStatus.PAST_DUE,
     SubscriptionStatus.GRACE,
-    SubscriptionStatus.RESTRICTED,
     SubscriptionStatus.TRIAL,
 }
 
@@ -87,15 +86,22 @@ def publish_school_billing_meter(
 
     if billable_student_count < 0:
         raise ValueError("billable_student_count cannot be negative")
-    source = source.strip()[:64]
-    source_version = source_version.strip()[:128]
+    source = source.strip()
+    source_version = source_version.strip()
     if not source:
         raise ValueError("source is required")
+    if len(source) > 64:
+        raise ValueError("source is too long")
     if not source_version:
         raise ValueError("source_version is required for idempotency")
-    measured_at = measured_at or timezone.now()
+    if len(source_version) > 128:
+        raise ValueError("source_version is too long")
 
-    snapshot, _ = SchoolBillingMeterSnapshot.objects.get_or_create(
+    measured_at = measured_at or timezone.now()
+    if timezone.is_naive(measured_at):
+        measured_at = timezone.make_aware(measured_at)
+
+    snapshot, created = SchoolBillingMeterSnapshot.objects.get_or_create(
         school=school,
         source=source,
         source_version=source_version,
@@ -106,6 +112,13 @@ def publish_school_billing_meter(
             "metadata": metadata or {},
         },
     )
+    if not created and (
+        snapshot.billable_student_count != billable_student_count
+        or snapshot.authoritative != authoritative
+    ):
+        raise ValueError(
+            "This school/source/version was already published with different billing values."
+        )
     return snapshot
 
 
@@ -179,11 +192,19 @@ def automation_summary(subscription: OrganizationSubscription) -> dict:
     policy = _policy_for(subscription)
     interval = plan.billing_interval if plan else ""
     configured = bool(interval and _policy_complete(policy))
-    coverage = _meter_coverage(subscription)
-    outstanding = BillingInvoice.objects.filter(
-        subscription=subscription,
-        status=InvoiceStatus.OPEN,
-    ).order_by("due_at", "issued_at").first()
+    now = timezone.now()
+    coverage_as_of = now
+    if subscription.current_period_end is not None and subscription.current_period_end < now:
+        coverage_as_of = subscription.current_period_end
+    coverage = _meter_coverage(subscription, as_of=coverage_as_of)
+    outstanding = (
+        BillingInvoice.objects.filter(
+            subscription=subscription,
+            status=InvoiceStatus.OPEN,
+        )
+        .order_by("issued_at", "id")
+        .first()
+    )
 
     if not plan or not interval:
         state = "cadence_not_configured"
@@ -209,6 +230,9 @@ def automation_summary(subscription: OrganizationSubscription) -> dict:
     elif subscription.current_period_end is None:
         state = "ready_to_initialize"
         message = "The next cycle run will initialize the billing period."
+    elif subscription.current_period_end <= now:
+        state = "ready_to_invoice"
+        message = "The current period has ended and is ready for the cycle runner."
     else:
         state = "scheduled"
         message = "Automatic billing is ready for the current period."
@@ -240,7 +264,12 @@ def automation_summary(subscription: OrganizationSubscription) -> dict:
     }
 
 
-def _transition_locked(subscription: OrganizationSubscription, status: str, event: str, detail=None):
+def _transition_locked(
+    subscription: OrganizationSubscription,
+    status: str,
+    event: str,
+    detail=None,
+):
     previous = subscription.status
     if previous == status:
         return False
@@ -256,22 +285,53 @@ def _transition_locked(subscription: OrganizationSubscription, status: str, even
     return True
 
 
+def _clear_grace_locked(subscription: OrganizationSubscription):
+    if subscription.grace_ends_at is None:
+        return
+    subscription.grace_ends_at = None
+    subscription.save(update_fields=["grace_ends_at", "updated_at"])
+
+
 def _reconcile_overdue_locked(subscription: OrganizationSubscription, *, policy, now):
     if subscription.status in {SubscriptionStatus.SUSPENDED, SubscriptionStatus.CANCELLED}:
         return None
-    invoice = (
+
+    open_invoice = (
+        BillingInvoice.objects.filter(
+            subscription=subscription,
+            status=InvoiceStatus.OPEN,
+        )
+        .order_by("issued_at", "id")
+        .first()
+    )
+    if open_invoice is None:
+        if subscription.status in {
+            SubscriptionStatus.PAST_DUE,
+            SubscriptionStatus.GRACE,
+            SubscriptionStatus.RESTRICTED,
+        }:
+            _clear_grace_locked(subscription)
+            _transition_locked(
+                subscription,
+                SubscriptionStatus.ACTIVE,
+                "billing_balance_cleared",
+            )
+        return None
+
+    overdue_invoice = (
         BillingInvoice.objects.filter(
             subscription=subscription,
             status=InvoiceStatus.OPEN,
             due_at__isnull=False,
+            due_at__lte=now,
         )
-        .order_by("due_at", "issued_at")
+        .order_by("due_at", "issued_at", "id")
         .first()
     )
-    if invoice is None or invoice.due_at > now:
-        return invoice
+    if overdue_invoice is None:
+        return open_invoice
 
-    grace_starts_at = invoice.due_at + timedelta(days=policy.past_due_days)
+    grace_starts_at = overdue_invoice.due_at + timedelta(days=policy.past_due_days)
     restricts_at = grace_starts_at + timedelta(days=policy.grace_days)
     if now >= restricts_at:
         target = SubscriptionStatus.RESTRICTED
@@ -291,14 +351,14 @@ def _reconcile_overdue_locked(subscription: OrganizationSubscription, *, policy,
         target,
         event,
         {
-            "invoiceId": str(invoice.id),
-            "invoiceNumber": invoice.number,
-            "dueAt": invoice.due_at.isoformat(),
+            "invoiceId": str(overdue_invoice.id),
+            "invoiceNumber": overdue_invoice.number,
+            "dueAt": overdue_invoice.due_at.isoformat(),
             "graceStartsAt": grace_starts_at.isoformat(),
             "restrictsAt": restricts_at.isoformat(),
         },
     )
-    return invoice
+    return open_invoice
 
 
 def _ensure_period_locked(subscription: OrganizationSubscription, *, now):
@@ -332,25 +392,29 @@ def _ensure_period_locked(subscription: OrganizationSubscription, *, now):
     return now, end
 
 
-def _capture_period_usage_locked(subscription: OrganizationSubscription, *, now):
+def _capture_period_usage_locked(subscription: OrganizationSubscription):
     period_start = subscription.current_period_start
     period_end = subscription.current_period_end
     if period_start is None or period_end is None:
         raise BillingCycleNotReady("The subscription has no complete billing period.")
 
-    coverage = _meter_coverage(subscription, as_of=now)
+    coverage = _meter_coverage(subscription, as_of=period_end)
     if coverage["meteredSchools"] != coverage["activeSchools"]:
         raise BillingCycleNotReady(
             f"Authoritative roster meters are ready for {coverage['meteredSchools']} of "
             f"{coverage['activeSchools']} active schools."
         )
 
-    existing = UsageSnapshot.objects.filter(
-        subscription=subscription,
-        source="automatic_roster_meter",
-        period_start=period_start,
-        period_end=period_end,
-    ).order_by("-captured_at", "-id").first()
+    existing = (
+        UsageSnapshot.objects.filter(
+            subscription=subscription,
+            source="automatic_roster_meter",
+            period_start=period_start,
+            period_end=period_end,
+        )
+        .order_by("-captured_at", "-id")
+        .first()
+    )
     if existing is not None:
         return existing
 
@@ -366,12 +430,22 @@ def _capture_period_usage_locked(subscription: OrganizationSubscription, *, now)
     )
 
 
-def _issue_period_invoice_locked(subscription: OrganizationSubscription, snapshot, *, policy, now):
-    existing = BillingInvoice.objects.filter(
-        subscription=subscription,
-        period_start=snapshot.period_start,
-        period_end=snapshot.period_end,
-    ).exclude(status=InvoiceStatus.VOID).first()
+def _issue_period_invoice_locked(
+    subscription: OrganizationSubscription,
+    snapshot: UsageSnapshot,
+    *,
+    policy: BillingCyclePolicy,
+    now,
+):
+    existing = (
+        BillingInvoice.objects.filter(
+            subscription=subscription,
+            period_start=snapshot.period_start,
+            period_end=snapshot.period_end,
+        )
+        .order_by("issued_at", "id")
+        .first()
+    )
     if existing is not None:
         return existing
 
@@ -469,7 +543,7 @@ def run_subscription_cycle(subscription_id, *, now=None) -> dict:
         _transition_locked(subscription, SubscriptionStatus.ACTIVE, "trial_ended")
 
     outstanding = _reconcile_overdue_locked(subscription, policy=policy, now=now)
-    if outstanding is not None and outstanding.status == InvoiceStatus.OPEN:
+    if outstanding is not None:
         return {
             "result": "invoice_outstanding",
             "subscriptionId": str(subscription.id),
@@ -484,7 +558,7 @@ def run_subscription_cycle(subscription_id, *, now=None) -> dict:
             "status": subscription.status,
         }
 
-    period_start, period_end = _ensure_period_locked(subscription, now=now)
+    _, period_end = _ensure_period_locked(subscription, now=now)
     if period_end > now:
         return {
             "result": "scheduled",
@@ -501,7 +575,7 @@ def run_subscription_cycle(subscription_id, *, now=None) -> dict:
         )
         return {"result": "cancelled", "subscriptionId": str(subscription.id)}
 
-    snapshot = _capture_period_usage_locked(subscription, now=now)
+    snapshot = _capture_period_usage_locked(subscription)
     invoice = _issue_period_invoice_locked(
         subscription,
         snapshot,
@@ -539,7 +613,7 @@ def run_billing_cycles(*, now=None) -> dict:
         except BillingCycleNotReady:
             summary["skipped"] += 1
             continue
-        except Exception as exc:  # keep one account from blocking the whole scheduled run
+        except Exception as exc:  # process remaining accounts, but report the failure
             summary["errors"].append(
                 {"subscriptionId": str(subscription_id), "error": str(exc)[:200]}
             )
