@@ -57,9 +57,10 @@ def _audit(*, school, user, actor, event: str, detail=None) -> None:
     )
 
 
-def _resolve_pending(*, school, user, actor, note: str) -> None:
+def _resolve_pending(*, user, actor, note: str) -> None:
+    """Resolve every pending request for this global login identity."""
+
     CredentialRecoveryRequest.objects.filter(
-        school=school,
         user=user,
         status=RecoveryStatus.PENDING,
     ).update(
@@ -100,14 +101,14 @@ def _primary_guardian(student: Student) -> GuardianLink:
     return guardian
 
 
-def _require_parent_account_scoped_to_school(user, school) -> None:
+def _require_parent_phone_scoped_to_school(user, school) -> None:
     if Membership.objects.filter(
         user=user,
         role=Role.PARENT,
         is_active=True,
     ).exclude(school=school).exists():
         raise CredentialManagementError(
-            "This Parent account is linked to another school too. A single school cannot reset or rename the shared login identity."
+            "This Parent account is linked to another school too. Change the shared login phone through platform support so every school is updated safely."
         )
 
 
@@ -154,7 +155,7 @@ def request_recovery(identifier: str | None) -> None:
     for membership in memberships:
         try:
             with transaction.atomic():
-                recovery, created = CredentialRecoveryRequest.objects.get_or_create(
+                _, created = CredentialRecoveryRequest.objects.get_or_create(
                     school=membership.school,
                     user=user,
                     status=RecoveryStatus.PENDING,
@@ -172,7 +173,6 @@ def request_recovery(identifier: str | None) -> None:
                         detail={"identityKind": kind},
                     )
         except IntegrityError:
-            # Concurrent duplicate requests collapse into the same pending item.
             continue
 
 
@@ -250,7 +250,6 @@ def reset_student_credentials(*, student: Student, actor: Membership) -> dict:
     user = student.account_user
     _reset_user_password(user=user, temporary_password=student.first_name)
     _resolve_pending(
-        school=student.school,
         user=user,
         actor=actor,
         note="Student credentials reset by school administration.",
@@ -270,11 +269,9 @@ def reset_parent_credentials(*, student: Student, actor: Membership) -> dict:
     student = Student.objects.select_for_update().get(pk=student.pk)
     guardian = _primary_guardian(student)
     user = guardian.account_user
-    _require_parent_account_scoped_to_school(user, student.school)
     first_name = user.first_name.strip() or _person_first_name(guardian.name)
     _reset_user_password(user=user, temporary_password=first_name)
     _resolve_pending(
-        school=student.school,
         user=user,
         actor=actor,
         note="Parent credentials reset by school administration.",
@@ -294,7 +291,7 @@ def change_parent_phone(*, student: Student, actor: Membership, new_phone: str |
     student = Student.objects.select_for_update().get(pk=student.pk)
     guardian = _primary_guardian(student)
     user = guardian.account_user
-    _require_parent_account_scoped_to_school(user, student.school)
+    _require_parent_phone_scoped_to_school(user, student.school)
 
     normalized = normalize_parent_phone(new_phone)
     if normalized is None:
@@ -370,19 +367,32 @@ def change_parent_phone(*, student: Student, actor: Membership, new_phone: str |
             deleted=False,
         ).first()
         if record is not None:
-            record.payload = {**record.payload, "guardianPhone": normalized, "parentLoginId": normalized}
+            record.payload = {
+                **record.payload,
+                "guardianPhone": normalized,
+                "parentLoginId": normalized,
+            }
             record.updated_by = actor
             record.version += 1
             record.save(update_fields=["payload", "updated_by", "version"])
 
     user.credential_version += 1
     user.save(update_fields=["credential_version"])
+    _resolve_pending(
+        user=user,
+        actor=actor,
+        note="Parent login phone changed by school administration.",
+    )
     _audit(
         school=student.school,
         user=user,
         actor=actor,
         event="parent_phone_changed",
-        detail={"studentId": str(student.id), "oldLoginId": old_login, "newLoginId": normalized},
+        detail={
+            "studentId": str(student.id),
+            "oldLoginId": old_login,
+            "newLoginId": normalized,
+        },
     )
     return credential_handoff(student)
 
