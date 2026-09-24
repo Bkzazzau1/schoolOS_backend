@@ -29,8 +29,8 @@ class LessonPlan(models.Model):
     """Teacher preparation for exactly one timetable occurrence.
 
     The occurrence identity and curriculum topic are immutable. Content may be
-    revised while draft/returned. Principal review changes state through an
-    append-only LessonPlanReview rather than by trusting a Teacher payload.
+    revised while draft/returned. Original authorship is retained even if a
+    later handover means another effective Teacher edits or submits the plan.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -52,6 +52,20 @@ class LessonPlan(models.Model):
         Membership,
         on_delete=models.PROTECT,
         related_name="authored_lesson_plans",
+    )
+    last_edited_by = models.ForeignKey(
+        Membership,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="edited_lesson_plans",
+    )
+    submitted_by = models.ForeignKey(
+        Membership,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="submitted_lesson_plans",
     )
     state = models.CharField(
         max_length=20,
