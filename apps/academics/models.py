@@ -270,3 +270,224 @@ class ProgressionDecision(models.Model):
                 name="unique_progression_decision_per_batch_student",
             )
         ]
+
+
+class CurriculumRequirement(models.TextChoices):
+    COMPULSORY = "compulsory", "Compulsory"
+    ELECTIVE = "elective", "Elective"
+
+
+class Subject(models.Model):
+    """One canonical subject in a school-wide catalog."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(
+        School, on_delete=models.CASCADE, related_name="academic_subjects"
+    )
+    code = models.CharField(max_length=40)
+    name = models.CharField(max_length=120)
+    short_name = models.CharField(max_length=40, blank=True)
+    section = models.CharField(
+        max_length=80,
+        blank=True,
+        help_text="Optional section scope. Blank means the subject may be used across sections.",
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "code"], name="subj_school_code_uq"
+            ),
+            models.UniqueConstraint(
+                fields=["school", "name"], name="subj_school_name_uq"
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["school", "is_active", "name"], name="subj_school_active_idx"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.school} · {self.name}"
+
+
+class ClassSubject(models.Model):
+    """A subject required/offered by one class in one academic session."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        AcademicSession, on_delete=models.PROTECT, related_name="class_subjects"
+    )
+    academic_class = models.ForeignKey(
+        AcademicClass, on_delete=models.PROTECT, related_name="class_subjects"
+    )
+    subject = models.ForeignKey(
+        Subject, on_delete=models.PROTECT, related_name="class_subjects"
+    )
+    requirement = models.CharField(
+        max_length=16,
+        choices=CurriculumRequirement.choices,
+        default=CurriculumRequirement.COMPULSORY,
+    )
+    periods_per_week = models.PositiveSmallIntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        Membership,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["academic_class__level_order", "subject__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "academic_class", "subject"],
+                name="class_subject_uq",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["session", "academic_class", "is_active"],
+                name="class_subject_active_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.session.name} · {self.academic_class.name} · {self.subject.name}"
+
+
+class CurriculumTopic(models.Model):
+    """An ordered term topic within a class-subject curriculum."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    class_subject = models.ForeignKey(
+        ClassSubject, on_delete=models.CASCADE, related_name="topics"
+    )
+    term = models.ForeignKey(
+        AcademicTerm, on_delete=models.PROTECT, related_name="curriculum_topics"
+    )
+    sequence = models.PositiveSmallIntegerField()
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["term__sequence", "sequence", "title"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["class_subject", "term", "sequence"],
+                name="curr_topic_seq_uq",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.class_subject} · {self.term.name} · {self.title}"
+
+
+class TeachingAssignment(models.Model):
+    """Effective-dated responsibility for teaching one class-subject."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(
+        School, on_delete=models.CASCADE, related_name="teaching_assignments"
+    )
+    external_id = models.CharField(max_length=64)
+    class_subject = models.ForeignKey(
+        ClassSubject, on_delete=models.PROTECT, related_name="teaching_assignments"
+    )
+    teacher_membership = models.ForeignKey(
+        Membership,
+        on_delete=models.PROTECT,
+        related_name="academic_teaching_assignments",
+    )
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    assigned_by = models.ForeignKey(
+        Membership,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    handover_reason = models.TextField(blank=True)
+    previous_assignment = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="handover_successors",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-started_at", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "external_id"], name="teach_external_uq"
+            ),
+            models.UniqueConstraint(
+                fields=["class_subject"],
+                condition=Q(ended_at__isnull=True),
+                name="teach_active_subject_uq",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["teacher_membership", "ended_at"],
+                name="teach_member_active_idx",
+            )
+        ]
+
+    @property
+    def is_active(self):
+        return self.ended_at is None
+
+    def __str__(self):
+        return f"{self.class_subject} · {self.teacher_membership}"
+
+
+class StudentSubjectSelection(models.Model):
+    """Explicit elective choice for one immutable enrollment context."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    enrollment_context = models.ForeignKey(
+        EnrollmentAcademicContext,
+        on_delete=models.CASCADE,
+        related_name="subject_selections",
+    )
+    class_subject = models.ForeignKey(
+        ClassSubject,
+        on_delete=models.PROTECT,
+        related_name="student_selections",
+    )
+    selected_by = models.ForeignKey(
+        Membership,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    selected_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["class_subject__subject__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["enrollment_context", "class_subject"],
+                name="student_elective_uq",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.enrollment_context} · {self.class_subject.subject.name}"
