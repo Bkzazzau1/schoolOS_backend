@@ -21,17 +21,11 @@ class AdmissionDocumentStatus(models.TextChoices):
 
 
 class AdmissionApplication(models.Model):
-    """An applicant is deliberately not a student yet.
-
-    The record can progress through admissions without affecting the billable
-    roster. Only a completed registration activates a Student + Enrollment.
-    """
+    """An applicant is not a student until registration activation succeeds."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(
-        School,
-        on_delete=models.CASCADE,
-        related_name="admission_applications",
+        School, on_delete=models.CASCADE, related_name="admission_applications"
     )
     reference = models.CharField(max_length=128)
     applicant_name = models.CharField(max_length=240)
@@ -40,9 +34,7 @@ class AdmissionApplication(models.Model):
     guardian_name = models.CharField(max_length=200)
     guardian_phone = models.CharField(max_length=40)
     stage = models.CharField(
-        max_length=24,
-        choices=AdmissionStage.choices,
-        default=AdmissionStage.NEW,
+        max_length=24, choices=AdmissionStage.choices, default=AdmissionStage.NEW
     )
     source = models.CharField(max_length=80, default="School website")
     submitted_label = models.CharField(max_length=40, blank=True)
@@ -82,7 +74,7 @@ class AdmissionApplication(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=["school", "stage"], name="students_adm_stage_idx"),
+            models.Index(fields=["school", "stage"], name="students_adm_stage_idx")
         ]
 
     def __str__(self):
@@ -104,11 +96,10 @@ class StudentStatus(models.TextChoices):
 
 
 class Student(models.Model):
-    """The canonical school-scoped student identity.
+    """Canonical tenant-scoped student identity.
 
-    `id` is the opaque identifier suitable for QR/barcode references. Admission
-    number and student code are human-facing identifiers and are never reused
-    within a school.
+    The UUID is safe for QR/barcode references. Admission number and student code
+    are permanent school-facing identifiers and are never reused within a school.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -123,9 +114,7 @@ class Student(models.Model):
     previous_school = models.CharField(max_length=200, blank=True)
     address = models.TextField(blank=True)
     status = models.CharField(
-        max_length=24,
-        choices=StudentStatus.choices,
-        default=StudentStatus.ACTIVE,
+        max_length=24, choices=StudentStatus.choices, default=StudentStatus.ACTIVE
     )
     activated_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -144,13 +133,17 @@ class Student(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=["school", "status"], name="students_school_status_idx"),
+            models.Index(
+                fields=["school", "status"], name="students_school_status_idx"
+            )
         ]
 
     @property
     def full_name(self):
         return " ".join(
-            value for value in [self.first_name, self.other_name, self.surname] if value
+            value
+            for value in [self.first_name, self.other_name, self.surname]
+            if value
         )
 
     def __str__(self):
@@ -158,13 +151,11 @@ class Student(models.Model):
 
 
 class StudentRegistration(models.Model):
-    """Server copy of the registration workflow before and after activation."""
+    """Registration workflow record before and after canonical activation."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(
-        School,
-        on_delete=models.CASCADE,
-        related_name="student_registrations",
+        School, on_delete=models.CASCADE, related_name="student_registrations"
     )
     registration_id = models.CharField(max_length=128)
     source_applicant = models.ForeignKey(
@@ -244,9 +235,7 @@ class StudentRegistration(models.Model):
 class GuardianLink(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     student = models.ForeignKey(
-        Student,
-        on_delete=models.CASCADE,
-        related_name="guardians",
+        Student, on_delete=models.CASCADE, related_name="guardians"
     )
     name = models.CharField(max_length=200)
     relationship = models.CharField(max_length=60, blank=True)
@@ -276,18 +265,14 @@ class EnrollmentStatus(models.TextChoices):
 
 
 class StudentEnrollment(models.Model):
-    """Append-only placement history; class changes create a new row."""
+    """Append-only placement history; class movement creates a new row."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(
-        School,
-        on_delete=models.CASCADE,
-        related_name="student_enrollments",
+        School, on_delete=models.CASCADE, related_name="student_enrollments"
     )
     student = models.ForeignKey(
-        Student,
-        on_delete=models.CASCADE,
-        related_name="enrollments",
+        Student, on_delete=models.CASCADE, related_name="enrollments"
     )
     academic_section = models.CharField(max_length=80)
     class_name = models.CharField(max_length=120)
@@ -332,19 +317,15 @@ class LifecycleStatus(models.TextChoices):
 
 
 class StudentLifecycleEvent(models.Model):
-    """Append-preserved operational history for movement and exit workflows."""
+    """Append-preserved operational movement and exit history."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(
-        School,
-        on_delete=models.CASCADE,
-        related_name="student_lifecycle_events",
+        School, on_delete=models.CASCADE, related_name="student_lifecycle_events"
     )
     external_id = models.CharField(max_length=128)
     student = models.ForeignKey(
-        Student,
-        on_delete=models.PROTECT,
-        related_name="lifecycle_events",
+        Student, on_delete=models.PROTECT, related_name="lifecycle_events"
     )
     workflow = models.CharField(max_length=40)
     change = models.CharField(max_length=250, blank=True)
@@ -380,17 +361,17 @@ class StudentLifecycleEvent(models.Model):
         ]
         indexes = [
             models.Index(
-                fields=["school", "status"],
-                name="students_lifecycle_status_idx",
+                fields=["school", "status"], name="students_lifecycle_status_idx"
             )
         ]
 
 
 class SchoolRosterRevision(models.Model):
-    """Monotonic roster revision used to version authoritative billing meters."""
+    """Monotonic school roster revision used to version billing meters."""
 
     school = models.OneToOneField(
         School,
+        primary_key=True,
         on_delete=models.CASCADE,
         related_name="roster_revision",
     )
