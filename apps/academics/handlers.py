@@ -43,6 +43,15 @@ def _positive_int(payload: dict, key: str, *, maximum: int = 10000) -> int:
     return value
 
 
+def _freeze_closed(existing: dict | None, cleaned: dict, keys: tuple[str, ...], label: str):
+    if existing is None or existing.get("status") != "closed":
+        return
+    if cleaned.get("status") != "closed":
+        raise Rejected(f"A closed {label} cannot be reopened.")
+    if any(existing.get(key) != cleaned.get(key) for key in keys):
+        raise Rejected(f"A closed {label} is historical and cannot be rewritten.")
+
+
 class AcademicSessionHandler(EntityHandler):
     entity_type = SESSION_ENTITY
     roles = _ADMIN_ROLES
@@ -55,18 +64,21 @@ class AcademicSessionHandler(EntityHandler):
         external_id = text(p, "id", max_len=64)
         if external_id != ctx.entity_id:
             raise Rejected("id must match the academic-session entity id.")
-        status = choice(p.get("status"), _SESSION_STATUSES, "status")
-        if ctx.existing is not None and ctx.existing.get("status") == "closed":
-            if status != "closed":
-                raise Rejected("A closed academic session cannot be reopened.")
-        return {
+        cleaned = {
             "id": external_id,
             "code": text(p, "code", max_len=40),
             "name": text(p, "name", max_len=120),
             "startsOn": text(p, "startsOn", max_len=10),
             "endsOn": text(p, "endsOn", max_len=10),
-            "status": status,
+            "status": choice(p.get("status"), _SESSION_STATUSES, "status"),
         }
+        _freeze_closed(
+            ctx.existing,
+            cleaned,
+            ("code", "name", "startsOn", "endsOn"),
+            "academic session",
+        )
+        return cleaned
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
         upsert_academic_session(membership=ctx.membership, payload=stored)
@@ -84,11 +96,7 @@ class AcademicTermHandler(EntityHandler):
         external_id = text(p, "id", max_len=64)
         if external_id != ctx.entity_id:
             raise Rejected("id must match the academic-term entity id.")
-        status = choice(p.get("status"), _SESSION_STATUSES, "status")
-        if ctx.existing is not None and ctx.existing.get("status") == "closed":
-            if status != "closed":
-                raise Rejected("A closed academic term cannot be reopened.")
-        return {
+        cleaned = {
             "id": external_id,
             "sessionId": text(p, "sessionId", max_len=64),
             "code": text(p, "code", max_len=40),
@@ -96,8 +104,15 @@ class AcademicTermHandler(EntityHandler):
             "sequence": _positive_int(p, "sequence", maximum=20),
             "startsOn": text(p, "startsOn", max_len=10),
             "endsOn": text(p, "endsOn", max_len=10),
-            "status": status,
+            "status": choice(p.get("status"), _SESSION_STATUSES, "status"),
         }
+        _freeze_closed(
+            ctx.existing,
+            cleaned,
+            ("sessionId", "code", "name", "sequence", "startsOn", "endsOn"),
+            "academic term",
+        )
+        return cleaned
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
         upsert_academic_term(membership=ctx.membership, payload=stored)
@@ -143,7 +158,9 @@ class ProgressionBatchHandler(EntityHandler):
 
     def clean(self, ctx: MutationContext) -> dict[str, Any]:
         p = ctx.payload
-        external_id = text(p, "id", max_len=128)
+        # Native SchoolOS creates UUID-form identifiers. Keeping this bounded also
+        # keeps derived StudentLifecycleEvent and SyncRecord ids below 128 chars.
+        external_id = text(p, "id", max_len=36)
         if external_id != ctx.entity_id:
             raise Rejected("id must match the progression-batch entity id.")
         status = choice(p.get("status"), _BATCH_STATUSES, "status")
@@ -154,7 +171,9 @@ class ProgressionBatchHandler(EntityHandler):
                     raise Rejected("Applied or cancelled progression batches are final.")
             for key in ("fromSessionId", "toSessionId", "sourceClassId"):
                 if existing.get(key) != p.get(key):
-                    raise Rejected("The source session, destination session and source class are immutable for a batch.")
+                    raise Rejected(
+                        "The source session, destination session and source class are immutable for a batch."
+                    )
 
         raw_decisions = p.get("decisions")
         if not isinstance(raw_decisions, list):
@@ -184,11 +203,15 @@ class ProgressionBatchHandler(EntityHandler):
         approved_by = _optional_text(p, "approvedBy", max_len=200)
         if status == ProgressionBatchStatus.APPLIED:
             if not approved_by:
-                raise Rejected("Academic approver is required before applying a progression batch.")
+                raise Rejected(
+                    "Academic approver is required before applying a progression batch."
+                )
             if not decisions:
                 raise Rejected("A progression batch cannot be applied without decisions.")
             if any(item["outcome"] == ProgressionOutcome.HOLD for item in decisions):
-                raise Rejected("Resolve every Hold decision before applying the progression batch.")
+                raise Rejected(
+                    "Resolve every Hold decision before applying the progression batch."
+                )
 
         return {
             "id": external_id,
