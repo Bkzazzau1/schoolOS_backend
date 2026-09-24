@@ -1,11 +1,13 @@
 from typing import Any
 
+from apps.academics.models import AcademicLifecycleStatus
 from apps.core.errors import Rejected
 from apps.core.validation import boolean, choice, integer, text
 from apps.schools.models import Role
 from apps.sync.registry import EntityHandler, MutationContext
+from apps.timetable.models import TimetableEntry
 
-from .models import LessonPlanReviewDecision
+from .models import LessonPlan, LessonPlanReview, LessonPlanReviewDecision
 from .services import (
     LESSON_DELIVERY_ENTITY,
     LESSON_PLAN_ENTITY,
@@ -113,6 +115,18 @@ class LessonPlanReviewHandler(EntityHandler):
         }
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
+        plan = LessonPlan.objects.filter(
+            school=ctx.membership.school,
+            external_id=stored["planId"],
+        ).first()
+        if (
+            plan is not None
+            and LessonPlanReview.objects.filter(
+                plan=plan,
+                plan_version=stored["planVersion"],
+            ).exists()
+        ):
+            raise Rejected("This lesson-plan version has already been reviewed.")
         review = review_plan(
             membership=ctx.membership,
             payload=stored,
@@ -170,6 +184,18 @@ class LessonDeliveryHandler(EntityHandler):
         }
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
+        entry = (
+            TimetableEntry.objects.filter(
+                school=ctx.membership.school,
+                external_id=stored["timetableEntryId"],
+            )
+            .select_related("term")
+            .first()
+        )
+        if entry is None:
+            raise Rejected("Timetable lesson does not exist in this school.")
+        if entry.term.status != AcademicLifecycleStatus.ACTIVE:
+            raise Rejected("Lesson delivery can be changed only in the active academic term.")
         item = upsert_delivery(
             membership=ctx.membership,
             payload=stored,
