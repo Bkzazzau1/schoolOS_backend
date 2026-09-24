@@ -1,3 +1,5 @@
+from django.db import transaction
+
 from apps.core.errors import Rejected
 from apps.schools.models import Membership, Role
 from apps.sync.models import SyncRecord
@@ -29,6 +31,7 @@ class StudentClassLinkHandler(EntityHandler):
         return payload
 
 
+@transaction.atomic
 def publish_student_class_link(student, *, actor=None) -> None:
     if not student.account_user_id:
         return
@@ -40,9 +43,11 @@ def publish_student_class_link(student, *, actor=None) -> None:
     ).first()
     if membership is None:
         return
-    enrollment = student.enrollments.filter(
-        status=EnrollmentStatus.ACTIVE,
-    ).order_by("-started_at", "-id").first()
+    enrollment = (
+        student.enrollments.filter(status=EnrollmentStatus.ACTIVE)
+        .order_by("-started_at", "-id")
+        .first()
+    )
     if enrollment is None:
         return
 
