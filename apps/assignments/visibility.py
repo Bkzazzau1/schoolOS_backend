@@ -1,7 +1,13 @@
 from apps.schools.models import Role
 from apps.students.models import GuardianLink, Student
 
-from .models import Assignment, AssignmentRecipient, AssignmentState, AssignmentSubmission
+from .models import (
+    Assignment,
+    AssignmentRecipient,
+    AssignmentState,
+    AssignmentSubmission,
+    SubmissionState,
+)
 from .services import current_teacher
 
 
@@ -76,8 +82,17 @@ def submission_visible_payload(membership, payload):
     )
     if item is None:
         return None
+
+    # A Student's in-progress draft is private. The canonical history remains on
+    # the server, but teaching/family oversight begins only at actual submission.
+    draft_private = item.state == SubmissionState.DRAFT
+
     if membership.role in {Role.PROPRIETOR, Role.ADMINISTRATOR}:
         return payload
+    if membership.role == Role.STUDENT:
+        return payload if item.student.account_user_id == membership.user_id else None
+    if draft_private:
+        return None
     if (
         membership.role == Role.PRINCIPAL
         and item.assignment.class_subject.academic_class.section.strip().casefold()
@@ -89,10 +104,6 @@ def submission_visible_payload(membership, payload):
         if item.assignment.author_membership_id == membership.id or (
             teacher is not None and teacher.id == membership.id
         ):
-            return payload
-        return None
-    if membership.role == Role.STUDENT:
-        if item.student.account_user_id == membership.user_id:
             return payload
         return None
     if membership.role == Role.PARENT:
