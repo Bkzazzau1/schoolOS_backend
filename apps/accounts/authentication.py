@@ -35,6 +35,10 @@ def complete_initial_password(user, new_password) -> None:
         return
     if not isinstance(new_password, str) or not new_password:
         raise ValidationError({"newPassword": "Enter a new password."})
+    if user.check_password(new_password):
+        raise ValidationError(
+            {"newPassword": "Choose a password different from your temporary password."}
+        )
     try:
         validate_password(new_password, user=user)
     except DjangoValidationError as exc:
