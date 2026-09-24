@@ -40,8 +40,9 @@ def _membership_name(membership):
 def eligible_students_for_class_subject(class_subject, *, on_date=None):
     """Return the canonical roster eligible for this class-subject.
 
-    Compulsory subjects inherit the class roster. Electives require an explicit
-    StudentSubjectSelection on the same immutable enrollment context.
+    Compulsory subjects inherit the matching enrollment-context roster.
+    Electives use effective-dated StudentSubjectSelection history so a past
+    lesson can be reconstructed even after a later elective change.
     """
 
     contexts = EnrollmentAcademicContext.objects.filter(
@@ -55,11 +56,27 @@ def eligible_students_for_class_subject(class_subject, *, on_date=None):
             Q(enrollment__ended_at__isnull=True)
             | Q(enrollment__ended_at__date__gte=on_date)
         )
+
     if class_subject.requirement == CurriculumRequirement.ELECTIVE:
-        contexts = contexts.filter(subject_selections__class_subject=class_subject)
+        contexts = contexts.filter(
+            subject_selections__class_subject=class_subject,
+        )
+        if on_date is None:
+            contexts = contexts.filter(
+                subject_selections__deselected_at__isnull=True,
+            )
+        else:
+            contexts = contexts.filter(
+                subject_selections__selected_at__date__lte=on_date,
+            ).filter(
+                Q(subject_selections__deselected_at__isnull=True)
+                | Q(subject_selections__deselected_at__date__gte=on_date)
+            )
 
     students = [context.enrollment.student for context in contexts.distinct()]
-    students.sort(key=lambda item: (item.full_name.casefold(), item.student_code.casefold()))
+    students.sort(
+        key=lambda item: (item.full_name.casefold(), item.student_code.casefold())
+    )
     return students
 
 
@@ -130,7 +147,9 @@ def _topic(entry, value):
     except (CurriculumTopic.DoesNotExist, ValueError, TypeError):
         raise Rejected("Curriculum topic does not exist.")
     if item.class_subject_id != entry.class_subject_id or item.term_id != entry.term_id:
-        raise Rejected("Curriculum topic does not belong to this lesson's class-subject and term.")
+        raise Rejected(
+            "Curriculum topic does not belong to this lesson's class-subject and term."
+        )
     return item
 
 
@@ -162,6 +181,13 @@ def _canonical_entries_payload(register):
 def serialize_register(register):
     lesson = serialize_entry(register.timetable_entry)
     topic = register.curriculum_topic
+    override = TimetableOverride.objects.filter(
+        timetable_entry=register.timetable_entry,
+        lesson_date=register.lesson_date,
+    ).first()
+    occurrence_room = (
+        override.room if override is not None and override.room else lesson["room"]
+    )
     return {
         "id": register.external_id,
         "canonicalRegisterId": str(register.id),
@@ -180,14 +206,18 @@ def serialize_register(register):
         "startTime": lesson["startTime"],
         "endTime": lesson["endTime"],
         "time": lesson["time"],
-        "room": lesson["room"],
+        "room": occurrence_room,
         "teacherId": str(register.teacher_membership_id),
         "teacher": _membership_name(register.teacher_membership),
         "topicId": str(topic.id) if topic else "",
         "topic": topic.title if topic else "",
         "state": register.state,
-        "submittedAt": register.submitted_at.isoformat() if register.submitted_at else None,
-        "submittedByMembershipId": str(register.submitted_by_id) if register.submitted_by_id else None,
+        "submittedAt": (
+            register.submitted_at.isoformat() if register.submitted_at else None
+        ),
+        "submittedByMembershipId": (
+            str(register.submitted_by_id) if register.submitted_by_id else None
+        ),
         "entries": _canonical_entries_payload(register),
     }
 
@@ -226,12 +256,18 @@ def upsert_register(*, membership: Membership, payload: dict):
         raise Rejected("This timetable occurrence already has an attendance register.")
     if existing is not None:
         if existing.timetable_entry_id != entry.id or existing.lesson_date != lesson_date:
-            raise Rejected("An attendance register cannot be moved to another lesson occurrence.")
+            raise Rejected(
+                "An attendance register cannot be moved to another lesson occurrence."
+            )
         if existing.state == LessonAttendanceState.SUBMITTED:
-            raise Rejected("Submitted subject attendance is historical and cannot be rewritten.")
+            raise Rejected(
+                "Submitted subject attendance is historical and cannot be rewritten."
+            )
 
     if entry.term.status == AcademicLifecycleStatus.CLOSED:
-        raise Rejected("A closed term's subject attendance is historical and cannot be changed.")
+        raise Rejected(
+            "A closed term's subject attendance is historical and cannot be changed."
+        )
     if not entry.is_active and existing is None:
         raise Rejected("Attendance cannot be opened for an inactive timetable lesson.")
 
@@ -241,11 +277,16 @@ def upsert_register(*, membership: Membership, payload: dict):
     if teacher is None:
         raise Rejected("This lesson occurrence has no authorized Teacher assignment.")
     if teacher.id != membership.id:
-        raise Rejected("This Teacher membership is not authorized for this lesson occurrence.")
+        raise Rejected(
+            "This Teacher membership is not authorized for this lesson occurrence."
+        )
 
     topic = _topic(entry, payload.get("topicId"))
     requested_state = payload["state"]
-    roster = eligible_students_for_class_subject(entry.class_subject, on_date=lesson_date)
+    roster = eligible_students_for_class_subject(
+        entry.class_subject,
+        on_date=lesson_date,
+    )
     roster_by_code = {student.student_code: student for student in roster}
 
     supplied = {}
@@ -254,7 +295,9 @@ def upsert_register(*, membership: Membership, payload: dict):
         if not student_code or student_code in supplied:
             raise Rejected("Attendance entries must contain unique studentId values.")
         if student_code not in roster_by_code:
-            raise Rejected("Attendance contains a student who is not eligible for this subject occurrence.")
+            raise Rejected(
+                "Attendance contains a student who was not eligible for this subject occurrence."
+            )
         status = str(raw.get("status") or AttendanceMark.UNMARKED)
         if status not in AttendanceMark.values:
             raise Rejected("Attendance status is invalid.")
@@ -271,7 +314,9 @@ def upsert_register(*, membership: Membership, payload: dict):
             or supplied[student.student_code][0] == AttendanceMark.UNMARKED
         ]
         if missing:
-            raise Rejected("Every eligible student must have an explicit attendance status before submission.")
+            raise Rejected(
+                "Every eligible student must have an explicit attendance status before submission."
+            )
 
     now = timezone.now()
     if existing is None:
@@ -283,8 +328,14 @@ def upsert_register(*, membership: Membership, payload: dict):
             teacher_membership=membership,
             curriculum_topic=topic,
             state=requested_state,
-            submitted_at=now if requested_state == LessonAttendanceState.SUBMITTED else None,
-            submitted_by=membership if requested_state == LessonAttendanceState.SUBMITTED else None,
+            submitted_at=(
+                now if requested_state == LessonAttendanceState.SUBMITTED else None
+            ),
+            submitted_by=(
+                membership
+                if requested_state == LessonAttendanceState.SUBMITTED
+                else None
+            ),
         )
     else:
         register = existing
