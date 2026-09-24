@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "apps.lesson_attendance",
     "apps.lesson_delivery",
     "apps.weekly_learning",
+    "apps.assignments",
     "apps.domains",
     "apps.notifications",
     "apps.access",
@@ -179,9 +180,11 @@ ANDROID_CERT_SHA256 = env.list("ANDROID_CERT_SHA256", default=[])
 
 if not DEBUG:
     SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
+    X_FRAME_OPTIONS = "DENY"
