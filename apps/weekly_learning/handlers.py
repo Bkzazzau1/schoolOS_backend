@@ -44,7 +44,7 @@ class WeeklyLearningHandler(EntityHandler):
         if ctx.operation == "delete":
             raise Rejected("Weekly learning records are preserved; deletion is not permitted.")
         p = ctx.payload
-        entity_id = text(p, "id", max_len=160)
+        entity_id = text(p, "id", max_len=128)
         if entity_id != ctx.entity_id:
             raise Rejected("id must match the weekly-learning entity id.")
         return {
