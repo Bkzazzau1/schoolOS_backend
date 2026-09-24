@@ -128,14 +128,14 @@ class Migration(migrations.Migration):
             model_name="credentialrecoveryrequest",
             index=models.Index(
                 fields=["school", "status", "created_at"],
-                name="credentials_recovery_school_status_idx",
+                name="cred_rec_school_status_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="credentialauditevent",
             index=models.Index(
                 fields=["school", "user", "created_at"],
-                name="credentials_audit_school_user_idx",
+                name="cred_audit_school_user_idx",
             ),
         ),
     ]
