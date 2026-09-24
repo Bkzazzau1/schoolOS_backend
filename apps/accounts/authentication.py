@@ -24,6 +24,7 @@ class SchoolOSTokenSerializer(serializers.Serializer):
             raise AuthenticationFailed("The login ID or password is not correct.")
 
         refresh = RefreshToken.for_user(user)
+        refresh["cv"] = user.credential_version
         return {
             "access": str(refresh.access_token),
             "refresh": str(refresh),
