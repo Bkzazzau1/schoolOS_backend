@@ -18,12 +18,7 @@ from .curriculum_services import (
     upsert_subject,
     upsert_teaching_assignment,
 )
-from .models import (
-    AcademicLifecycleStatus,
-    ClassSubject,
-    CurriculumRequirement,
-    TeachingAssignment,
-)
+from .models import ClassSubject, CurriculumRequirement, TeachingAssignment
 
 
 SUBJECT_ENTITY = "academic_subject"
@@ -131,15 +126,25 @@ class ClassSubjectHandler(EntityHandler):
             "sessionId": text(p, "sessionId", max_len=64),
             "classId": text(p, "classId", max_len=64),
             "subjectId": text(p, "subjectId", max_len=64),
-            "requirement": choice(p.get("requirement"), _REQUIREMENTS, "requirement"),
-            "periodsPerWeek": _positive_int(p, "periodsPerWeek", maximum=30),
+            "requirement": choice(
+                p.get("requirement"),
+                _REQUIREMENTS,
+                "requirement",
+            ),
+            "periodsPerWeek": _positive_int(
+                p,
+                "periodsPerWeek",
+                maximum=30,
+            ),
             "isActive": boolean(p, "isActive"),
         }
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
         item = upsert_class_subject(membership=ctx.membership, payload=stored)
         item = ClassSubject.objects.select_related(
-            "session", "academic_class", "subject"
+            "session",
+            "academic_class",
+            "subject",
         ).get(pk=item.pk)
         _canonicalize_record(ctx, serialize_class_subject(item))
 
@@ -162,7 +167,11 @@ class CurriculumTopicHandler(EntityHandler):
             "termId": text(p, "termId", max_len=64),
             "sequence": _positive_int(p, "sequence", maximum=500),
             "title": text(p, "title", max_len=200),
-            "description": _optional_text(p, "description", max_len=4000),
+            "description": _optional_text(
+                p,
+                "description",
+                max_len=4000,
+            ),
         }
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
@@ -179,7 +188,10 @@ class TeachingAssignmentHandler(EntityHandler):
     def visible(self, membership, payload):
         if membership.role in _CURRICULUM_READ_ROLES:
             return payload
-        if membership.role == Role.TEACHER and payload.get("teacherId") == str(membership.id):
+        if (
+            membership.role == Role.TEACHER
+            and payload.get("teacherId") == str(membership.id)
+        ):
             return payload
         return None
 
@@ -189,36 +201,28 @@ class TeachingAssignmentHandler(EntityHandler):
         if entity_id != ctx.entity_id:
             raise Rejected("id must match the teaching-assignment entity id.")
 
-        class_subject_id = _optional_text(p, "classSubjectId", max_len=64)
-        if not class_subject_id:
-            session_id = _optional_text(p, "sessionId", max_len=64)
-            matches = ClassSubject.objects.filter(
-                session__school=ctx.membership.school,
-                is_active=True,
-                academic_class__name__iexact=text(p, "className", max_len=120),
-                subject__name__iexact=text(p, "subject", max_len=120),
-            )
-            if session_id:
-                matches = matches.filter(session_id=session_id)
-            else:
-                matches = matches.filter(session__status=AcademicLifecycleStatus.ACTIVE)
-            item = matches.select_related("session", "academic_class", "subject").first()
-            if item is None:
-                raise Rejected(
-                    "This class-subject is not in the canonical curriculum. Configure the curriculum first."
-                )
-            class_subject_id = str(item.id)
-
+        class_subject_id = text(p, "classSubjectId", max_len=64)
         return {
             "id": entity_id,
             "classSubjectId": class_subject_id,
             "teacherId": text(p, "teacherId", max_len=64),
-            "periodsPerWeek": _positive_int(p, "periodsPerWeek", maximum=30),
-            "handoverReason": _optional_text(p, "handoverReason", max_len=1000),
+            "periodsPerWeek": _positive_int(
+                p,
+                "periodsPerWeek",
+                maximum=30,
+            ),
+            "handoverReason": _optional_text(
+                p,
+                "handoverReason",
+                max_len=1000,
+            ),
         }
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
-        item = upsert_teaching_assignment(membership=ctx.membership, payload=stored)
+        item = upsert_teaching_assignment(
+            membership=ctx.membership,
+            payload=stored,
+        )
         item = _assignment(item.id)
         _canonicalize_record(ctx, serialize_teaching_assignment(item))
 
@@ -239,12 +243,20 @@ class TeachingTransferHandler(EntityHandler):
             raise Rejected("id must match the teaching-transfer entity id.")
         assignment_id = text(p, "assignmentId", max_len=64)
         reason = text(p, "reason", max_len=1000)
-        assignment = _assignment_by_external(ctx.membership.school, assignment_id)
+        assignment = _assignment_by_external(
+            ctx.membership.school,
+            assignment_id,
+        )
         if assignment is None:
             raise Rejected("Teaching assignment does not exist.")
         previous = assignment.previous_assignment
-        if previous is None or previous.teacher_membership_id == assignment.teacher_membership_id:
-            raise Rejected("No canonical teacher handover exists for this assignment.")
+        if (
+            previous is None
+            or previous.teacher_membership_id == assignment.teacher_membership_id
+        ):
+            raise Rejected(
+                "No canonical teacher handover exists for this assignment."
+            )
         version = serialize_teaching_assignment(assignment)["version"]
         return {
             "id": entity_id,
@@ -282,7 +294,10 @@ class StudentSubjectSelectionHandler(EntityHandler):
         }
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
-        eligibility = set_student_elective(membership=ctx.membership, payload=stored)
+        eligibility = set_student_elective(
+            membership=ctx.membership,
+            payload=stored,
+        )
         canonical = {**stored, "eligibility": eligibility}
         _canonicalize_record(ctx, canonical)
 
