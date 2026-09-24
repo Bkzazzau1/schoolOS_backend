@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
             name="WeeklyLearningUpdate",
             fields=[
                 ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ("external_id", models.CharField(max_length=160)),
+                ("external_id", models.CharField(max_length=128)),
                 ("week_start", models.DateField()),
                 ("week_end", models.DateField()),
                 ("state", models.CharField(choices=[("draft", "Draft"), ("published", "Published")], default="draft", max_length=16)),
