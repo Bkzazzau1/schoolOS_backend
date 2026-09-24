@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from apps.academics.models import AcademicLifecycleStatus, TeachingAssignment
 from apps.lesson_attendance.services import eligible_student_payload
@@ -13,17 +16,44 @@ from .services import serialize_entry, serialize_override
 TEACHER_TIMETABLE_LINK_ENTITY = "teacher_timetable_schedule"
 
 
+def _current_week_occurrence_date(item: TimetableEntry):
+    today = timezone.localdate()
+    week_start = today - timedelta(days=today.isoweekday() - 1)
+    lesson_date = week_start + timedelta(days=item.day_of_week - 1)
+    if lesson_date > today:
+        return None
+    if lesson_date < item.term.starts_on or lesson_date > item.term.ends_on:
+        return None
+    return lesson_date
+
+
 def _teacher_entry_payload(item: TimetableEntry) -> dict:
     payload = serialize_entry(item)
     payload["eligibleStudents"] = eligible_student_payload(item.class_subject)
+    occurrence_date = _current_week_occurrence_date(item)
+    payload["eligibleStudentsByDate"] = {}
+    if occurrence_date is not None:
+        payload["eligibleStudentsByDate"] = {
+            occurrence_date.isoformat(): eligible_student_payload(
+                item.class_subject,
+                on_date=occurrence_date,
+            )
+        }
     return payload
 
 
 def _teacher_override_payload(item: TimetableOverride) -> dict:
     payload = serialize_override(item)
-    payload["lesson"]["eligibleStudents"] = eligible_student_payload(
+    lesson = payload["lesson"]
+    lesson["eligibleStudents"] = eligible_student_payload(
         item.timetable_entry.class_subject
     )
+    lesson["eligibleStudentsByDate"] = {
+        item.lesson_date.isoformat(): eligible_student_payload(
+            item.timetable_entry.class_subject,
+            on_date=item.lesson_date,
+        )
+    }
     return payload
 
 
@@ -31,9 +61,9 @@ def teacher_timetable_payload(teacher: Membership) -> dict:
     """Private current-term schedule for exactly one Teacher membership.
 
     The whole payload is replaced whenever schedule authority or the eligible
-    subject roster changes. A handover therefore removes old lessons and a
-    curriculum/enrollment change updates the offline Teacher roster without
-    exposing another Teacher's schedule.
+    subject roster changes. It includes the current roster plus a date-specific
+    current-week snapshot for occurrences already reached, so an offline draft
+    preserves the student population that was eligible on that lesson date.
     """
 
     entries = TimetableEntry.objects.none()
@@ -53,6 +83,7 @@ def teacher_timetable_payload(teacher: Membership) -> dict:
             .select_related(
                 "school",
                 "term__session",
+                "class_subject__session",
                 "class_subject__academic_class",
                 "class_subject__subject",
             )
@@ -72,6 +103,7 @@ def teacher_timetable_payload(teacher: Membership) -> dict:
         .select_related(
             "timetable_entry__school",
             "timetable_entry__term__session",
+            "timetable_entry__class_subject__session",
             "timetable_entry__class_subject__academic_class",
             "timetable_entry__class_subject__subject",
             "substitute_teacher_membership__user",
