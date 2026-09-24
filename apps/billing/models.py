@@ -347,3 +347,70 @@ class ProviderWebhookEvent(models.Model):
 
     def __str__(self):
         return f"{self.provider} · {self.event_type} · {self.status}"
+
+
+class BillingCyclePolicy(models.Model):
+    """Explicit automatic-billing timings for one commercial plan.
+
+    Timing fields are nullable on purpose. SchoolOS will not silently invent a
+    due date or escalation window; automatic invoicing is ready only when all
+    required durations are configured by the platform operator.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    plan = models.OneToOneField(
+        Plan,
+        on_delete=models.CASCADE,
+        related_name="billing_cycle_policy",
+    )
+    automatic_invoicing_enabled = models.BooleanField(default=False)
+    invoice_due_days = models.PositiveSmallIntegerField(null=True, blank=True)
+    past_due_days = models.PositiveSmallIntegerField(null=True, blank=True)
+    grace_days = models.PositiveSmallIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.plan.code} · automatic={self.automatic_invoicing_enabled}"
+
+
+class SchoolBillingMeterSnapshot(models.Model):
+    """Append-only school roster count supplied by an authoritative server source.
+
+    This stores only the count needed for SaaS metering, not student records.
+    The future canonical Student module should publish a new row whenever its
+    active billable roster changes. Billing never derives this count from login
+    memberships or client-entered invoice data.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(
+        "schools.School",
+        on_delete=models.CASCADE,
+        related_name="billing_meter_snapshots",
+    )
+    billable_student_count = models.PositiveIntegerField()
+    source = models.CharField(max_length=64)
+    source_version = models.CharField(max_length=128)
+    authoritative = models.BooleanField(default=True)
+    measured_at = models.DateTimeField()
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-measured_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "source", "source_version"],
+                name="unique_school_billing_meter_version",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["school", "authoritative", "-measured_at"],
+                name="billing_meter_school_at_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.school} · {self.billable_student_count} · {self.measured_at}"
