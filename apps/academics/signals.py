@@ -23,6 +23,24 @@ def attach_academic_context_to_active_enrollment(sender, instance, created, **kw
     publish_parent_family_links_for_student(instance.student)
 
 
+@receiver(post_save, sender=StudentEnrollment)
+def refresh_private_links_when_enrollment_stops(sender, instance, created, **kwargs):
+    """Remove stale current academic access when an enrollment becomes historical.
+
+    Promotion/repeat/class-change first closes the old enrollment and then creates
+    the replacement active enrollment. The first publication may therefore be an
+    empty current context, but the new-enrollment signal immediately publishes the
+    replacement canonical context in the same transaction. Terminal lifecycle
+    changes (transfer out, graduation, withdrawal) have no replacement enrollment,
+    so this signal is what removes old current subjects from Student/Parent links.
+    """
+
+    if created or instance.status == EnrollmentStatus.ACTIVE:
+        return
+    publish_student_class_link(instance.student)
+    publish_parent_family_links_for_student(instance.student)
+
+
 @receiver(post_save, sender=AcademicTerm)
 def refresh_private_academic_context_when_term_changes(sender, instance, **kwargs):
     """Republish Student/Parent/Teacher context whenever term state changes.
