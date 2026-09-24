@@ -114,12 +114,7 @@ def _state_for_client(value):
 
 
 def _occurrence_payload(entry, lesson_date):
-    """Serialize an occurrence without requiring it to remain actionable.
-
-    Historical plan/delivery evidence must stay readable after a cancellation,
-    handover, Teacher deactivation, or loss of coverage. Strict Teacher authority
-    is enforced only on mutation paths through `_effective_teacher`.
-    """
+    """Serialize an occurrence without requiring it to remain actionable."""
 
     payload = serialize_entry(entry)
     teacher, override = effective_teacher_for_occurrence(entry, lesson_date)
@@ -291,9 +286,7 @@ def serialize_topic_progress(topic):
         "reportedStatus": "completed" if completed else "inProgress",
         "actorMembershipId": str(latest.teacher_membership_id),
         "version": len(deliveries),
-        "updatedAt": (
-            latest.delivered_at or latest.updated_at
-        ).isoformat(),
+        "updatedAt": (latest.delivered_at or latest.updated_at).isoformat(),
         "deliveredLessons": len(deliveries),
         "latestDeliveryDate": latest.lesson_date.isoformat(),
         "evidenceDeliveryIds": [item.external_id for item in deliveries],
@@ -328,6 +321,21 @@ def _sync_record(*, school, entity_type, entity_id, payload, actor=None):
     record.updated_by = actor
     record.save(update_fields=["payload", "deleted", "version", "updated_by"])
     return record
+
+
+def replace_current_sync_payload(*, school, entity_type, entity_id, payload, actor=None):
+    """Replace payload after handler validation without creating a second version.
+
+    The generic sync engine has already accepted and versioned the mutation.
+    This function swaps its cleaned client payload for the richer server-owned
+    canonical representation inside the same transaction/version.
+    """
+
+    SyncRecord.objects.filter(
+        school=school,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    ).update(payload=payload, deleted=False, updated_by=actor)
 
 
 @transaction.atomic
@@ -396,7 +404,7 @@ def publish_topic_progress(topic, *, actor=None):
 
 
 @transaction.atomic
-def upsert_plan(*, membership: Membership, payload: dict):
+def upsert_plan(*, membership: Membership, payload: dict, publish_sync=True):
     if membership.role != Role.TEACHER or not membership.is_active:
         raise Rejected("Only an active Teacher membership can author lesson plans.")
     school = membership.school
@@ -495,12 +503,13 @@ def upsert_plan(*, membership: Membership, payload: dict):
                 "updated_at",
             ]
         )
-    publish_plan(item, actor=membership)
+    if publish_sync:
+        publish_plan(item, actor=membership)
     return item
 
 
 @transaction.atomic
-def review_plan(*, membership: Membership, payload: dict):
+def review_plan(*, membership: Membership, payload: dict, publish_review_sync=True):
     if membership.role != Role.PRINCIPAL or not membership.is_active:
         raise Rejected("Only an active Principal can review Secondary lesson plans.")
     plan = _plan_for_school(membership.school, payload["planId"])
@@ -539,13 +548,16 @@ def review_plan(*, membership: Membership, payload: dict):
             "updated_at",
         ]
     )
-    publish_review(review, actor=membership)
+    if publish_review_sync:
+        publish_review(review, actor=membership)
+    # Review changes the plan independently of a Teacher plan mutation, so the
+    # plan SyncRecord receives its own new canonical version here.
     publish_plan(plan, actor=membership)
     return review
 
 
 @transaction.atomic
-def upsert_delivery(*, membership: Membership, payload: dict):
+def upsert_delivery(*, membership: Membership, payload: dict, publish_sync=True):
     if membership.role != Role.TEACHER or not membership.is_active:
         raise Rejected("Only an active Teacher can record lesson delivery.")
     school = membership.school
@@ -584,11 +596,7 @@ def upsert_delivery(*, membership: Membership, payload: dict):
             raise Rejected("Delivered lesson evidence is historical and cannot be rewritten.")
 
     action = payload["action"]
-    target_state = (
-        LessonDeliveryState.DELIVERED
-        if action == "deliver"
-        else LessonDeliveryState.DRAFT
-    )
+    target_state = LessonDeliveryState.DELIVERED if action == "deliver" else LessonDeliveryState.DRAFT
     attendance = _attendance_for_occurrence(entry, lesson_date)
     if attendance is not None and attendance.state != LessonAttendanceState.SUBMITTED:
         attendance = None
@@ -631,7 +639,8 @@ def upsert_delivery(*, membership: Membership, payload: dict):
                 "updated_at",
             ]
         )
-    publish_delivery(item, actor=membership)
+    if publish_sync:
+        publish_delivery(item, actor=membership)
     if item.state == LessonDeliveryState.DELIVERED:
         publish_topic_progress(item.curriculum_topic, actor=membership)
     return item
