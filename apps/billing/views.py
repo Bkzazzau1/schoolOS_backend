@@ -1,5 +1,5 @@
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from apps.organizations.models import OrganizationMembership
 
 from .cycle import automation_summary
-from .models import BillingInvoice, PaymentAttempt, Plan
+from .models import BillingInvoice, PaymentAttempt, Plan, SubscriptionStatus
 from .services import (
     can_manage_billing,
     ensure_organization_subscription,
@@ -79,6 +79,12 @@ class OrganizationSubscriptionView(APIView):
             subscription,
             membership_role=membership.role,
         )
+        if subscription.status not in {
+            SubscriptionStatus.PAST_DUE,
+            SubscriptionStatus.GRACE,
+            SubscriptionStatus.RESTRICTED,
+        }:
+            payload["graceEndsAt"] = None
         payload["automation"] = automation_summary(subscription)
         return Response(payload)
 
@@ -112,6 +118,16 @@ class OrganizationInvoiceListView(APIView):
             organization_id,
             billing_authority=True,
         )
+        subscription = ensure_organization_subscription(membership.organization)
+        if automation_summary(subscription)["enabled"]:
+            raise ValidationError(
+                {
+                    "message": (
+                        "Automatic invoicing is enabled for this plan. "
+                        "The billing cycle runner owns invoice issuance."
+                    )
+                }
+            )
         invoice = issue_latest_usage_invoice(membership.organization)
         return Response(
             serialize_invoice(invoice, include_attempts=True),
