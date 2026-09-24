@@ -164,11 +164,16 @@ class TeachingAssignmentHandler(EntityHandler):
         assignment = upsert_teaching_assignment(
             membership=ctx.membership, payload=stored
         )
+        payload = serialize_teaching_assignment(assignment)
+        # Sync entity ids are client-stable opaque ids. The relational model has
+        # its own UUID, so keep the sync id in the payload rather than replacing
+        # it with the internal database id on acknowledgement.
+        payload["id"] = ctx.entity_id
         SyncRecord.objects.filter(
             school=ctx.membership.school,
             entity_type=self.entity_type,
             entity_id=ctx.entity_id,
-        ).update(payload=serialize_teaching_assignment(assignment))
+        ).update(payload=payload)
 
 
 class TeacherClassLinkHandler(EntityHandler):
