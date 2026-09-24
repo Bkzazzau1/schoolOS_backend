@@ -24,7 +24,12 @@ def normalize_parent_phone(value: str | None) -> str | None:
 
 
 def normalize_student_admission(value: str | None) -> str:
-    return re.sub(r"\s+", "", (value or "").strip()).upper()
+    raw = (value or "").strip()
+    # SchoolOS has one sign-in field. Admission IDs therefore cannot be
+    # indistinguishable from the other supported login identities.
+    if not raw or "@" in raw or normalize_parent_phone(raw) is not None:
+        return ""
+    return re.sub(r"\s+", "", raw).upper()
 
 
 def normalize_login_identity(kind: str, value: str | None) -> str:
@@ -78,6 +83,10 @@ def resolve_login_user(identifier: str | None):
 def bind_login_identity(*, user: User, kind: str, identifier: str) -> LoginIdentity:
     normalized = normalize_login_identity(kind, identifier)
     if not normalized:
+        if kind == LoginIdentityKind.STUDENT_ADMISSION:
+            raise LoginIdentityConflict(
+                "The admission ID cannot be used as a login because it looks like an email address or phone number."
+            )
         raise LoginIdentityConflict("The login identifier is not valid.")
 
     current = (
