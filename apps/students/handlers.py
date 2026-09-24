@@ -39,6 +39,7 @@ _LIFECYCLE_LABELS = {"Pending", "Completed", "Cancelled"}
 _LIFECYCLE_WORKFLOWS = {
     "Class change",
     "Promotion",
+    "Repeat",
     "Transfer out",
     "Alumni",
     "Withdrawal",
@@ -285,12 +286,23 @@ class StudentLifecycleHandler(EntityHandler):
 
         approved_by = _optional_text(p, "approvedBy", max_len=200)
         records_pack_ready = boolean(p, "recordsPackReady")
+        from_class = _optional_text(p, "fromClass", max_len=120)
         to_class = _optional_text(p, "toClass", max_len=120)
+        if workflow == "Repeat":
+            if not from_class or not to_class or from_class.casefold() != to_class.casefold():
+                raise Rejected("A repeat decision must keep the student in the same class.")
+        if workflow in {"Promotion", "Class change"} and from_class and to_class:
+            if from_class.casefold() == to_class.casefold():
+                raise Rejected(
+                    "Promotion and class change require a different destination class. Use Repeat when the student remains in the same class."
+                )
         if status == "Completed":
-            if workflow == "Promotion" and not approved_by:
-                raise Rejected("A promotion requires the academic approver's name.")
-            if workflow in {"Promotion", "Class change"} and not to_class:
-                raise Rejected("This class movement requires a destination class.")
+            if workflow in {"Promotion", "Repeat"} and not approved_by:
+                raise Rejected(
+                    "Promotion or repeat requires the academic approver's name."
+                )
+            if workflow in {"Promotion", "Class change", "Repeat"} and not to_class:
+                raise Rejected("This progression decision requires a class.")
             if workflow == "Transfer out" and not records_pack_ready:
                 raise Rejected(
                     "Prepare the records pack before completing the transfer."
@@ -308,7 +320,7 @@ class StudentLifecycleHandler(EntityHandler):
             "change": _optional_text(p, "change", max_len=250),
             "status": status,
             "studentId": student_id,
-            "fromClass": _optional_text(p, "fromClass", max_len=120),
+            "fromClass": from_class,
             "toClass": to_class,
             "requestedAt": requested_at,
             "completedAt": completed_at,

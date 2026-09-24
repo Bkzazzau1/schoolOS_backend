@@ -12,10 +12,9 @@ from apps.accounts.identity import (
 from apps.accounts.models import LoginIdentity, LoginIdentityKind, User
 from apps.core.errors import Rejected
 from apps.schools.models import Membership, Role
-from apps.sync.models import SyncRecord
 
 from .models import GuardianLink, Student, StudentRegistration
-from .parent_sync import PARENT_FAMILY_LINK_ENTITY
+from .parent_sync import publish_parent_family_link
 from .student_sync import publish_student_class_link
 
 
@@ -86,52 +85,6 @@ def _ensure_membership(*, user, school, role):
         membership.is_active = True
         membership.save(update_fields=["is_active"])
     return membership
-
-
-def _publish_parent_family_link(parent_membership: Membership, *, actor=None) -> None:
-    """Publish the server-authoritative child list for one Parent membership."""
-
-    child_ids = list(
-        GuardianLink.objects.filter(
-            account_user=parent_membership.user,
-            student__school=parent_membership.school,
-        )
-        .order_by("student__student_code")
-        .values_list("student__student_code", flat=True)
-        .distinct()
-    )
-    payload = {
-        "parentMembershipId": str(parent_membership.id),
-        "childIds": child_ids,
-    }
-    entity_id = str(parent_membership.id)
-    record = (
-        SyncRecord.objects.select_for_update()
-        .filter(
-            school=parent_membership.school,
-            entity_type=PARENT_FAMILY_LINK_ENTITY,
-            entity_id=entity_id,
-        )
-        .first()
-    )
-    if record is None:
-        SyncRecord.objects.create(
-            school=parent_membership.school,
-            entity_type=PARENT_FAMILY_LINK_ENTITY,
-            entity_id=entity_id,
-            payload=payload,
-            version=1,
-            deleted=False,
-            updated_by=actor,
-        )
-        return
-    if record.payload == payload and not record.deleted:
-        return
-    record.payload = payload
-    record.deleted = False
-    record.version += 1
-    record.updated_by = actor
-    record.save(update_fields=["payload", "deleted", "version", "updated_by"])
 
 
 def _student_account(student: Student):
@@ -241,7 +194,7 @@ def _parent_account(registration: StudentRegistration, guardian: GuardianLink):
     if guardian.account_user_id != user.id:
         guardian.account_user = user
         guardian.save(update_fields=["account_user", "updated_at"])
-    _publish_parent_family_link(parent_membership, actor=registration.created_by)
+    publish_parent_family_link(parent_membership, actor=registration.created_by)
     return user, normalized_phone
 
 

@@ -5,14 +5,14 @@ from apps.schools.models import Membership, Role
 from apps.sync.models import SyncRecord
 from apps.sync.registry import EntityHandler
 
-from .models import EnrollmentStatus
+from .workspace_payloads import student_workspace_payload
 
 
 STUDENT_CLASS_LINK_ENTITY = "student_class_link"
 
 
 class StudentClassLinkHandler(EntityHandler):
-    """Read-only server link between a Student membership and canonical class."""
+    """Read-only server link between a Student membership and canonical profile/class."""
 
     entity_type = STUDENT_CLASS_LINK_ENTITY
     roles = frozenset()
@@ -54,30 +54,14 @@ def publish_student_class_link(student, *, actor=None) -> None:
         )
         .first()
     )
-    enrollment = (
-        student.enrollments.filter(status=EnrollmentStatus.ACTIVE)
-        .order_by("-started_at", "-id")
-        .first()
-    )
 
-    if enrollment is None:
-        # The pupil left the active roster. Publish a tombstone so every device
-        # removes the previous class assignment rather than continuing to show
-        # class-scoped CBTs or resources from the old enrollment.
-        if record is not None and not record.deleted:
-            record.deleted = True
-            record.version += 1
-            record.updated_by = actor
-            record.save(update_fields=["deleted", "version", "updated_by"])
-        return
-
+    # Keep the private profile/history after transfer, withdrawal or graduation,
+    # but student_workspace_payload removes className/enrollmentActive when no
+    # active enrollment exists. Class-based resources therefore stop resolving
+    # without erasing the pupil's historical record.
     payload = {
         "studentMembershipId": str(membership.id),
-        "canonicalStudentId": str(student.id),
-        "studentId": student.student_code,
-        "admissionNumber": student.admission_number,
-        "academicSection": enrollment.academic_section,
-        "className": enrollment.class_name,
+        **student_workspace_payload(student),
     }
     if record is None:
         SyncRecord.objects.create(
