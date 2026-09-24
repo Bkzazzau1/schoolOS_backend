@@ -43,22 +43,7 @@ def publish_student_class_link(student, *, actor=None) -> None:
     ).first()
     if membership is None:
         return
-    enrollment = (
-        student.enrollments.filter(status=EnrollmentStatus.ACTIVE)
-        .order_by("-started_at", "-id")
-        .first()
-    )
-    if enrollment is None:
-        return
 
-    payload = {
-        "studentMembershipId": str(membership.id),
-        "canonicalStudentId": str(student.id),
-        "studentId": student.student_code,
-        "admissionNumber": student.admission_number,
-        "academicSection": enrollment.academic_section,
-        "className": enrollment.class_name,
-    }
     entity_id = str(membership.id)
     record = (
         SyncRecord.objects.select_for_update()
@@ -69,6 +54,31 @@ def publish_student_class_link(student, *, actor=None) -> None:
         )
         .first()
     )
+    enrollment = (
+        student.enrollments.filter(status=EnrollmentStatus.ACTIVE)
+        .order_by("-started_at", "-id")
+        .first()
+    )
+
+    if enrollment is None:
+        # The pupil left the active roster. Publish a tombstone so every device
+        # removes the previous class assignment rather than continuing to show
+        # class-scoped CBTs or resources from the old enrollment.
+        if record is not None and not record.deleted:
+            record.deleted = True
+            record.version += 1
+            record.updated_by = actor
+            record.save(update_fields=["deleted", "version", "updated_by"])
+        return
+
+    payload = {
+        "studentMembershipId": str(membership.id),
+        "canonicalStudentId": str(student.id),
+        "studentId": student.student_code,
+        "admissionNumber": student.admission_number,
+        "academicSection": enrollment.academic_section,
+        "className": enrollment.class_name,
+    }
     if record is None:
         SyncRecord.objects.create(
             school=student.school,
