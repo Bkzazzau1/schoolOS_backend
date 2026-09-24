@@ -14,3 +14,6 @@ class StudentsConfig(AppConfig):
 
         for handler in HANDLERS:
             registry.register(handler)
+
+        # Register cross-domain hooks only after Django has loaded every app.
+        from . import signals  # noqa: F401
