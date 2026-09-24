@@ -2,6 +2,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from apps.academics.models import AcademicLifecycleStatus, TeachingAssignment
+from apps.lesson_attendance.services import eligible_student_payload
 from apps.schools.models import Membership, Role
 from apps.sync.models import SyncRecord
 
@@ -12,12 +13,27 @@ from .services import serialize_entry, serialize_override
 TEACHER_TIMETABLE_LINK_ENTITY = "teacher_timetable_schedule"
 
 
+def _teacher_entry_payload(item: TimetableEntry) -> dict:
+    payload = serialize_entry(item)
+    payload["eligibleStudents"] = eligible_student_payload(item.class_subject)
+    return payload
+
+
+def _teacher_override_payload(item: TimetableOverride) -> dict:
+    payload = serialize_override(item)
+    payload["lesson"]["eligibleStudents"] = eligible_student_payload(
+        item.timetable_entry.class_subject
+    )
+    return payload
+
+
 def teacher_timetable_payload(teacher: Membership) -> dict:
     """Private current-term schedule for exactly one Teacher membership.
 
-    The whole payload is replaced whenever schedule authority changes. This is
-    deliberate: a handover must remove lessons from the previous teacher's
-    device instead of merely making future global records invisible to them.
+    The whole payload is replaced whenever schedule authority or the eligible
+    subject roster changes. A handover therefore removes old lessons and a
+    curriculum/enrollment change updates the offline Teacher roster without
+    exposing another Teacher's schedule.
     """
 
     entries = TimetableEntry.objects.none()
@@ -65,8 +81,8 @@ def teacher_timetable_payload(teacher: Membership) -> dict:
 
     return {
         "teacherMembershipId": str(teacher.id),
-        "entries": [serialize_entry(item) for item in entries],
-        "overrides": [serialize_override(item) for item in overrides],
+        "entries": [_teacher_entry_payload(item) for item in entries],
+        "overrides": [_teacher_override_payload(item) for item in overrides],
     }
 
 
