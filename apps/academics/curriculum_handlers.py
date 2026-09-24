@@ -22,6 +22,7 @@ from .models import (
     AcademicLifecycleStatus,
     ClassSubject,
     CurriculumRequirement,
+    TeachingAssignment,
 )
 
 
@@ -29,12 +30,21 @@ SUBJECT_ENTITY = "academic_subject"
 CLASS_SUBJECT_ENTITY = "academic_class_subject"
 TOPIC_ENTITY = "academic_curriculum_topic"
 TEACHING_ASSIGNMENT_ENTITY = "principal_teaching_assignment"
+TEACHING_TRANSFER_ENTITY = "principal_assignment_transfer"
 STUDENT_SELECTION_ENTITY = "academic_student_subject_selection"
 
 _CURRICULUM_WRITE_ROLES = frozenset({Role.ADMINISTRATOR, Role.PRINCIPAL})
 _ASSIGNMENT_WRITE_ROLES = frozenset({Role.PRINCIPAL, Role.PROPRIETOR})
 _CURRICULUM_READ_ROLES = {Role.ADMINISTRATOR, Role.PRINCIPAL, Role.PROPRIETOR}
 _REQUIREMENTS = set(CurriculumRequirement.values)
+_TRANSFER_SCOPE = [
+    "Lesson plans and submitted teaching work",
+    "Syllabus and curriculum-progress history",
+    "Assessment setup and score-entry history",
+    "Class teaching notes attached to the assignment",
+    "Timetable and period context",
+    "Assignment history and previous handover records",
+]
 
 
 def _optional_text(payload: dict, key: str, *, max_len: int = 250) -> str:
@@ -56,6 +66,26 @@ def _canonicalize_record(ctx: MutationContext, payload: dict) -> None:
         entity_type=ctx.entity_type,
         entity_id=ctx.entity_id,
     ).update(payload=payload)
+
+
+def _assignment(pk):
+    return TeachingAssignment.objects.select_related(
+        "class_subject__session",
+        "class_subject__academic_class",
+        "class_subject__subject",
+        "teacher_membership",
+        "previous_assignment__teacher_membership",
+    ).filter(pk=pk).first()
+
+
+def _assignment_by_external(school, external_id):
+    return TeachingAssignment.objects.select_related(
+        "class_subject__session",
+        "class_subject__academic_class",
+        "class_subject__subject",
+        "teacher_membership",
+        "previous_assignment__teacher_membership",
+    ).filter(school=school, external_id=external_id).first()
 
 
 class SubjectHandler(EntityHandler):
@@ -189,22 +219,47 @@ class TeachingAssignmentHandler(EntityHandler):
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
         item = upsert_teaching_assignment(membership=ctx.membership, payload=stored)
-        item = TeachingAssignmentProxy.load(item.id)
+        item = _assignment(item.id)
         _canonicalize_record(ctx, serialize_teaching_assignment(item))
 
 
-class TeachingAssignmentProxy:
-    @staticmethod
-    def load(pk):
-        from .models import TeachingAssignment
+class TeachingTransferHandler(EntityHandler):
+    """Server-validated handover history written only after assignment change."""
 
-        return TeachingAssignment.objects.select_related(
-            "class_subject__session",
-            "class_subject__academic_class",
-            "class_subject__subject",
-            "teacher_membership",
-            "previous_assignment",
-        ).get(pk=pk)
+    entity_type = TEACHING_TRANSFER_ENTITY
+    roles = _ASSIGNMENT_WRITE_ROLES
+
+    def visible(self, membership, payload):
+        return payload if membership.role in _CURRICULUM_READ_ROLES else None
+
+    def clean(self, ctx: MutationContext) -> dict[str, Any]:
+        p = ctx.payload
+        entity_id = text(p, "id", max_len=64)
+        if entity_id != ctx.entity_id:
+            raise Rejected("id must match the teaching-transfer entity id.")
+        assignment_id = text(p, "assignmentId", max_len=64)
+        reason = text(p, "reason", max_len=1000)
+        assignment = _assignment_by_external(ctx.membership.school, assignment_id)
+        if assignment is None:
+            raise Rejected("Teaching assignment does not exist.")
+        previous = assignment.previous_assignment
+        if previous is None or previous.teacher_membership_id == assignment.teacher_membership_id:
+            raise Rejected("No canonical teacher handover exists for this assignment.")
+        version = serialize_teaching_assignment(assignment)["version"]
+        return {
+            "id": entity_id,
+            "assignmentId": assignment.external_id,
+            "className": assignment.class_subject.academic_class.name,
+            "subject": assignment.class_subject.subject.name,
+            "fromTeacherId": str(previous.teacher_membership_id),
+            "toTeacherId": str(assignment.teacher_membership_id),
+            "reason": reason,
+            "transferredByMembershipId": str(ctx.membership.id),
+            "transferredAt": ctx.now,
+            "recordScope": _TRANSFER_SCOPE,
+            "previousAssignmentVersion": max(1, version - 1),
+            "newAssignmentVersion": version,
+        }
 
 
 class StudentSubjectSelectionHandler(EntityHandler):
@@ -257,6 +312,7 @@ HANDLERS = [
     ClassSubjectHandler(),
     CurriculumTopicHandler(),
     TeachingAssignmentHandler(),
+    TeachingTransferHandler(),
     StudentSubjectSelectionHandler(),
     TeacherClassLinkHandler(),
 ]
