@@ -1,4 +1,3 @@
-import uuid
 from datetime import date
 
 from django.db import transaction
@@ -59,18 +58,6 @@ def _academic_class(school, value: str, label: str = "Class"):
     return _same_school(obj, school, label)
 
 
-def _term(session, value: str | None):
-    if not value:
-        return None
-    try:
-        term = AcademicTerm.objects.select_related("session").get(id=value)
-    except (AcademicTerm.DoesNotExist, ValueError, TypeError):
-        raise Rejected("Academic term does not exist.")
-    if term.session_id != session.id:
-        raise Rejected("Academic term does not belong to this session.")
-    return term
-
-
 def _validate_range(starts_on: date, ends_on: date, label: str):
     if ends_on <= starts_on:
         raise Rejected(f"{label} end date must be after its start date.")
@@ -86,9 +73,11 @@ def upsert_academic_session(*, membership, payload: dict) -> AcademicSession:
     ends_on = _date(payload["endsOn"], "endsOn")
     _validate_range(starts_on, ends_on, "Academic session")
     status = payload["status"]
+
     if existing is not None and existing.status == AcademicLifecycleStatus.CLOSED:
         if status != AcademicLifecycleStatus.CLOSED:
             raise Rejected("A closed academic session cannot be reopened.")
+
     if status == AcademicLifecycleStatus.ACTIVE:
         conflict = AcademicSession.objects.filter(
             school=school, status=AcademicLifecycleStatus.ACTIVE
@@ -97,6 +86,10 @@ def upsert_academic_session(*, membership, payload: dict) -> AcademicSession:
             conflict = conflict.exclude(pk=existing.pk)
         if conflict.exists():
             raise Rejected("Close the current academic session before activating another one.")
+
+    if status == AcademicLifecycleStatus.CLOSED and existing is not None:
+        if existing.terms.filter(status=AcademicLifecycleStatus.ACTIVE).exists():
+            raise Rejected("Close the active academic term before closing the session.")
 
     obj, _ = AcademicSession.objects.update_or_create(
         school=school,
@@ -126,9 +119,11 @@ def upsert_academic_term(*, membership, payload: dict) -> AcademicTerm:
     existing = AcademicTerm.objects.select_for_update().filter(
         session=session, id=payload["id"]
     ).first()
+
     if existing is not None and existing.status == AcademicLifecycleStatus.CLOSED:
         if status != AcademicLifecycleStatus.CLOSED:
             raise Rejected("A closed academic term cannot be reopened.")
+
     if status == AcademicLifecycleStatus.ACTIVE:
         conflict = AcademicTerm.objects.filter(
             session=session, status=AcademicLifecycleStatus.ACTIVE
@@ -161,6 +156,29 @@ def upsert_academic_class(*, membership, payload: dict) -> AcademicClass:
     existing = AcademicClass.objects.select_for_update().filter(
         school=school, id=payload["id"]
     ).first()
+
+    if existing is not None:
+        used = EnrollmentAcademicContext.objects.filter(academic_class=existing).exists()
+        if used:
+            immutable_values = (
+                ("code", existing.code, payload["code"]),
+                ("name", existing.name, payload["name"]),
+                ("section", existing.section, payload["section"]),
+                ("level order", existing.level_order, payload["levelOrder"]),
+                ("stream", existing.stream, payload["stream"]),
+            )
+            for label, old, new in immutable_values:
+                if old != new:
+                    raise Rejected(
+                        f"Class {label} cannot be rewritten after the class has enrollment history."
+                    )
+        has_active_students = EnrollmentAcademicContext.objects.filter(
+            academic_class=existing,
+            enrollment__status=EnrollmentStatus.ACTIVE,
+        ).exists()
+        if has_active_students and not payload["isActive"]:
+            raise Rejected("Move or finish the active students before deactivating this class.")
+
     next_class_id = payload.get("nextClassId") or ""
     next_class = None
     if next_class_id:
@@ -169,6 +187,8 @@ def upsert_academic_class(*, membership, payload: dict) -> AcademicClass:
             raise Rejected("A class cannot progress to itself. Use Repeat for same-class progression.")
         if next_class.level_order <= payload["levelOrder"]:
             raise Rejected("Next class must be above the current class in the class order.")
+        if not next_class.is_active:
+            raise Rejected("Next class must be active.")
     if payload["isTerminal"] and next_class is not None:
         raise Rejected("A terminal class cannot also have a next class.")
 
@@ -275,10 +295,10 @@ def academic_context_payload(enrollment: StudentEnrollment):
     except EnrollmentAcademicContext.DoesNotExist:
         return None
     session = context.session
-    term = context.entry_term
     return {
         "session": serialize_session(session),
-        "entryTerm": _serialize_term(term),
+        "entryTerm": _serialize_term(context.entry_term),
+        "currentTerm": _serialize_term(active_term_for_session(session)),
         "academicClass": serialize_class(context.academic_class),
         "source": context.source,
     }
@@ -307,7 +327,18 @@ def _require_context(student, batch):
     return enrollment, context
 
 
-def _lifecycle_event(*, batch, student, workflow, from_class, to_class="", approved_by="", note="", records_pack_ready=False, status=LifecycleStatus.COMPLETED):
+def _lifecycle_event(
+    *,
+    batch,
+    student,
+    workflow,
+    from_class,
+    to_class="",
+    approved_by="",
+    note="",
+    records_pack_ready=False,
+    status=LifecycleStatus.COMPLETED,
+):
     external_id = f"bulk:{batch.external_id}:{student.student_code}"
     now = timezone.now()
     event, _ = StudentLifecycleEvent.objects.update_or_create(
@@ -316,9 +347,7 @@ def _lifecycle_event(*, batch, student, workflow, from_class, to_class="", appro
         defaults={
             "student": student,
             "workflow": workflow,
-            "change": (
-                f"{from_class} → {to_class}" if to_class else workflow
-            ),
+            "change": f"{from_class} → {to_class}" if to_class else workflow,
             "from_class": from_class,
             "to_class": to_class,
             "status": status,
@@ -364,6 +393,10 @@ def upsert_progression_batch(*, membership, payload: dict) -> ProgressionBatch:
         raise Rejected("Bulk progression requires a different destination session.")
     if to_session.starts_on <= from_session.starts_on:
         raise Rejected("Destination session must start after the source session.")
+    if to_session.status == AcademicLifecycleStatus.CLOSED:
+        raise Rejected("A closed academic session cannot receive progression.")
+    if from_session.status == AcademicLifecycleStatus.PLANNED:
+        raise Rejected("A planned session cannot be used as a progression source.")
 
     existing = ProgressionBatch.objects.select_for_update().filter(
         school=school, external_id=payload["id"]
@@ -432,6 +465,12 @@ def apply_progression_batch(batch: ProgressionBatch):
         return batch
     if not batch.approved_by.strip():
         raise Rejected("Academic approver is required before applying a progression batch.")
+    if batch.from_session.status != AcademicLifecycleStatus.CLOSED:
+        raise Rejected(
+            "Close the source academic session before applying end-of-session progression."
+        )
+    if batch.to_session.status == AcademicLifecycleStatus.CLOSED:
+        raise Rejected("A closed destination session cannot receive students.")
 
     decisions = list(
         batch.decisions.select_related("student", "target_class").order_by(
@@ -440,8 +479,7 @@ def apply_progression_batch(batch: ProgressionBatch):
     )
     if not decisions:
         raise Rejected("The progression batch has no student decisions.")
-    holds = [item for item in decisions if item.outcome == ProgressionOutcome.HOLD]
-    if holds:
+    if any(item.outcome == ProgressionOutcome.HOLD for item in decisions):
         raise Rejected("Resolve every Hold decision before applying the progression batch.")
 
     current_students = {
@@ -465,7 +503,7 @@ def apply_progression_batch(batch: ProgressionBatch):
 
     for decision in decisions:
         student = Student.objects.select_for_update().get(pk=decision.student_id)
-        enrollment, _ = _require_context(student, batch)
+        _require_context(student, batch)
         source_name = batch.source_class.name
 
         if decision.outcome == ProgressionOutcome.PROMOTE:
@@ -473,9 +511,13 @@ def apply_progression_batch(batch: ProgressionBatch):
             if target is None:
                 raise Rejected(f"Choose a promotion target for {student.full_name}.")
             if target.school_id != batch.school_id or not target.is_active:
-                raise Rejected(f"Promotion target for {student.full_name} is not an active school class.")
+                raise Rejected(
+                    f"Promotion target for {student.full_name} is not an active school class."
+                )
             if target.level_order <= batch.source_class.level_order:
-                raise Rejected(f"Promotion target for {student.full_name} must be above the source class.")
+                raise Rejected(
+                    f"Promotion target for {student.full_name} must be above the source class."
+                )
             event = _lifecycle_event(
                 batch=batch,
                 student=student,
@@ -487,7 +529,10 @@ def apply_progression_batch(batch: ProgressionBatch):
             )
             _apply_completed_lifecycle(event, now=timezone.now())
             _attach_new_context(
-                student, batch.to_session, target, source=f"bulk:{batch.external_id}:promote"
+                student,
+                batch.to_session,
+                target,
+                source=f"bulk:{batch.external_id}:promote",
             )
             _refresh_private_links(student)
             continue
@@ -507,7 +552,10 @@ def apply_progression_batch(batch: ProgressionBatch):
             )
             _apply_completed_lifecycle(event, now=timezone.now())
             _attach_new_context(
-                student, batch.to_session, batch.source_class, source=f"bulk:{batch.external_id}:repeat"
+                student,
+                batch.to_session,
+                batch.source_class,
+                source=f"bulk:{batch.external_id}:repeat",
             )
             _refresh_private_links(student)
             continue
