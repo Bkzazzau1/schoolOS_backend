@@ -393,16 +393,35 @@ def _complete_enrollment(
     enrollment.save(update_fields=["status", "is_billable", "ended_at"])
 
 
+def _academic_section_for_class(class_name: str, fallback: str) -> str:
+    value = class_name.strip().casefold()
+    if any(token in value for token in ("jss", "sss", "secondary")):
+        return "Secondary"
+    if "primary" in value or value.startswith("pri"):
+        return "Primary"
+    if any(token in value for token in ("nursery", "early years", "kindergarten", "creche")):
+        return "Early Years"
+    return fallback
+
+
 def _new_active_enrollment(*, student: Student, prior: StudentEnrollment, class_name: str, now):
     return StudentEnrollment.objects.create(
         school=student.school,
         student=student,
-        academic_section=prior.academic_section,
+        academic_section=_academic_section_for_class(class_name, prior.academic_section),
         class_name=class_name,
         status=EnrollmentStatus.ACTIVE,
         is_billable=True,
         started_at=now,
     )
+
+
+def _require_current_from_class(event: StudentLifecycleEvent, enrollment: StudentEnrollment) -> None:
+    source = event.from_class.strip()
+    if source and source.casefold() != enrollment.class_name.strip().casefold():
+        raise Rejected(
+            "This progression decision is stale because the student's current class has changed. Cancel it and start a new lifecycle decision from the current class."
+        )
 
 
 @transaction.atomic
@@ -464,6 +483,9 @@ def _apply_completed_lifecycle(event: StudentLifecycleEvent, *, now):
     enrollment = _active_enrollment(student)
     if enrollment is None:
         raise Rejected("This student has no active enrollment to change.")
+
+    if event.workflow in {"Promotion", "Repeat", "Class change"}:
+        _require_current_from_class(event, enrollment)
 
     if event.workflow == "Promotion":
         if not event.approved_by.strip():
