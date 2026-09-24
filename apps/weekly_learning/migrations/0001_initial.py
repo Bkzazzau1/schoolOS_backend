@@ -58,18 +58,18 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="weeklylearningupdate",
-            constraint=models.UniqueConstraint(fields=("class_subject", "term", "week_start"), name="weekly_learning_subject_week_uq"),
+            constraint=models.UniqueConstraint(fields=("class_subject", "term", "week_start"), name="wkly_learn_subject_week_uq"),
         ),
         migrations.AddIndex(
             model_name="weeklylearningupdate",
-            index=models.Index(fields=["school", "week_start", "state"], name="weekly_learning_school_week_idx"),
+            index=models.Index(fields=["school", "week_start", "state"], name="wkly_learn_school_week_idx"),
         ),
         migrations.AddIndex(
             model_name="weeklylearningupdate",
-            index=models.Index(fields=["class_subject", "week_start"], name="weekly_learning_subject_week_idx"),
+            index=models.Index(fields=["class_subject", "week_start"], name="wkly_learn_subject_week_idx"),
         ),
         migrations.AddConstraint(
             model_name="weeklylearningpublication",
-            constraint=models.UniqueConstraint(fields=("update", "revision"), name="weekly_learning_publication_revision_uq"),
+            constraint=models.UniqueConstraint(fields=("update", "revision"), name="wkly_learn_pub_revision_uq"),
         ),
     ]
