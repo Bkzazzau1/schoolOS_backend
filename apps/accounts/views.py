@@ -12,7 +12,8 @@ from .onboarding import register_proprietor_account
 from .throttles import (
     EmailVerificationConfirmThrottle,
     EmailVerificationSendThrottle,
-    LoginThrottle,
+    LoginIdentifierThrottle,
+    LoginNetworkThrottle,
     RegistrationThrottle,
 )
 
@@ -22,7 +23,7 @@ class SchoolOSTokenView(APIView):
 
     authentication_classes = ()
     permission_classes = (AllowAny,)
-    throttle_classes = (LoginThrottle,)
+    throttle_classes = (LoginIdentifierThrottle, LoginNetworkThrottle)
 
     def post(self, request):
         serializer = SchoolOSTokenSerializer(data=request.data)
