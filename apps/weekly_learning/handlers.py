@@ -7,11 +7,14 @@ from apps.sync.registry import EntityHandler, MutationContext
 
 from .services import (
     WEEKLY_LEARNING_ENTITY,
-    parent_can_view_payload,
     replace_current_sync_payload,
     serialize_update,
-    student_can_view_payload,
     upsert_update,
+)
+from .visibility import (
+    parent_visible_payload,
+    student_visible_payload,
+    teacher_can_view_payload,
 )
 
 
@@ -27,15 +30,14 @@ class WeeklyLearningHandler(EntityHandler):
             and str(payload.get("section") or "").strip().casefold() == "secondary"
         ):
             return payload
-        if membership.role == Role.TEACHER and str(membership.id) in {
-            str(payload.get("authorMembershipId") or ""),
-            str(payload.get("currentTeacherId") or ""),
-        }:
+        if teacher_can_view_payload(membership, payload):
             return payload
-        if parent_can_view_payload(membership, payload):
-            return payload
-        if student_can_view_payload(membership, payload):
-            return payload
+        parent_payload = parent_visible_payload(membership, payload)
+        if parent_payload is not None:
+            return parent_payload
+        student_payload = student_visible_payload(membership, payload)
+        if student_payload is not None:
+            return student_payload
         return None
 
     def clean(self, ctx: MutationContext) -> dict[str, Any]:
