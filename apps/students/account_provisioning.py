@@ -1,3 +1,5 @@
+import re
+
 from django.db import transaction
 
 from apps.accounts.identity import (
@@ -14,11 +16,60 @@ from apps.schools.models import Membership, Role
 from .models import GuardianLink, Student, StudentRegistration
 
 
-def _split_person_name(value: str) -> tuple[str, str]:
+_NAME_TITLES = {
+    "alhaji",
+    "hajiya",
+    "hajia",
+    "mallam",
+    "malam",
+    "mr",
+    "mrs",
+    "miss",
+    "ms",
+    "dr",
+    "engr",
+    "engineer",
+    "prof",
+    "professor",
+}
+
+
+def _name_parts(value: str) -> list[str]:
     parts = [part for part in value.strip().split() if part]
+    while parts and re.sub(r"[^a-z]", "", parts[0].casefold()) in _NAME_TITLES:
+        parts.pop(0)
+    return parts
+
+
+def _split_person_name(value: str) -> tuple[str, str]:
+    parts = _name_parts(value)
     if not parts:
         return "", ""
     return parts[0], " ".join(parts[1:])
+
+
+def _normalized_person_name(value: str) -> str:
+    return " ".join(
+        re.sub(r"[^a-z0-9]", "", part.casefold())
+        for part in _name_parts(value)
+        if re.sub(r"[^a-z0-9]", "", part.casefold())
+    )
+
+
+def _user_name(user: User) -> str:
+    return " ".join(value for value in [user.first_name, user.last_name] if value).strip()
+
+
+def _require_same_parent(user: User, guardian_name: str) -> None:
+    """Refuse silently attaching a recycled/shared phone to a different person."""
+
+    stored = _normalized_person_name(_user_name(user))
+    supplied = _normalized_person_name(guardian_name)
+    if stored and supplied and stored != supplied:
+        raise Rejected(
+            "This phone number already belongs to a different SchoolOS parent account. "
+            "Verify the guardian name or phone number before completing registration."
+        )
 
 
 def _ensure_membership(*, user, school, role):
@@ -103,12 +154,16 @@ def _parent_account(registration: StudentRegistration, guardian: GuardianLink):
     )
     if identity is not None:
         user = identity.user
+        _require_same_parent(user, guardian.name)
     elif guardian.account_user_id:
         user = guardian.account_user
+        _require_same_parent(user, guardian.name)
     else:
         clean_email = guardian.email.strip().lower()
         user = User.objects.filter(email__iexact=clean_email).first() if clean_email else None
-        if user is None:
+        if user is not None:
+            _require_same_parent(user, guardian.name)
+        else:
             first_name, last_name = _split_person_name(guardian.name)
             if not first_name:
                 raise Rejected("Guardian first name is required to create the initial password.")
@@ -146,7 +201,8 @@ def provision_registration_accounts(
 
     Student login ID = admission number.
     Parent login ID = normalized guardian phone.
-    Initial password = the person's first name. New school-provisioned accounts
+    Initial password = the person's first name. Honorifics such as Alhaji/Hajiya
+    are not treated as the parent's first name. New school-provisioned accounts
     carry ``must_change_password``; an existing/reused account is never reset.
     """
 
