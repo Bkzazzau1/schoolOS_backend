@@ -16,6 +16,7 @@ from apps.sync.models import SyncRecord
 
 from .models import GuardianLink, Student, StudentRegistration
 from .parent_sync import PARENT_FAMILY_LINK_ENTITY
+from .student_sync import publish_student_class_link
 
 
 _NAME_TITLES = {
@@ -260,6 +261,7 @@ def provision_registration_accounts(
     """
 
     _student_account(student)
+    publish_student_class_link(student, actor=registration.created_by)
     _, parent_login = _parent_account(registration, guardian)
     return {
         "studentLoginId": student.admission_number,
