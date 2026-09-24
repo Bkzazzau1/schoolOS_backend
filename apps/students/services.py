@@ -393,6 +393,18 @@ def _complete_enrollment(
     enrollment.save(update_fields=["status", "is_billable", "ended_at"])
 
 
+def _new_active_enrollment(*, student: Student, prior: StudentEnrollment, class_name: str, now):
+    return StudentEnrollment.objects.create(
+        school=student.school,
+        student=student,
+        academic_section=prior.academic_section,
+        class_name=class_name,
+        status=EnrollmentStatus.ACTIVE,
+        is_billable=True,
+        started_at=now,
+    )
+
+
 @transaction.atomic
 def upsert_lifecycle_from_sync(*, membership, payload: dict) -> StudentLifecycleEvent:
     school = membership.school
@@ -456,17 +468,39 @@ def _apply_completed_lifecycle(event: StudentLifecycleEvent, *, now):
     if event.workflow == "Promotion":
         if not event.approved_by.strip():
             raise Rejected("A promotion requires the academic approver's name.")
-        if not event.to_class.strip():
+        destination = event.to_class.strip()
+        if not destination:
             raise Rejected("A promotion requires the destination class.")
+        if destination.casefold() == enrollment.class_name.strip().casefold():
+            raise Rejected(
+                "Promotion must move to a different class. Use Repeat when the student remains in the same class."
+            )
         _complete_enrollment(enrollment, status=EnrollmentStatus.COMPLETED, ended_at=now)
-        StudentEnrollment.objects.create(
-            school=student.school,
+        _new_active_enrollment(
             student=student,
-            academic_section=enrollment.academic_section,
-            class_name=event.to_class,
-            status=EnrollmentStatus.ACTIVE,
-            is_billable=True,
-            started_at=now,
+            prior=enrollment,
+            class_name=destination,
+            now=now,
+        )
+        if student.status == StudentStatus.TRANSFER_PENDING:
+            student.status = StudentStatus.ACTIVE
+            student.save(update_fields=["status", "updated_at"])
+        return
+
+    if event.workflow == "Repeat":
+        if not event.approved_by.strip():
+            raise Rejected("A repeat decision requires the academic approver's name.")
+        requested_class = event.to_class.strip() or enrollment.class_name.strip()
+        if requested_class.casefold() != enrollment.class_name.strip().casefold():
+            raise Rejected(
+                "Repeat must keep the student in the same class. Use Promotion or Class change for a different class."
+            )
+        _complete_enrollment(enrollment, status=EnrollmentStatus.COMPLETED, ended_at=now)
+        _new_active_enrollment(
+            student=student,
+            prior=enrollment,
+            class_name=enrollment.class_name,
+            now=now,
         )
         if student.status == StudentStatus.TRANSFER_PENDING:
             student.status = StudentStatus.ACTIVE
@@ -474,17 +508,19 @@ def _apply_completed_lifecycle(event: StudentLifecycleEvent, *, now):
         return
 
     if event.workflow == "Class change":
-        if not event.to_class.strip():
+        destination = event.to_class.strip()
+        if not destination:
             raise Rejected("A class change requires the destination class.")
+        if destination.casefold() == enrollment.class_name.strip().casefold():
+            raise Rejected(
+                "The student is already in that class. Use Repeat only for an academic repeat decision."
+            )
         _complete_enrollment(enrollment, status=EnrollmentStatus.COMPLETED, ended_at=now)
-        StudentEnrollment.objects.create(
-            school=student.school,
+        _new_active_enrollment(
             student=student,
-            academic_section=enrollment.academic_section,
-            class_name=event.to_class,
-            status=EnrollmentStatus.ACTIVE,
-            is_billable=True,
-            started_at=now,
+            prior=enrollment,
+            class_name=destination,
+            now=now,
         )
         return
 
