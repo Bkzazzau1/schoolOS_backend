@@ -4,46 +4,85 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Q
 
 from apps.academics.curriculum_services import upsert_class_subject, upsert_subject
-from apps.academics.models import AcademicClass, AcademicLifecycleStatus, AcademicSession, CurriculumRequirement, Subject
+from apps.academics.models import (
+    AcademicClass,
+    AcademicLifecycleStatus,
+    AcademicSession,
+    CurriculumRequirement,
+    Subject,
+)
 from apps.schools.models import Membership, Role, School
 
 
 class Command(BaseCommand):
-    help = "Bootstrap an explicit school curriculum from JSON. Safe to rerun; no default curriculum is invented."
+    help = (
+        "Bootstrap an explicit school curriculum from JSON. Safe to rerun; "
+        "no default curriculum is invented."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument("--school", required=True, help="School UUID or slug")
-        parser.add_argument("--session", required=True, help="Academic session UUID or code")
+        parser.add_argument(
+            "--session",
+            required=True,
+            help="Academic session UUID or code",
+        )
         parser.add_argument("--file", required=True, help="Curriculum JSON manifest")
-        parser.add_argument("--actor-membership", help="Optional active Administrator/Proprietor/Principal membership UUID")
+        parser.add_argument(
+            "--actor-membership",
+            help=(
+                "Optional active Administrator/Proprietor/Principal "
+                "membership UUID"
+            ),
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
         school = self._school(options["school"])
         session = self._session(school, options["session"])
         if session.status == AcademicLifecycleStatus.CLOSED:
-            raise CommandError("Closed academic sessions are historical and cannot be changed.")
+            raise CommandError(
+                "Closed academic sessions are historical and cannot be changed."
+            )
         actor = self._actor(school, options.get("actor_membership"))
         manifest = self._manifest(options["file"])
         subjects = manifest.get("subjects")
         curriculum = manifest.get("curriculum")
         if not isinstance(subjects, list) or not isinstance(curriculum, list):
-            raise CommandError("Manifest must contain 'subjects' and 'curriculum' lists.")
+            raise CommandError(
+                "Manifest must contain 'subjects' and 'curriculum' lists."
+            )
 
         by_code = {}
         for index, raw in enumerate(subjects, 1):
             if not isinstance(raw, dict):
                 raise CommandError(f"subjects[{index}] must be an object.")
-            code = self._text(raw, "code", f"subjects[{index}]")
-            name = self._text(raw, "name", f"subjects[{index}]")
-            matches = list(Subject.objects.filter(school=school, code__iexact=code)[:2])
+            location = f"subjects[{index}]"
+            code = self._text(raw, "code", location)
+            name = self._text(raw, "name", location)
+            matches = list(
+                Subject.objects.filter(school=school)
+                .filter(Q(code__iexact=code) | Q(name__iexact=name))
+                .order_by("id")[:3]
+            )
             if len(matches) > 1:
-                raise CommandError(f"Subject code {code!r} is ambiguous.")
+                raise CommandError(
+                    f"{location} is ambiguous: its code/name resolve to multiple "
+                    "canonical Subjects."
+                )
             existing = matches[0] if matches else None
-            if existing is not None and existing.name.lower() != name.lower():
-                raise CommandError(f"Subject {code!r} already exists as {existing.name!r}; refusing identity rewrite.")
+            if existing is not None and (
+                existing.code.casefold() != code.casefold()
+                or existing.name.casefold() != name.casefold()
+            ):
+                raise CommandError(
+                    f"{location} conflicts with existing Subject "
+                    f"{existing.code!r} / {existing.name!r}; refusing an identity "
+                    "rewrite or merge."
+                )
             subject = upsert_subject(
                 membership=actor,
                 payload={
@@ -52,35 +91,74 @@ class Command(BaseCommand):
                     "name": name,
                     "shortName": str(raw.get("shortName") or "").strip(),
                     "section": str(raw.get("section") or "").strip(),
-                    "isActive": self._bool(raw, "isActive", True, f"subjects[{index}]"),
+                    "isActive": self._bool(raw, "isActive", True, location),
                 },
             )
-            key = subject.code.lower()
+            key = subject.code.casefold()
             if key in by_code:
-                raise CommandError(f"Duplicate subject code in manifest: {subject.code!r}.")
+                raise CommandError(
+                    f"Duplicate subject code in manifest: {subject.code!r}."
+                )
             by_code[key] = subject
 
         seen = set()
         for index, raw in enumerate(curriculum, 1):
             if not isinstance(raw, dict):
                 raise CommandError(f"curriculum[{index}] must be an object.")
-            class_code = self._text(raw, "classCode", f"curriculum[{index}]")
-            subject_code = self._text(raw, "subjectCode", f"curriculum[{index}]")
-            requirement = self._text(raw, "requirement", f"curriculum[{index}]").lower()
-            if requirement not in {CurriculumRequirement.COMPULSORY, CurriculumRequirement.ELECTIVE}:
-                raise CommandError(f"curriculum[{index}].requirement must be compulsory or elective.")
+            location = f"curriculum[{index}]"
+            class_code = self._text(raw, "classCode", location)
+            subject_code = self._text(raw, "subjectCode", location)
+            requirement = self._text(raw, "requirement", location).lower()
+            if requirement not in {
+                CurriculumRequirement.COMPULSORY,
+                CurriculumRequirement.ELECTIVE,
+            }:
+                raise CommandError(
+                    f"{location}.requirement must be compulsory or elective."
+                )
             periods = raw.get("periodsPerWeek")
-            if not isinstance(periods, int) or isinstance(periods, bool) or periods < 1:
-                raise CommandError(f"curriculum[{index}].periodsPerWeek must be a positive integer.")
-            academic_class = AcademicClass.objects.filter(school=school, code__iexact=class_code).first()
-            if academic_class is None:
-                raise CommandError(f"Unknown class code {class_code!r}.")
-            subject = by_code.get(subject_code.lower()) or Subject.objects.filter(school=school, code__iexact=subject_code).first()
+            if (
+                not isinstance(periods, int)
+                or isinstance(periods, bool)
+                or periods < 1
+            ):
+                raise CommandError(
+                    f"{location}.periodsPerWeek must be a positive integer."
+                )
+
+            class_matches = list(
+                AcademicClass.objects.filter(
+                    school=school,
+                    code__iexact=class_code,
+                )[:2]
+            )
+            if len(class_matches) != 1:
+                raise CommandError(
+                    f"{location} class code {class_code!r} must resolve to exactly "
+                    "one canonical AcademicClass."
+                )
+            academic_class = class_matches[0]
+
+            subject = by_code.get(subject_code.casefold())
             if subject is None:
-                raise CommandError(f"Unknown subject code {subject_code!r}.")
+                subject_matches = list(
+                    Subject.objects.filter(
+                        school=school,
+                        code__iexact=subject_code,
+                    )[:2]
+                )
+                if len(subject_matches) != 1:
+                    raise CommandError(
+                        f"{location} subject code {subject_code!r} must resolve to "
+                        "exactly one canonical Subject or be declared in the manifest."
+                    )
+                subject = subject_matches[0]
+
             identity = (academic_class.id, subject.id)
             if identity in seen:
-                raise CommandError(f"Duplicate curriculum entry for {class_code}/{subject_code}.")
+                raise CommandError(
+                    f"Duplicate curriculum entry for {class_code}/{subject_code}."
+                )
             seen.add(identity)
             upsert_class_subject(
                 membership=actor,
@@ -90,11 +168,15 @@ class Command(BaseCommand):
                     "subjectId": str(subject.id),
                     "requirement": requirement,
                     "periodsPerWeek": periods,
-                    "isActive": self._bool(raw, "isActive", True, f"curriculum[{index}]"),
+                    "isActive": self._bool(raw, "isActive", True, location),
                 },
             )
 
-        self.stdout.write(self.style.SUCCESS(f"Curriculum bootstrap complete for {school.name} / {session.name}."))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Curriculum bootstrap complete for {school.name} / {session.name}."
+            )
+        )
 
     @staticmethod
     def _text(raw, key, location):
@@ -137,10 +219,16 @@ class Command(BaseCommand):
     @staticmethod
     def _session(school, value):
         try:
-            session = AcademicSession.objects.filter(school=school, id=uuid.UUID(str(value))).first()
+            session = AcademicSession.objects.filter(
+                school=school,
+                id=uuid.UUID(str(value)),
+            ).first()
         except (ValueError, TypeError, AttributeError):
             session = None
-        session = session or AcademicSession.objects.filter(school=school, code=value).first()
+        session = session or AcademicSession.objects.filter(
+            school=school,
+            code=value,
+        ).first()
         if session is None:
             raise CommandError(f"Session {value!r} not found in {school.name}.")
         return session
@@ -152,12 +240,30 @@ class Command(BaseCommand):
                 actor_id = uuid.UUID(str(explicit))
             except (ValueError, TypeError, AttributeError) as exc:
                 raise CommandError("--actor-membership must be a UUID.") from exc
-            actor = Membership.objects.filter(id=actor_id, school=school, is_active=True).first()
-            if actor is None or actor.role not in {Role.ADMINISTRATOR, Role.PROPRIETOR, Role.PRINCIPAL}:
-                raise CommandError("Actor must be an active Administrator, Proprietor, or Principal in this school.")
+            actor = Membership.objects.filter(
+                id=actor_id,
+                school=school,
+                is_active=True,
+            ).first()
+            if actor is None or actor.role not in {
+                Role.ADMINISTRATOR,
+                Role.PROPRIETOR,
+                Role.PRINCIPAL,
+            }:
+                raise CommandError(
+                    "Actor must be an active Administrator, Proprietor, or "
+                    "Principal in this school."
+                )
             return actor
         for role in (Role.ADMINISTRATOR, Role.PROPRIETOR, Role.PRINCIPAL):
-            actor = Membership.objects.filter(school=school, role=role, is_active=True).order_by("created_at").first()
+            actor = Membership.objects.filter(
+                school=school,
+                role=role,
+                is_active=True,
+            ).order_by("created_at").first()
             if actor is not None:
                 return actor
-        raise CommandError("No active Administrator, Proprietor, or Principal can own the bootstrap changes.")
+        raise CommandError(
+            "No active Administrator, Proprietor, or Principal can own the "
+            "bootstrap changes."
+        )
