@@ -5,7 +5,7 @@ from apps.alumni.models import AlumniVerificationEvent
 from apps.billing.models import SchoolBillingMeterSnapshot
 
 from .alumni_bridge import graduate_canonical_student_from_alumni_transition
-from .models import EnrollmentStatus, StudentEnrollment
+from .models import StudentEnrollment
 from .student_sync import publish_student_class_link
 
 
@@ -21,10 +21,8 @@ def mirror_alumni_transition_to_student_roster(sender, instance, created, **kwar
 
 @receiver(post_save, sender=StudentEnrollment)
 def refresh_student_class_link(sender, instance, created, **kwargs):
-    """Keep the Student workspace on the canonical active class after movement."""
+    """Publish the active class, or revoke the old link when enrollment closes."""
 
-    if instance.status != EnrollmentStatus.ACTIVE:
-        return
     publish_student_class_link(instance.student)
 
 
