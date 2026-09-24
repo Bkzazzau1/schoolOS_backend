@@ -191,7 +191,7 @@ class TeacherTimetableIntentHandler(EntityHandler):
                     external_id=lesson_id,
                     is_active=True,
                 )
-                .select_related("class_subject__academic_class")
+                .select_related("class_subject__academic_class", "term")
                 .first()
             )
             if entry is None:
@@ -201,8 +201,17 @@ class TeacherTimetableIntentHandler(EntityHandler):
                 teacher_membership=ctx.membership,
                 ended_at__isnull=True,
             ).exists()
-            if not owns:
-                raise Rejected("A Teacher may report only their own assigned timetable lesson.")
+            substitutes = TimetableOverride.objects.filter(
+                timetable_entry=entry,
+                substitute_teacher_membership=ctx.membership,
+                is_cancelled=False,
+                lesson_date__gte=entry.term.starts_on,
+                lesson_date__lte=entry.term.ends_on,
+            ).exists()
+            if not owns and not substitutes:
+                raise Rejected(
+                    "A Teacher may report only a timetable lesson they own or are assigned to cover."
+                )
             sections.add(entry.class_subject.academic_class.section.strip().casefold())
         else:
             sections.update(
