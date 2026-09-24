@@ -11,8 +11,9 @@ class StudentsConfig(AppConfig):
         from apps.sync import registry
 
         from .handlers import HANDLERS
+        from .parent_sync import HANDLER as PARENT_FAMILY_LINK_HANDLER
 
-        for handler in HANDLERS:
+        for handler in [*HANDLERS, PARENT_FAMILY_LINK_HANDLER]:
             registry.register(handler)
 
         # Register cross-domain hooks only after Django has loaded every app.
