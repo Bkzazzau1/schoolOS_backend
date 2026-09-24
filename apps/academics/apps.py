@@ -8,10 +8,6 @@ class AcademicsConfig(AppConfig):
     verbose_name = "SchoolOS Academics"
 
     def ready(self):
-        # The curriculum models live in a separate module to keep the original
-        # session/progression model file readable. Importing them here registers
-        # them with Django before any request or sync work is processed.
-        from . import curriculum_models  # noqa: F401
         from apps.sync import registry
 
         from .handlers import HANDLERS
