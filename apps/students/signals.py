@@ -5,7 +5,7 @@ from apps.alumni.models import AlumniVerificationEvent
 from apps.billing.models import SchoolBillingMeterSnapshot
 
 from .alumni_bridge import graduate_canonical_student_from_alumni_transition
-from .models import StudentEnrollment
+from .models import Student, StudentEnrollment
 from .parent_sync import publish_parent_family_links_for_student
 from .student_sync import publish_student_class_link
 
@@ -26,6 +26,14 @@ def refresh_student_workspace_links(sender, instance, created, **kwargs):
 
     publish_student_class_link(instance.student)
     publish_parent_family_links_for_student(instance.student)
+
+
+@receiver(post_save, sender=Student)
+def refresh_student_identity_links(sender, instance, created, **kwargs):
+    """Keep profile/status changes aligned with private Student/Parent workspaces."""
+
+    publish_student_class_link(instance)
+    publish_parent_family_links_for_student(instance)
 
 
 @receiver(pre_save, sender=SchoolBillingMeterSnapshot)
