@@ -9,6 +9,7 @@ from apps.accounts.identity import (
     resolve_login_user,
 )
 from apps.accounts.models import LoginIdentity, LoginIdentityKind
+from apps.organizations.models import OrganizationMembership
 from apps.schools.models import Membership, Role
 from apps.students.models import GuardianLink, Student, StudentRegistration
 from apps.sync.models import SyncRecord
@@ -99,6 +100,25 @@ def _primary_guardian(student: Student) -> GuardianLink:
             "The guardian exists, but the Parent login account has not been provisioned yet."
         )
     return guardian
+
+
+def _require_dedicated_role_account(user, role: str) -> None:
+    """Never overwrite credentials belonging to another SchoolOS role/account."""
+
+    has_other_school_role = Membership.objects.filter(
+        user=user,
+        is_active=True,
+    ).exclude(role=role).exists()
+    has_account_role = OrganizationMembership.objects.filter(
+        user=user,
+        is_active=True,
+    ).exists()
+    if user.is_staff or user.is_superuser or has_other_school_role or has_account_role:
+        label = "Parent" if role == Role.PARENT else "Student"
+        raise CredentialManagementError(
+            f"This {label} login is shared with another SchoolOS role or account. "
+            "Do not reset or rename the shared credentials from the Student/Parent recovery workflow."
+        )
 
 
 def _require_parent_phone_scoped_to_school(user, school) -> None:
@@ -248,6 +268,7 @@ def reset_student_credentials(*, student: Student, actor: Membership) -> dict:
     if student.account_user_id is None:
         raise CredentialManagementError("The Student login account has not been provisioned yet.")
     user = student.account_user
+    _require_dedicated_role_account(user, Role.STUDENT)
     _reset_user_password(user=user, temporary_password=student.first_name)
     _resolve_pending(
         user=user,
@@ -269,6 +290,7 @@ def reset_parent_credentials(*, student: Student, actor: Membership) -> dict:
     student = Student.objects.select_for_update().get(pk=student.pk)
     guardian = _primary_guardian(student)
     user = guardian.account_user
+    _require_dedicated_role_account(user, Role.PARENT)
     first_name = user.first_name.strip() or _person_first_name(guardian.name)
     _reset_user_password(user=user, temporary_password=first_name)
     _resolve_pending(
@@ -291,6 +313,7 @@ def change_parent_phone(*, student: Student, actor: Membership, new_phone: str |
     student = Student.objects.select_for_update().get(pk=student.pk)
     guardian = _primary_guardian(student)
     user = guardian.account_user
+    _require_dedicated_role_account(user, Role.PARENT)
     _require_parent_phone_scoped_to_school(user, student.school)
 
     normalized = normalize_parent_phone(new_phone)
