@@ -6,6 +6,7 @@ from apps.billing.models import SchoolBillingMeterSnapshot
 
 from .alumni_bridge import graduate_canonical_student_from_alumni_transition
 from .models import StudentEnrollment
+from .parent_sync import publish_parent_family_links_for_student
 from .student_sync import publish_student_class_link
 
 
@@ -20,10 +21,11 @@ def mirror_alumni_transition_to_student_roster(sender, instance, created, **kwar
 
 
 @receiver(post_save, sender=StudentEnrollment)
-def refresh_student_class_link(sender, instance, created, **kwargs):
-    """Publish the active class, or revoke the old link when enrollment closes."""
+def refresh_student_workspace_links(sender, instance, created, **kwargs):
+    """Republish canonical class/progression state whenever enrollment changes."""
 
     publish_student_class_link(instance.student)
+    publish_parent_family_links_for_student(instance.student)
 
 
 @receiver(pre_save, sender=SchoolBillingMeterSnapshot)
