@@ -10,9 +10,11 @@ class AcademicsConfig(AppConfig):
     def ready(self):
         from apps.sync import registry
 
+        from .curriculum_handlers import HANDLERS as CURRICULUM_HANDLERS
         from .handlers import HANDLERS
+        from .syllabus_handlers import HANDLERS as SYLLABUS_HANDLERS
 
-        for handler in HANDLERS:
+        for handler in [*HANDLERS, *CURRICULUM_HANDLERS, *SYLLABUS_HANDLERS]:
             registry.register(handler)
 
         from . import signals  # noqa: F401

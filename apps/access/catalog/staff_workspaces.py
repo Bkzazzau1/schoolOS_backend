@@ -55,6 +55,7 @@ ADMINISTRATOR = workspace(
         ("registration", "Student Registration"),
         ("students", "Students & Families"),
         ("academics", "Academic Structure"),
+        ("curriculum", "Subjects & Curriculum"),
         ("alumni", "Alumni Management", "sensitive"),
         ("staff", "Staff Records"),
         ("staff-profiles", "Staff Profiles", "sensitive"),

@@ -115,6 +115,13 @@ def _primary_guardian(student):
     )
 
 
+def _subject_eligibility(student):
+    # Imported lazily to avoid an academics <-> students module import cycle.
+    from apps.academics.curriculum_services import subject_eligibility_payload
+
+    return subject_eligibility_payload(student)
+
+
 def student_workspace_payload(student) -> dict:
     """Private canonical profile delivered only to this Student membership."""
 
@@ -137,6 +144,7 @@ def student_workspace_payload(student) -> dict:
         "className": current.class_name if current else None,
         "enrollmentActive": current is not None,
         "currentAcademicContext": _academic_context(current),
+        "subjectEligibility": _subject_eligibility(student),
         "primaryGuardian": guardian.name if guardian else None,
         "guardianRelationship": guardian.relationship if guardian else None,
         "enrollmentHistory": _enrollment_history(student),
@@ -160,6 +168,7 @@ def parent_child_workspace_payload(student) -> dict:
         "academicSection": current.academic_section if current else None,
         "className": current.class_name if current else None,
         "currentAcademicContext": _academic_context(current),
+        "subjectEligibility": _subject_eligibility(student),
         "enrollmentHistory": _enrollment_history(student),
         "progressionHistory": _progression_history(student),
     }
