@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "apps.core",
     "apps.accounts",
+    "apps.credentials",
     "apps.organizations",
     "apps.billing",
     "apps.schools",
