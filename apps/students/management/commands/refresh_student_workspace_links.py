@@ -13,12 +13,13 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         refreshed = 0
-        for student in (
-            Student.objects.select_related("school", "account_user")
-            .prefetch_related("enrollments", "guardians", "lifecycle_events")
-            .iterator()
-        ):
+        students = Student.objects.select_related("school", "account_user")
+        for student in students.iterator(chunk_size=200):
             publish_student_class_link(student)
             publish_parent_family_links_for_student(student)
             refreshed += 1
-        self.stdout.write(self.style.SUCCESS(f"Refreshed {refreshed} student workspace link(s)."))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Refreshed {refreshed} student workspace link(s)."
+            )
+        )
