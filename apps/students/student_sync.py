@@ -5,7 +5,6 @@ from apps.schools.models import Membership, Role
 from apps.sync.models import SyncRecord
 from apps.sync.registry import EntityHandler
 
-from .models import EnrollmentStatus
 from .workspace_payloads import student_workspace_payload
 
 
@@ -55,23 +54,11 @@ def publish_student_class_link(student, *, actor=None) -> None:
         )
         .first()
     )
-    enrollment = (
-        student.enrollments.filter(status=EnrollmentStatus.ACTIVE)
-        .order_by("-started_at", "-id")
-        .first()
-    )
 
-    if enrollment is None:
-        # The pupil left the active roster. Publish a tombstone so every device
-        # removes the previous class assignment rather than continuing to show
-        # class-scoped CBTs or resources from the old enrollment.
-        if record is not None and not record.deleted:
-            record.deleted = True
-            record.version += 1
-            record.updated_by = actor
-            record.save(update_fields=["deleted", "version", "updated_by"])
-        return
-
+    # Keep the private profile/history after transfer, withdrawal or graduation,
+    # but student_workspace_payload removes className/enrollmentActive when no
+    # active enrollment exists. Class-based resources therefore stop resolving
+    # without erasing the pupil's historical record.
     payload = {
         "studentMembershipId": str(membership.id),
         **student_workspace_payload(student),
