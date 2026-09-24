@@ -6,13 +6,40 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.organizations.services import serialize_organization_membership
 
+from .authentication import SchoolOSTokenSerializer, complete_initial_password
 from .email_verification import confirm_email_verification, issue_email_verification
 from .onboarding import register_proprietor_account
 from .throttles import (
     EmailVerificationConfirmThrottle,
     EmailVerificationSendThrottle,
+    LoginIdentifierThrottle,
+    LoginNetworkThrottle,
     RegistrationThrottle,
 )
+
+
+class SchoolOSTokenView(APIView):
+    """Sign in with email, student admission ID, or parent phone number."""
+
+    authentication_classes = ()
+    permission_classes = (AllowAny,)
+    throttle_classes = (LoginIdentifierThrottle, LoginNetworkThrottle)
+
+    def post(self, request):
+        serializer = SchoolOSTokenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+
+class InitialPasswordChangeView(APIView):
+    """Replace the simple bootstrap password after first successful sign-in."""
+
+    def post(self, request):
+        complete_initial_password(request.user, request.data.get("newPassword"))
+        return Response(
+            {"changed": True, "mustChangePassword": False},
+            status=status.HTTP_200_OK,
+        )
 
 
 class ProprietorRegisterView(APIView):

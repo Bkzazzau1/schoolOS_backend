@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
@@ -100,10 +101,19 @@ class Student(models.Model):
 
     The UUID is safe for QR/barcode references. Admission number and student code
     are permanent school-facing identifiers and are never reused within a school.
+    ``account_user`` links the roster identity to the automatically provisioned
+    Student login without making account existence the roster authority.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="students")
+    account_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="student_profiles",
+    )
     admission_number = models.CharField(max_length=80)
     student_code = models.CharField(max_length=80)
     first_name = models.CharField(max_length=120)
@@ -176,7 +186,7 @@ class StudentRegistration(models.Model):
     surname = models.CharField(max_length=120)
     other_name = models.CharField(max_length=160, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
-    gender = models.CharField(max_length=40, blank=True)
+    gender = models.CharField(max_length=40)
     academic_section = models.CharField(max_length=80)
     proposed_class = models.CharField(max_length=120)
     previous_school = models.CharField(max_length=200, blank=True)
@@ -236,6 +246,13 @@ class GuardianLink(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     student = models.ForeignKey(
         Student, on_delete=models.CASCADE, related_name="guardians"
+    )
+    account_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="guardian_links",
     )
     name = models.CharField(max_length=200)
     relationship = models.CharField(max_length=60, blank=True)

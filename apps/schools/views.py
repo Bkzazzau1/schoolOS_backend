@@ -47,12 +47,16 @@ class MeView(APIView):
             if onboarding_applicable
             else 0
         )
+        public_email = request.user.email
+        if public_email.endswith("@accounts.schoolos.invalid"):
+            public_email = ""
 
         return Response(
             {
                 "id": str(request.user.id),
-                "email": request.user.email,
+                "email": public_email,
                 "name": request.user.get_full_name(),
+                "mustChangePassword": bool(request.user.must_change_password),
                 "emailVerified": email_verified,
                 "onboarding": {
                     "applicable": onboarding_applicable,

@@ -2,6 +2,7 @@ import uuid
 
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
+from django.conf import settings
 from django.db import models
 
 
@@ -40,6 +41,12 @@ class User(AbstractUser):
     username = None
     email = models.EmailField(unique=True)
 
+    # System-provisioned student/parent accounts start with the school's simple
+    # bootstrap password rule and must replace it after their first successful
+    # sign-in. Existing staff/owner accounts are never reset when a new school
+    # membership is attached to them.
+    must_change_password = models.BooleanField(default=False)
+
     # Verification codes are never stored in plaintext. These fields hold only
     # the digest and lifecycle metadata for the currently active code.
     email_verified_at = models.DateTimeField(null=True, blank=True)
@@ -59,3 +66,43 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+
+
+class LoginIdentityKind(models.TextChoices):
+    STUDENT_ADMISSION = "student_admission", "Student admission ID"
+    PARENT_PHONE = "parent_phone", "Parent phone number"
+
+
+class LoginIdentity(models.Model):
+    """A non-email credential name that resolves to one SchoolOS user.
+
+    Email remains the normal account identity for proprietors/staff. Canonical
+    student activation adds the admission-number identity; guardian provisioning
+    adds the normalized phone identity. ``normalized_identifier`` is globally
+    unique per kind because sign-in happens before a school tenant is selected.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="login_identities",
+    )
+    kind = models.CharField(max_length=32, choices=LoginIdentityKind.choices)
+    identifier = models.CharField(max_length=160)
+    normalized_identifier = models.CharField(max_length=160)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kind", "normalized_identifier"],
+                name="unique_login_identity_by_kind",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["user", "kind"], name="login_identity_user_kind_idx")
+        ]
+
+    def __str__(self):
+        return f"{self.kind} · {self.identifier}"

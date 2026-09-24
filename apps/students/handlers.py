@@ -4,6 +4,7 @@ from apps.core.errors import Rejected
 from apps.core.validation import boolean, choice, text
 from apps.sync.registry import EntityHandler, MutationContext
 
+from .account_provisioning import provision_registration_accounts
 from .models import (
     AdmissionDocumentStatus,
     AdmissionStage,
@@ -214,6 +215,12 @@ class StudentRegistrationHandler(EntityHandler):
         if registration.status != RegistrationStatus.ACTIVE or registration.student_id is None:
             raise Rejected("The student registration could not be activated.")
 
+        student = registration.student
+        guardian = student.guardians.filter(phone=registration.guardian_phone).first()
+        if guardian is None:
+            raise Rejected("The primary guardian could not be linked to the student account.")
+        credentials = provision_registration_accounts(registration, student, guardian)
+
         # Enrich the same accepted sync version after canonical activation. This
         # direct update deliberately does not allocate another sync sequence: it
         # is server-owned output of this mutation, not a second mutation.
@@ -225,6 +232,8 @@ class StudentRegistrationHandler(EntityHandler):
             "studentId": registration.student_code,
             "canonicalActive": True,
             "canonicalStudentId": str(registration.student_id),
+            "credentialsProvisioned": True,
+            **credentials,
         }
         SyncRecord.objects.filter(
             school=ctx.membership.school,
