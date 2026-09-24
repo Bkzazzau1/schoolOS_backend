@@ -63,7 +63,7 @@ class CredentialRecoveryRequest(models.Model):
         indexes = [
             models.Index(
                 fields=["school", "status", "created_at"],
-                name="credentials_recovery_school_status_idx",
+                name="cred_rec_school_status_idx",
             )
         ]
 
@@ -101,7 +101,7 @@ class CredentialAuditEvent(models.Model):
         indexes = [
             models.Index(
                 fields=["school", "user", "created_at"],
-                name="credentials_audit_school_user_idx",
+                name="cred_audit_school_user_idx",
             )
         ]
 
