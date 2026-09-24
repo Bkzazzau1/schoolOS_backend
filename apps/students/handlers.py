@@ -7,11 +7,14 @@ from apps.sync.registry import EntityHandler, MutationContext
 from .models import (
     AdmissionDocumentStatus,
     AdmissionStage,
-    LifecycleStatus,
     RegistrationStatus,
     StudentRegistration,
 )
-from .services import upsert_admission_from_sync, upsert_lifecycle_from_sync, upsert_registration_from_sync
+from .services import (
+    upsert_admission_from_sync,
+    upsert_lifecycle_from_sync,
+    upsert_registration_from_sync,
+)
 
 
 ADMISSION_ENTITY = "admission_applicant"
@@ -32,7 +35,13 @@ _DOCUMENT_STATUSES = set(AdmissionDocumentStatus.values)
 _SECTIONS = {"Nursery", "Primary", "Secondary"}
 _REGISTRATION_LABELS = {"Admission in progress", "Active"}
 _LIFECYCLE_LABELS = {"Pending", "Completed", "Cancelled"}
-_LIFECYCLE_WORKFLOWS = {"Class change", "Promotion", "Transfer out", "Alumni", "Withdrawal"}
+_LIFECYCLE_WORKFLOWS = {
+    "Class change",
+    "Promotion",
+    "Transfer out",
+    "Alumni",
+    "Withdrawal",
+}
 
 
 def _optional_text(payload: dict, key: str, *, max_len: int = 250) -> str:
@@ -58,7 +67,20 @@ class AdmissionApplicantHandler(EntityHandler):
             if _STAGE_ORDER.get(stage, -1) < _STAGE_ORDER.get(previous_stage, -1):
                 raise Rejected("Admissions stages cannot move backward.")
             if ctx.existing.get("closedReason") and not p.get("closedReason"):
-                raise Rejected("A closed application cannot be reopened by editing the sync record.")
+                raise Rejected(
+                    "A closed application cannot be reopened by editing the sync record."
+                )
+
+        if stage == AdmissionStage.REGISTERED:
+            has_active_registration = StudentRegistration.objects.filter(
+                school=ctx.membership.school,
+                source_applicant__reference=reference,
+                status=RegistrationStatus.ACTIVE,
+            ).exists()
+            if not has_active_registration:
+                raise Rejected(
+                    "An applicant becomes Registered only after canonical student activation succeeds."
+                )
 
         section = text(p, "section", max_len=80)
         if section not in _SECTIONS:
@@ -82,7 +104,9 @@ class AdmissionApplicantHandler(EntityHandler):
                 _DOCUMENT_STATUSES,
                 "previousSchoolReport",
             ),
-            "guardianId": choice(p.get("guardianId"), _DOCUMENT_STATUSES, "guardianId"),
+            "guardianId": choice(
+                p.get("guardianId"), _DOCUMENT_STATUSES, "guardianId"
+            ),
             "documentRequestQueued": boolean(p, "documentRequestQueued"),
             "closedReason": _optional_text(p, "closedReason"),
         }
@@ -96,7 +120,11 @@ class StudentRegistrationHandler(EntityHandler):
     roles = _ADMIN_ROLES
 
     def visible(self, membership, payload):
-        return payload if membership.role in {"administrator", "proprietor", "principal"} else None
+        return (
+            payload
+            if membership.role in {"administrator", "proprietor", "principal"}
+            else None
+        )
 
     def clean(self, ctx: MutationContext) -> dict[str, Any]:
         p = ctx.payload
@@ -107,21 +135,22 @@ class StudentRegistrationHandler(EntityHandler):
         status = choice(p.get("status"), _REGISTRATION_LABELS, "status")
         existing = ctx.existing
         if existing is not None:
-            if existing.get("status") == "Active" and status != "Active":
-                raise Rejected("An active student registration cannot return to admission in progress.")
-            for key in (
-                "academicSection",
-                "proposedClass",
-                "admissionNumber",
-                "studentId",
-                "sourceApplicantReference",
-            ):
-                if existing.get(key) != p.get(key):
+            was_active = existing.get("status") == "Active"
+            if was_active and status != "Active":
+                raise Rejected(
+                    "An active student registration cannot return to admission in progress."
+                )
+            for key in ("admissionNumber", "studentId", "sourceApplicantReference"):
+                if existing.get(key, "") != p.get(key, ""):
                     raise Rejected(
-                        "Active placement and permanent identifiers cannot be rewritten here; use the student lifecycle workflow for class changes."
-                    ) if existing.get("status") == "Active" else Rejected(
-                        f"{key} cannot be changed after the registration record is created."
+                        "Permanent student identifiers and source application cannot be rewritten."
                     )
+            if was_active:
+                for key in ("academicSection", "proposedClass"):
+                    if existing.get(key, "") != p.get(key, ""):
+                        raise Rejected(
+                            "Active placement cannot be rewritten here; use the student lifecycle workflow."
+                        )
 
         cleaned = {
             "registrationId": registration_id,
@@ -152,22 +181,27 @@ class StudentRegistrationHandler(EntityHandler):
             "guardianIdentificationStatus": _optional_text(
                 p, "guardianIdentificationStatus", max_len=120
             ),
-            "financeSetupStatus": _optional_text(p, "financeSetupStatus", max_len=120),
-            "transportMealStatus": _optional_text(p, "transportMealStatus", max_len=120),
+            "financeSetupStatus": _optional_text(
+                p, "financeSetupStatus", max_len=120
+            ),
+            "transportMealStatus": _optional_text(
+                p, "transportMealStatus", max_len=120
+            ),
             "sourceApplicantReference": _optional_text(
                 p, "sourceApplicantReference", max_len=128
             ),
         }
 
         if existing is not None:
-            for key in (
-                "admissionNumber",
-                "studentId",
-                "academicSection",
-                "proposedClass",
-                "sourceApplicantReference",
-            ):
+            for key in ("admissionNumber", "studentId", "sourceApplicantReference"):
                 cleaned[key] = existing.get(key, cleaned[key])
+            if existing.get("status") == "Active":
+                cleaned["academicSection"] = existing.get(
+                    "academicSection", cleaned["academicSection"]
+                )
+                cleaned["proposedClass"] = existing.get(
+                    "proposedClass", cleaned["proposedClass"]
+                )
         return cleaned
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
@@ -175,10 +209,10 @@ class StudentRegistrationHandler(EntityHandler):
             membership=ctx.membership,
             payload=stored,
         )
-        # The native registration screen already supplies these identifiers.
-        # Should a future client leave them blank, the canonical table may generate
-        # them, while this sync shape remains backward-compatible.
-        if stored["status"] == "Active" and registration.status != RegistrationStatus.ACTIVE:
+        if (
+            stored["status"] == "Active"
+            and registration.status != RegistrationStatus.ACTIVE
+        ):
             raise Rejected("The student registration could not be activated.")
 
 
@@ -187,7 +221,11 @@ class StudentLifecycleHandler(EntityHandler):
     roles = _ADMIN_ROLES
 
     def visible(self, membership, payload):
-        return payload if membership.role in {"administrator", "proprietor", "principal"} else None
+        return (
+            payload
+            if membership.role in {"administrator", "proprietor", "principal"}
+            else None
+        )
 
     def clean(self, ctx: MutationContext) -> dict[str, Any]:
         p = ctx.payload
@@ -210,11 +248,14 @@ class StudentLifecycleHandler(EntityHandler):
                 ("toClass", p.get("toClass", "")),
             ):
                 if existing.get(key, "") != value:
-                    raise Rejected("The student, workflow and class path of a lifecycle event are immutable.")
-            if existing.get("status") in {"Completed", "Cancelled"} and status != existing.get("status"):
+                    raise Rejected(
+                        "The student, workflow and class path of a lifecycle event are immutable."
+                    )
+            if (
+                existing.get("status") in {"Completed", "Cancelled"}
+                and status != existing.get("status")
+            ):
                 raise Rejected("A completed or cancelled lifecycle event is final.")
-            if existing.get("status") == "Pending" and status not in {"Pending", "Completed", "Cancelled"}:
-                raise Rejected("This lifecycle status transition is not allowed.")
 
         approved_by = _optional_text(p, "approvedBy", max_len=200)
         records_pack_ready = boolean(p, "recordsPackReady")
@@ -225,7 +266,9 @@ class StudentLifecycleHandler(EntityHandler):
             if workflow in {"Promotion", "Class change"} and not to_class:
                 raise Rejected("This class movement requires a destination class.")
             if workflow == "Transfer out" and not records_pack_ready:
-                raise Rejected("Prepare the records pack before completing the transfer.")
+                raise Rejected(
+                    "Prepare the records pack before completing the transfer."
+                )
 
         requested_at = existing.get("requestedAt") if existing else ctx.now
         completed_at = ctx.now if status in {"Completed", "Cancelled"} else ""
