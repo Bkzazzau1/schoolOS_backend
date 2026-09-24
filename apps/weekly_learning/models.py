@@ -24,7 +24,7 @@ class WeeklyLearningUpdate(models.Model):
     school = models.ForeignKey(
         School, on_delete=models.CASCADE, related_name="weekly_learning_updates"
     )
-    external_id = models.CharField(max_length=160)
+    external_id = models.CharField(max_length=128)
     class_subject = models.ForeignKey(
         ClassSubject,
         on_delete=models.PROTECT,
