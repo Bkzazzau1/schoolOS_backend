@@ -270,3 +270,16 @@ class ProgressionDecision(models.Model):
                 name="unique_progression_decision_per_batch_student",
             )
         ]
+
+
+# Keep these models in a separate source file so the academic calendar/progression
+# definitions above stay readable, while importing them here follows Django's
+# normal models-module discovery path.
+from .curriculum_models import (  # noqa: E402,F401
+    ClassSubject,
+    StudentSubjectSelection,
+    Subject,
+    SubjectRequirement,
+    TeachingAssignment,
+    TeachingAssignmentEvent,
+)
