@@ -1,4 +1,4 @@
-﻿"""SchoolOS backend settings.
+"""SchoolOS backend settings.
 
 Everything environment-specific comes from environment variables (or a local
 .env file, which is never committed). See .env.example.
@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.schools",
     "apps.students",
     "apps.academics",
+    "apps.timetable",
     "apps.domains",
     "apps.notifications",
     "apps.access",
