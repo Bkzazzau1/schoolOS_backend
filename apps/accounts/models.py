@@ -47,6 +47,11 @@ class User(AbstractUser):
     # membership is attached to them.
     must_change_password = models.BooleanField(default=False)
 
+    # Credential-sensitive administrative actions increment this value. SchoolOS
+    # JWTs carry the version they were issued under, so a password reset or login
+    # phone change can invalidate already-issued Student/Parent sessions.
+    credential_version = models.PositiveIntegerField(default=1)
+
     # Verification codes are never stored in plaintext. These fields hold only
     # the digest and lifecycle metadata for the currently active code.
     email_verified_at = models.DateTimeField(null=True, blank=True)
