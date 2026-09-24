@@ -375,6 +375,10 @@ def publish_teacher_class_assignment(membership):
 def upsert_teaching_assignment(*, membership, payload):
     school = membership.school
     offering = _class_subject(school, payload["classSubjectId"])
+    if offering.academic_class.section.strip().lower() != "secondary":
+        raise Rejected(
+            "Principal teaching assignments are limited to the Secondary section."
+        )
     if not offering.is_active:
         raise Rejected("Teaching responsibility cannot be assigned to an inactive class subject.")
     if offering.session.status == AcademicLifecycleStatus.CLOSED:
