@@ -70,7 +70,11 @@ class WeeklyLearningUpdate(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-week_start", "class_subject__academic_class__level_order", "class_subject__subject__name"]
+        ordering = [
+            "-week_start",
+            "class_subject__academic_class__level_order",
+            "class_subject__subject__name",
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["school", "external_id"],
@@ -78,17 +82,17 @@ class WeeklyLearningUpdate(models.Model):
             ),
             models.UniqueConstraint(
                 fields=["class_subject", "term", "week_start"],
-                name="weekly_learning_subject_week_uq",
+                name="wkly_learn_subject_week_uq",
             ),
         ]
         indexes = [
             models.Index(
                 fields=["school", "week_start", "state"],
-                name="weekly_learning_school_week_idx",
+                name="wkly_learn_school_week_idx",
             ),
             models.Index(
                 fields=["class_subject", "week_start"],
-                name="weekly_learning_subject_week_idx",
+                name="wkly_learn_subject_week_idx",
             ),
         ]
 
@@ -116,6 +120,6 @@ class WeeklyLearningPublication(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["update", "revision"],
-                name="weekly_learning_publication_revision_uq",
+                name="wkly_learn_pub_revision_uq",
             )
         ]
