@@ -8,6 +8,7 @@ from apps.sync.registry import EntityHandler, MutationContext
 
 from .services import (
     REPORT_CARD_ENTITY,
+    class_teacher_comment_report_card,
     compile_class_report_cards,
     principal_review_report_card,
     publish_report_card_sync,
@@ -71,7 +72,7 @@ class ReportCardBatchHandler(EntityHandler):
 
 class ReportCardHandler(EntityHandler):
     entity_type = REPORT_CARD_ENTITY
-    roles = frozenset({Role.ADMINISTRATOR, Role.PROPRIETOR, Role.PRINCIPAL})
+    roles = frozenset({Role.ADMINISTRATOR, Role.PROPRIETOR, Role.PRINCIPAL, Role.TEACHER})
 
     def visible(self, membership, payload):
         return report_card_visible_payload(membership, payload)
@@ -95,6 +96,13 @@ class ReportCardHandler(EntityHandler):
                 "id": entity_id,
                 "action": choice(p.get("action"), {"submit", "release"}, "action"),
             }
+        if ctx.membership.role == Role.TEACHER:
+            choice(p.get("action"), {"classTeacherComment"}, "action")
+            return {
+                "id": entity_id,
+                "action": "classTeacherComment",
+                "comment": text(p, "comment", max_len=2000, required=False),
+            }
         raise Rejected("This membership cannot change report cards.")
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
@@ -109,6 +117,10 @@ class ReportCardHandler(EntityHandler):
                 external_id=stored["id"],
                 action="approve" if action == "principalReview" else "return",
                 comment=stored.get("comment", ""),
+            )
+        elif action == "classTeacherComment":
+            item = class_teacher_comment_report_card(
+                actor=ctx.membership, external_id=stored["id"], comment=stored.get("comment", "")
             )
         else:
             raise Rejected("Unsupported report-card action.")

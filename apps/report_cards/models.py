@@ -56,6 +56,10 @@ class ReportCard(models.Model):
     # has ever marked them, never approximated to 0 or 100.
     attendance_percent = models.PositiveSmallIntegerField(null=True, blank=True)
     principal_comment = models.TextField(blank=True)
+    # Written by whoever holds the class's active ClassTeacherAssignment
+    # (apps.class_teachers) at the time of writing - never fabricated when no
+    # class teacher is assigned yet.
+    class_teacher_comment = models.TextField(blank=True)
     generated_by = models.ForeignKey(
         Membership,
         null=True,

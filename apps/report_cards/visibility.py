@@ -27,6 +27,13 @@ def report_card_visible_payload(membership, payload):
         and item.academic_class.section.strip().casefold() == "secondary"
     ):
         return payload
+    if membership.role == Role.TEACHER:
+        from apps.class_teachers.services import current_class_teacher
+
+        class_teacher = current_class_teacher(item.academic_class, item.term.session, required=False)
+        if class_teacher is not None and class_teacher.id == membership.id:
+            return payload
+        return None
 
     # Student and Parent never see a report card before the school has
     # released it, and never anyone else's.

@@ -261,6 +261,30 @@ def submit_report_card(*, actor: Membership, external_id: str) -> ReportCard:
 
 
 @transaction.atomic
+def class_teacher_comment_report_card(*, actor: Membership, external_id: str, comment: str) -> ReportCard:
+    """The class/form teacher's own remark (apps.class_teachers). Available
+    any time before release - it never affects a score or a state
+    transition, so it is not restricted to one lifecycle step the way score
+    entry or Principal review are."""
+    from apps.class_teachers.services import current_class_teacher
+
+    item = _loaded_report_card(actor.school, external_id, lock=True)
+    if item.term.status == AcademicLifecycleStatus.CLOSED:
+        raise Rejected("Report cards cannot be changed in a closed academic term.")
+    if item.state == ReportCardState.RELEASED:
+        raise Rejected("A released report card's class-teacher comment cannot be silently rewritten.")
+    class_teacher = current_class_teacher(item.academic_class, item.term.session, required=False)
+    if class_teacher is None or class_teacher.id != actor.id:
+        raise Rejected("This membership is not the current class teacher for this student's class.")
+
+    item.class_teacher_comment = comment.strip()
+    item.version += 1
+    item.save(update_fields=["class_teacher_comment", "version", "updated_at"])
+    _append_event(item, actor=actor, action="class_teacher_commented", comment=comment.strip())
+    return item
+
+
+@transaction.atomic
 def principal_review_report_card(*, actor: Membership, external_id: str, action: str, comment: str) -> ReportCard:
     item = _loaded_report_card(actor.school, external_id, lock=True)
     _assert_principal_secondary_authority(actor, item.academic_class)
@@ -328,6 +352,7 @@ def serialize_report_card(item: ReportCard) -> dict:
         "classSize": item.class_size,
         "attendancePercent": item.attendance_percent,
         "principalComment": item.principal_comment,
+        "classTeacherComment": item.class_teacher_comment,
         "subjects": [
             {
                 "classSubjectId": str(line.class_subject_id),
