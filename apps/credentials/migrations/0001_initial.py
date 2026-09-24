@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ("accounts", "0004_user_credential_version"),
         ("schools", "0005_school_organization_type_location"),
     ]
 
