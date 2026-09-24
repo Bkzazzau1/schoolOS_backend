@@ -1,0 +1,175 @@
+from django.core.management.base import BaseCommand
+
+from apps.academics.curriculum_services import (
+    serialize_teaching_assignment,
+    upsert_teaching_assignment,
+)
+from apps.academics.models import (
+    AcademicLifecycleStatus,
+    ClassSubject,
+    TeachingAssignment,
+)
+from apps.schools.models import Membership, Role
+from apps.sync.models import SyncRecord
+
+
+class Command(BaseCommand):
+    help = (
+        "Materialize legacy Principal teaching-assignment sync records into the "
+        "canonical curriculum/Teacher-membership model. Safe to run repeatedly."
+    )
+
+    def handle(self, *args, **options):
+        materialized = 0
+        confirmed = 0
+        skipped = 0
+        for record in (
+            SyncRecord.objects.filter(
+                entity_type="principal_teaching_assignment",
+                deleted=False,
+            )
+            .select_related("school")
+            .iterator()
+        ):
+            school = record.school
+            payload = record.payload
+            existing = TeachingAssignment.objects.filter(
+                school=school,
+                external_id=record.entity_id,
+            ).first()
+            if existing is not None:
+                canonical = TeachingAssignment.objects.select_related(
+                    "class_subject__session",
+                    "class_subject__academic_class",
+                    "class_subject__subject",
+                    "teacher_membership",
+                    "previous_assignment",
+                ).get(pk=existing.pk)
+                self._replace_payload(record, serialize_teaching_assignment(canonical))
+                confirmed += 1
+                continue
+
+            actor = (
+                Membership.objects.filter(
+                    school=school,
+                    role=Role.PRINCIPAL,
+                    is_active=True,
+                ).first()
+                or Membership.objects.filter(
+                    school=school,
+                    role=Role.PROPRIETOR,
+                    is_active=True,
+                ).first()
+            )
+            if actor is None:
+                skipped += 1
+                self.stderr.write(
+                    f"SKIP {school_id(record)} / {record.entity_id}: no active Principal/Proprietor actor"
+                )
+                continue
+
+            class_subject = self._class_subject(record)
+            teacher = self._teacher(record)
+            if class_subject is None or teacher is None:
+                skipped += 1
+                self.stderr.write(
+                    f"SKIP {school_id(record)} / {record.entity_id}: curriculum or linked Teacher membership is unresolved"
+                )
+                continue
+            if len(record.entity_id) > 64:
+                skipped += 1
+                self.stderr.write(
+                    f"SKIP {school_id(record)} / {record.entity_id}: assignment id exceeds canonical length"
+                )
+                continue
+
+            assignment = upsert_teaching_assignment(
+                membership=actor,
+                payload={
+                    "id": record.entity_id,
+                    "classSubjectId": str(class_subject.id),
+                    "teacherId": str(teacher.id),
+                    "periodsPerWeek": class_subject.periods_per_week,
+                    "handoverReason": "Legacy SchoolOS assignment materialization",
+                },
+            )
+            assignment = TeachingAssignment.objects.select_related(
+                "class_subject__session",
+                "class_subject__academic_class",
+                "class_subject__subject",
+                "teacher_membership",
+                "previous_assignment",
+            ).get(pk=assignment.pk)
+            self._replace_payload(record, serialize_teaching_assignment(assignment))
+            materialized += 1
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                "Teaching assignment bootstrap complete: "
+                f"{materialized} materialized, {confirmed} confirmed, {skipped} skipped."
+            )
+        )
+
+    def _class_subject(self, record):
+        payload = record.payload
+        explicit = payload.get("classSubjectId")
+        if explicit:
+            item = ClassSubject.objects.filter(
+                id=explicit,
+                session__school=record.school,
+                is_active=True,
+            ).first()
+            if item is not None:
+                return item
+        session_id = payload.get("sessionId")
+        matches = ClassSubject.objects.filter(
+            session__school=record.school,
+            session__status=AcademicLifecycleStatus.ACTIVE,
+            academic_class__name__iexact=(payload.get("className") or "").strip(),
+            subject__name__iexact=(payload.get("subject") or "").strip(),
+            is_active=True,
+        )
+        if session_id:
+            matches = matches.filter(session_id=session_id)
+        return matches.first()
+
+    def _teacher(self, record):
+        raw = str(record.payload.get("teacherId") or "").strip()
+        if not raw:
+            return None
+        direct = Membership.objects.filter(
+            id=raw,
+            school=record.school,
+            role=Role.TEACHER,
+            is_active=True,
+        ).first()
+        if direct is not None:
+            return direct
+        profile = SyncRecord.objects.filter(
+            school=record.school,
+            entity_type="owner_staff_profile",
+            entity_id=raw,
+            deleted=False,
+        ).first()
+        linked = str((profile.payload if profile else {}).get("linkedMembershipId") or "").strip()
+        if not linked:
+            return None
+        return Membership.objects.filter(
+            id=linked,
+            school=record.school,
+            role=Role.TEACHER,
+            is_active=True,
+        ).first()
+
+    @staticmethod
+    def _replace_payload(record, payload):
+        if record.payload == payload and not record.deleted:
+            return
+        record.payload = payload
+        record.deleted = False
+        record.version += 1
+        record.save(update_fields=["payload", "deleted", "version"])
+
+
+def school_id(record):
+    return str(record.school_id)
