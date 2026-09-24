@@ -1,4 +1,4 @@
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from apps.billing.cycle import run_billing_cycles
 
@@ -22,4 +22,8 @@ class Command(BaseCommand):
         for problem in summary["errors"]:
             self.stderr.write(
                 f"{problem['subscriptionId']}: {problem['error']}"
+            )
+        if summary["errors"]:
+            raise CommandError(
+                f"Billing cycle completed with {len(summary['errors'])} account error(s)."
             )
