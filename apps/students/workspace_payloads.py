@@ -15,6 +15,20 @@ def _iso(value):
     return value.isoformat() if value else None
 
 
+def _term_payload(term):
+    if term is None:
+        return None
+    return {
+        "id": str(term.id),
+        "code": term.code,
+        "name": term.name,
+        "sequence": term.sequence,
+        "startsOn": _iso(term.starts_on),
+        "endsOn": _iso(term.ends_on),
+        "status": term.status,
+    }
+
+
 def _academic_context(enrollment):
     if enrollment is None:
         return None
@@ -23,7 +37,7 @@ def _academic_context(enrollment):
         return None
     session = context.session
     academic_class = context.academic_class
-    term = context.entry_term
+    current_term = session.terms.filter(status="active").first()
     return {
         "session": {
             "id": str(session.id),
@@ -33,17 +47,8 @@ def _academic_context(enrollment):
             "endsOn": _iso(session.ends_on),
             "status": session.status,
         },
-        "entryTerm": None
-        if term is None
-        else {
-            "id": str(term.id),
-            "code": term.code,
-            "name": term.name,
-            "sequence": term.sequence,
-            "startsOn": _iso(term.starts_on),
-            "endsOn": _iso(term.ends_on),
-            "status": term.status,
-        },
+        "entryTerm": _term_payload(context.entry_term),
+        "currentTerm": _term_payload(current_term),
         "academicClass": {
             "id": str(academic_class.id),
             "code": academic_class.code,
