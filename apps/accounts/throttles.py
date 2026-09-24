@@ -1,6 +1,12 @@
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 
+class LoginThrottle(AnonRateThrottle):
+    """Bound password guessing for email, admission-ID and phone sign-in."""
+
+    rate = "10/min"
+
+
 class RegistrationThrottle(AnonRateThrottle):
     """Keep public account creation bounded independently of other anonymous API use."""
 
