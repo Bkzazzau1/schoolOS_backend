@@ -62,6 +62,16 @@ def _academic_context(enrollment):
     }
 
 
+def _eligible_subjects(student):
+    # Runtime import avoids a module cycle: academics publishing calls this
+    # profile builder, while curriculum changes also republish the profile.
+    try:
+        from apps.academics.curriculum_services import eligible_subjects_for_student
+    except ImportError:
+        return []
+    return eligible_subjects_for_student(student)
+
+
 def _enrollment_history(student) -> list[dict]:
     history = []
     for item in student.enrollments.order_by("-started_at", "-id"):
@@ -137,6 +147,7 @@ def student_workspace_payload(student) -> dict:
         "className": current.class_name if current else None,
         "enrollmentActive": current is not None,
         "currentAcademicContext": _academic_context(current),
+        "eligibleSubjects": _eligible_subjects(student),
         "primaryGuardian": guardian.name if guardian else None,
         "guardianRelationship": guardian.relationship if guardian else None,
         "enrollmentHistory": _enrollment_history(student),
@@ -160,6 +171,7 @@ def parent_child_workspace_payload(student) -> dict:
         "academicSection": current.academic_section if current else None,
         "className": current.class_name if current else None,
         "currentAcademicContext": _academic_context(current),
+        "eligibleSubjects": _eligible_subjects(student),
         "enrollmentHistory": _enrollment_history(student),
         "progressionHistory": _progression_history(student),
     }
