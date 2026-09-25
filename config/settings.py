@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     "apps.dashboards",
     "apps.schoollife",
     "apps.administration",
+    "apps.transport",
     "apps.staff",
     "apps.invitations",
     "apps.alumni",
