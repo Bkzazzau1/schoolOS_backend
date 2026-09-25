@@ -4,8 +4,12 @@ from .models import (
     AssociationAdministrator,
     BadDebtClassification,
     BadDebtEvent,
+    NetworkSearchAudit,
+    NetworkStudentIdentity,
     SchoolAssociationMembership,
     SchoolProprietorAssociation,
+    StudentNetworkEnrollment,
+    TransferAlert,
 )
 
 
@@ -46,3 +50,27 @@ class AssociationAdministratorAdmin(admin.ModelAdmin):
     list_filter = ("association", "is_active")
     search_fields = ("user__email",)
     readonly_fields = ("added_at",)
+
+
+@admin.register(NetworkStudentIdentity)
+class NetworkStudentIdentityAdmin(admin.ModelAdmin):
+    list_display = ("id", "created_at")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(StudentNetworkEnrollment)
+class StudentNetworkEnrollmentAdmin(admin.ModelAdmin):
+    list_display = ("school", "student", "network_identity", "guardian_phone_e164", "linked_at")
+    list_filter = ("school",)
+    search_fields = ("student__first_name", "student__surname", "guardian_phone_e164")
+    readonly_fields = ("linked_at", "updated_at")
+
+
+@admin.register(TransferAlert)
+class TransferAlertAdmin(admin.ModelAdmin):
+    list_display = ("id", "source_school", "state", "snapshot_status", "published_at")
+    list_filter = ("state", "source_school")
+    readonly_fields = ("published_at", "withdrawn_at", "resolved_at", "updated_at")
+
+
+admin.site.register(NetworkSearchAudit)

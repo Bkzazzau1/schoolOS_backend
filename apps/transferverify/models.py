@@ -253,3 +253,131 @@ class AssociationAdministrator(models.Model):
 
     def __str__(self):
         return f"{self.user} administers {self.association}"
+
+
+# --- The discovery layer -------------------------------------------------
+#
+# A NetworkStudentIdentity is the one thing that is ever allowed to cross the
+# tenant boundary for a real child - never a copy of any school's Student
+# row. Each school's own StudentNetworkEnrollment is the sole bridge back to
+# its private Student; a school can never read another school's Student
+# through this, only the fact that a shared identity exists and (within a
+# shared association) whether it has a published TransferAlert.
+
+
+class NetworkStudentIdentity(models.Model):
+    """A single real child, as understood across the TransferVerify network.
+    Created the first time a school enrolls a student into the network
+    (today: the first time it publishes a bad-debt case for them) - never
+    merged with another identity without a confirmed match, which needs more
+    than a phone number (see later matching phases)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Network identity {self.id}"
+
+
+class StudentNetworkEnrollment(models.Model):
+    """The only bridge from a NetworkStudentIdentity to one school's own,
+    private Student row - one row per (network identity, school), and at
+    most one network identity per (school, student), so a school can never
+    accidentally enroll the same local student twice under two identities."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    network_identity = models.ForeignKey(NetworkStudentIdentity, on_delete=models.CASCADE, related_name="enrollments")
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="network_enrollments")
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="network_enrollments")
+
+    #: E.164, the current number - a candidate lookup signal only, never
+    #: sufficient alone to confirm identity (see apps.transferverify.network).
+    guardian_phone_e164 = models.CharField(max_length=20, blank=True, db_index=True)
+    #: Append-only [{"phone": "...", "changedAt": "..."}], oldest first. A
+    #: changed number must never silently orphan matching history.
+    guardian_phone_history = models.JSONField(default=list, blank=True)
+
+    linked_at = models.DateTimeField(auto_now_add=True)
+    linked_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="linked_network_enrollments")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["network_identity", "school"], name="enrollment_identity_school_uq"),
+            models.UniqueConstraint(fields=["school", "student"], name="enrollment_student_school_uq"),
+        ]
+        indexes = [models.Index(fields=["guardian_phone_e164"], name="network_enrollment_phone_idx")]
+
+    def __str__(self):
+        return f"{self.school} enrollment for identity {self.network_identity_id}"
+
+
+class TransferAlertState(models.TextChoices):
+    ACTIVE = "active", "Active"
+    VERIFICATION_PENDING = "verification_pending", "Verification pending"
+    DISPUTED = "disputed", "Disputed"
+    RESOLVED = "resolved", "Resolved"
+    WITHDRAWN = "withdrawn", "Withdrawn"
+    EXPIRED = "expired", "Expired"
+
+
+class TransferAlert(models.Model):
+    """The one thing another school can ever discover through TransferVerify
+    - grown out of a Proprietor's own publish action on a BadDebtClassification,
+    and only within the association(s) it was published to. Never embeds the
+    source school's live ledger: amount/status/reason are a snapshot frozen
+    at publication time, so a later correction to the source classification
+    does not silently rewrite history other schools may already be relying
+    on - see source_classification for the source school's own, private,
+    always-current record."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    network_identity = models.ForeignKey(NetworkStudentIdentity, on_delete=models.PROTECT, related_name="transfer_alerts")
+    source_school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="published_transfer_alerts")
+    #: One classification ever grows at most one alert - a withdraw-then-
+    #: republish reopens this same row rather than forking a new one, so the
+    #: alert's own history stays a single auditable line.
+    source_classification = models.OneToOneField(
+        "BadDebtClassification", on_delete=models.CASCADE, related_name="transfer_alert"
+    )
+    #: Which associations this alert is currently discoverable within -
+    #: copied from the classification's own association_scope at publish
+    #: time, never guessed, never "every association".
+    association_scope = models.JSONField(default=list, blank=True)
+    state = models.CharField(max_length=24, choices=TransferAlertState.choices, default=TransferAlertState.ACTIVE)
+
+    snapshot_status = models.CharField(max_length=24)
+    snapshot_outstanding_amount_minor = models.PositiveIntegerField()
+    snapshot_reason = models.CharField(max_length=32, blank=True)
+    snapshot_note = models.TextField(blank=True)
+
+    published_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="published_transfer_alerts")
+    published_at = models.DateTimeField()
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-published_at"]
+        indexes = [models.Index(fields=["network_identity", "state"], name="tv_alert_identity_state_idx")]
+
+    def __str__(self):
+        return f"TransferAlert {self.id} ({self.state})"
+
+
+class NetworkSearchAudit(models.Model):
+    """Every phone-candidate search is audited - who searched, when, and how
+    many candidates came back. The raw phone number searched is deliberately
+    not stored here: an audit log is itself a record several people may
+    eventually see, and it does not need to become a second place a
+    guardian's phone number is kept."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    searching_school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="network_searches")
+    searching_membership = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="network_searches")
+    result_count = models.PositiveIntegerField()
+    searched_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-searched_at"]

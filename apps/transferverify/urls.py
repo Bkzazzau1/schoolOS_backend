@@ -6,6 +6,7 @@ from .views import (
     AssociationMembersView,
     ExitAssociationMembershipView,
     JoinAssociationView,
+    NetworkPhoneMatchView,
     RejectAssociationMemberView,
     SchoolAssociationMembershipsView,
     SuspendAssociationMemberView,
@@ -40,5 +41,9 @@ urlpatterns = [
     path(
         "transferverify/associations/<uuid:association_id>/members/<uuid:membership_id>/suspend/",
         SuspendAssociationMemberView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/match/",
+        NetworkPhoneMatchView.as_view(),
     ),
 ]

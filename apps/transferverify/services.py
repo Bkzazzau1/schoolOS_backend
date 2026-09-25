@@ -9,6 +9,7 @@ from apps.sync.models import SyncRecord
 
 from .associations import active_association_ids
 from .models import BadDebtClassification, BadDebtEvent, BadDebtStatus, PublicationReason
+from .network import publish_alert, resolve_alert, withdraw_alert
 
 BAD_DEBT_ENTITY = "transferverify_bad_debt_classification"
 
@@ -255,6 +256,8 @@ def resolve(*, membership: Membership, external_id: str, note: str = "", publish
     item.last_updated_by = membership
     item.save(update_fields=["status", "resolved_by", "resolved_at", "resolution_note", "last_updated_by", "updated_at"])
     _append_event(item, actor=membership, action="resolved", detail={"note": note} if note else {})
+    if item.is_published:
+        resolve_alert(classification=item)
     if publish_sync:
         publish_classification_sync(item, actor=membership)
     return item
@@ -308,6 +311,7 @@ def publish_to_transferverify(
         ]
     )
     _append_event(item, actor=membership, action="published", detail={"reason": reason, "associationScope": scope})
+    publish_alert(classification=item, membership=membership, association_ids=scope)
     if publish_sync:
         publish_classification_sync(item, actor=membership)
     return item
@@ -329,6 +333,7 @@ def withdraw_publication(*, membership: Membership, external_id: str, publish_sy
     item.publication_note = ""
     item.save(update_fields=["published_at", "published_by", "publication_reason", "publication_note", "updated_at"])
     _append_event(item, actor=membership, action="publication_withdrawn")
+    withdraw_alert(classification=item)
     if publish_sync:
         publish_classification_sync(item, actor=membership)
     return item

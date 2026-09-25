@@ -9,6 +9,7 @@ from apps.core.permissions import require_membership
 from apps.schools.models import Role
 
 from . import associations as association_services
+from . import network as network_services
 
 
 def _transferverify_error(view):
@@ -102,3 +103,21 @@ class SuspendAssociationMemberView(APIView):
             user=request.user, association_id=association_id, membership_id=membership_id, note=request.data.get("note", "")
         )
         return Response({"membership": association_services.serialize_school_membership(item)})
+
+
+class NetworkPhoneMatchView(APIView):
+    """A candidate-only guardian-phone lookup, meant to be called from
+    within an admission's own identity-check step - never a general,
+    unrestricted cross-school student search (see the docstring on
+    apps.transferverify.network.match_by_phone)."""
+
+    @_transferverify_error
+    def post(self, request, school_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR, Role.ADMINISTRATOR], membership_id=request.data.get("membership")
+        )
+        phone = request.data.get("phone")
+        if not isinstance(phone, str):
+            return Response({"code": "transferverify_error", "message": "phone is required."}, status=status.HTTP_400_BAD_REQUEST)
+        candidates = network_services.match_by_phone(membership=membership, phone=phone)
+        return Response({"candidates": candidates})
