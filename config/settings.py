@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "apps.concessions",
     "apps.dashboards",
     "apps.schoollife",
+    "apps.administration",
     "apps.staff",
     "apps.invitations",
     "apps.alumni",
