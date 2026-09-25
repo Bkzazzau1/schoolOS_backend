@@ -31,14 +31,14 @@ def require_alumni_manager(request, school_id):
     membership = require_membership(
         request.user,
         school_id,
-        roles=[Role.PROPRIETOR, Role.ADMINISTRATOR],
+        roles=[Role.PROPRIETOR, Role.ADMINISTRATOR, Role.PRINCIPAL],
         membership_id=request.query_params.get("membership"),
     )
-    activity = (
-        "owner.alumni"
-        if membership.role == Role.PROPRIETOR
-        else "administrator.alumni"
-    )
+    activity = {
+        Role.PROPRIETOR: "owner.alumni",
+        Role.ADMINISTRATOR: "administrator.alumni",
+        Role.PRINCIPAL: "principal.alumni",
+    }[membership.role]
     if not access_services.has_activity(membership, activity):
         raise PermissionDenied("Alumni management is not available to you.")
     return membership
