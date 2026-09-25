@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('schools', '0005_school_organization_type_location'),
-        ('students', '0004_alter_studentregistration_gender'),
+        ('students', '0003_student_guardian_account_links'),
     ]
 
     operations = [
