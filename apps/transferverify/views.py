@@ -1,6 +1,7 @@
 from functools import wraps
 
 from rest_framework import status
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -9,6 +10,7 @@ from apps.core.permissions import require_membership
 from apps.schools.models import Role
 
 from . import associations as association_services
+from . import disputes as dispute_services
 from . import network as network_services
 from . import verification as verification_services
 
@@ -181,3 +183,99 @@ class CancelVerificationRequestView(APIView):
         )
         item = verification_services.cancel_request(membership=membership, request_id=request_id)
         return Response({"request": verification_services.serialize_request(item)})
+
+
+class OpenDisputeView(APIView):
+    """A guardian contesting a published case - see TransferClearanceDispute
+    and apps.transferverify.disputes.open_dispute for the authority rule."""
+
+    @_transferverify_error
+    def post(self, request, school_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PARENT], membership_id=request.data.get("membership")
+        )
+        item = dispute_services.open_dispute(
+            membership=membership,
+            transfer_alert_id=request.data.get("transferAlertId"),
+            reason=request.data.get("reason"),
+            explanation=request.data.get("explanation", ""),
+            evidence_references=request.data.get("evidenceReferences"),
+        )
+        return Response({"dispute": dispute_services.serialize_dispute(item)}, status=status.HTTP_201_CREATED)
+
+
+class MyDisputesView(APIView):
+    @_transferverify_error
+    def get(self, request, school_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PARENT], membership_id=request.query_params.get("membership")
+        )
+        items = dispute_services.disputes_opened_by(membership)
+        return Response({"disputes": [dispute_services.serialize_dispute(item) for item in items]})
+
+
+class ReceivedDisputesView(APIView):
+    @_transferverify_error
+    def get(self, request, school_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR], membership_id=request.query_params.get("membership")
+        )
+        items = dispute_services.disputes_for_school(membership.school)
+        return Response({"disputes": [dispute_services.serialize_dispute(item) for item in items]})
+
+
+class ReviewDisputeView(APIView):
+    @_transferverify_error
+    def post(self, request, school_id, dispute_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR], membership_id=request.data.get("membership")
+        )
+        item = dispute_services.review_dispute(
+            membership=membership, dispute_id=dispute_id,
+            decision=request.data.get("decision"), note=request.data.get("note", ""),
+        )
+        return Response({"dispute": dispute_services.serialize_dispute(item)})
+
+
+class IssueClearanceView(APIView):
+    @_transferverify_error
+    def post(self, request, school_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR], membership_id=request.data.get("membership")
+        )
+        item = dispute_services.issue_clearance(
+            membership=membership, external_id=request.data.get("externalId"), note=request.data.get("note", "")
+        )
+        return Response({"clearance": dispute_services.serialize_clearance(item)}, status=status.HTTP_201_CREATED)
+
+
+class SchoolClearancesView(APIView):
+    @_transferverify_error
+    def get(self, request, school_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR], membership_id=request.query_params.get("membership")
+        )
+        items = dispute_services.clearances_for_school(membership.school)
+        return Response({"clearances": [dispute_services.serialize_clearance(item) for item in items]})
+
+
+class RevokeClearanceView(APIView):
+    @_transferverify_error
+    def post(self, request, school_id, clearance_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR], membership_id=request.data.get("membership")
+        )
+        item = dispute_services.revoke_clearance(membership=membership, clearance_id=clearance_id)
+        return Response({"clearance": dispute_services.serialize_clearance(item)})
+
+
+class VerifyClearanceView(APIView):
+    """Public, unauthenticated - see apps.transferverify.disputes.verify_clearance
+    for exactly why the response is this minimal."""
+
+    authentication_classes = ()
+    permission_classes = (AllowAny,)
+
+    def get(self, request):
+        result = dispute_services.verify_clearance(request.query_params.get("token", ""))
+        return Response(result)

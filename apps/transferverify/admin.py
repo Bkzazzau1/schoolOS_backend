@@ -12,6 +12,8 @@ from .models import (
     StudentBiometricTemplate,
     StudentNetworkEnrollment,
     TransferAlert,
+    TransferClearance,
+    TransferClearanceDispute,
     TransferVerificationRequest,
 )
 
@@ -105,3 +107,17 @@ class StudentBiometricTemplateAdmin(admin.ModelAdmin):
     list_filter = ("enrolled_school", "finger")
     exclude = ("template_data",)
     readonly_fields = ("captured_at",)
+
+
+@admin.register(TransferClearanceDispute)
+class TransferClearanceDisputeAdmin(admin.ModelAdmin):
+    list_display = ("id", "transfer_alert", "reason", "status", "opened_at", "reviewed_at")
+    list_filter = ("status", "reason")
+    readonly_fields = ("opened_at", "reviewed_at", "updated_at")
+
+
+@admin.register(TransferClearance)
+class TransferClearanceAdmin(admin.ModelAdmin):
+    list_display = ("id", "issuing_school", "status", "issued_at", "revoked_at")
+    list_filter = ("status", "issuing_school")
+    readonly_fields = ("issued_at", "revoked_at")

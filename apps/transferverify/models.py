@@ -539,3 +539,97 @@ class StudentBiometricTemplate(models.Model):
 
     def __str__(self):
         return f"{self.get_finger_display()} template for identity {self.network_identity_id}"
+
+
+# --- Disputes and digital clearance --------------------------------------
+
+
+class DisputeReason(models.TextChoices):
+    """Structured, neutral reasons a guardian may give - a factual
+    description only, never an accusation or an admission baked into the
+    choice itself."""
+
+    NOT_THE_SAME_FAMILY = "not_the_same_family", "This is not our family"
+    ALREADY_PAID = "already_paid", "The balance has already been paid"
+    AMOUNT_DISPUTED = "amount_disputed", "The amount is incorrect"
+    NEVER_ENROLLED_HERE = "never_enrolled_here", "This student was never enrolled at that school"
+    ARRANGEMENT_HONORED = "arrangement_honored", "A payment arrangement is being honored"
+    OTHER = "other", "Other documented reason"
+
+
+class DisputeStatus(models.TextChoices):
+    OPENED = "opened", "Opened"
+    ACCEPTED = "accepted", "Accepted"
+    REJECTED = "rejected", "Rejected"
+
+
+class TransferClearanceDispute(models.Model):
+    """A guardian's own contestation of a published TransferAlert. Opening
+    one immediately flips the alert to "disputed" (see
+    apps.transferverify.disputes.open_dispute) so every future verification
+    lookup shows that honestly, never presenting a contested claim as
+    settled fact. The guardian is identified by their own real
+    apps.students.GuardianLink at the source school - never a free-text
+    claim of who they are."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    transfer_alert = models.ForeignKey(TransferAlert, on_delete=models.CASCADE, related_name="disputes")
+    opened_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="opened_transfer_disputes")
+    reason = models.CharField(max_length=32, choices=DisputeReason.choices)
+    explanation = models.TextField(blank=True)
+    evidence_references = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=16, choices=DisputeStatus.choices, default=DisputeStatus.OPENED)
+    opened_at = models.DateTimeField(auto_now_add=True)
+    reviewed_by = models.ForeignKey(
+        Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="reviewed_transfer_disputes"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    resolution_note = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-opened_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["transfer_alert"], condition=Q(status=DisputeStatus.OPENED), name="one_open_dispute_per_alert"
+            ),
+        ]
+
+    def __str__(self):
+        return f"Dispute {self.id} ({self.status})"
+
+
+class ClearanceStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    REVOKED = "revoked", "Revoked"
+
+
+class TransferClearance(models.Model):
+    """A source school's own digital confirmation that a case is settled -
+    issued only once the underlying classification is resolved. The public
+    verification lookup (see apps.transferverify.disputes.verify_clearance)
+    reveals only that the token is valid or not - never a ledger, a
+    fingerprint, or guardian contact detail."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    network_identity = models.ForeignKey(NetworkStudentIdentity, on_delete=models.PROTECT, related_name="clearances")
+    issuing_school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="issued_clearances")
+    source_alert = models.ForeignKey(TransferAlert, on_delete=models.PROTECT, related_name="clearances")
+    verification_token = models.CharField(max_length=64, unique=True)
+    status = models.CharField(max_length=16, choices=ClearanceStatus.choices, default=ClearanceStatus.ACTIVE)
+    issued_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="issued_clearances")
+    issued_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(
+        Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="revoked_clearances"
+    )
+
+    class Meta:
+        ordering = ["-issued_at"]
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == ClearanceStatus.ACTIVE
+
+    def __str__(self):
+        return f"Clearance {self.verification_token[:8]}… ({self.status})"

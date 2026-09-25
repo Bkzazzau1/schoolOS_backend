@@ -99,6 +99,13 @@ def resolve_alert(*, classification) -> None:
     alert = TransferAlert.objects.filter(source_classification=classification).first()
     if alert is None or alert.state in {TransferAlertState.WITHDRAWN, TransferAlertState.RESOLVED}:
         return
+    # An open dispute must never be silently overwritten by the source
+    # school resolving its own classification underneath it - the alert
+    # stays honestly "Disputed" until the dispute itself is reviewed (see
+    # apps.transferverify.disputes.review_dispute), even though the
+    # classification the Proprietor controls is now resolved.
+    if alert.state == TransferAlertState.DISPUTED:
+        return
     alert.state = TransferAlertState.RESOLVED
     alert.resolved_at = timezone.now()
     alert.save(update_fields=["state", "resolved_at", "updated_at"])

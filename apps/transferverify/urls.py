@@ -6,15 +6,23 @@ from .views import (
     AssociationMembersView,
     CancelVerificationRequestView,
     ExitAssociationMembershipView,
+    IssueClearanceView,
     JoinAssociationView,
+    MyDisputesView,
     NetworkPhoneMatchView,
+    OpenDisputeView,
+    ReceivedDisputesView,
     ReceivedVerificationRequestsView,
     RejectAssociationMemberView,
     RespondVerificationRequestView,
+    RevokeClearanceView,
+    ReviewDisputeView,
     SchoolAssociationMembershipsView,
+    SchoolClearancesView,
     SendVerificationRequestView,
     SentVerificationRequestsView,
     SuspendAssociationMemberView,
+    VerifyClearanceView,
 )
 
 urlpatterns = [
@@ -71,4 +79,33 @@ urlpatterns = [
         "schools/<uuid:school_id>/transferverify/network/requests/<uuid:request_id>/cancel/",
         CancelVerificationRequestView.as_view(),
     ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/disputes/",
+        OpenDisputeView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/disputes/mine/",
+        MyDisputesView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/disputes/received/",
+        ReceivedDisputesView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/disputes/<uuid:dispute_id>/review/",
+        ReviewDisputeView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/clearances/",
+        IssueClearanceView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/clearances/list/",
+        SchoolClearancesView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/clearances/<uuid:clearance_id>/revoke/",
+        RevokeClearanceView.as_view(),
+    ),
+    path("transferverify/clearances/verify/", VerifyClearanceView.as_view()),
 ]
