@@ -113,6 +113,8 @@ TEACHER = workspace(
         ("cbt", "CBT Practice"),
         ("learning-progress", "Learning Progress"),
         ("students", "Students"),
+        ("excursions", "Excursions"),
+        ("gallery", "Media Gallery"),
         ("messages", "Messages"),
         ("ai", "Teacher AI"),
         ("performance", "My Performance"),
