@@ -4,11 +4,16 @@ from .views import (
     ApproveAssociationMemberView,
     AssociationCatalogView,
     AssociationMembersView,
+    CancelVerificationRequestView,
     ExitAssociationMembershipView,
     JoinAssociationView,
     NetworkPhoneMatchView,
+    ReceivedVerificationRequestsView,
     RejectAssociationMemberView,
+    RespondVerificationRequestView,
     SchoolAssociationMembershipsView,
+    SendVerificationRequestView,
+    SentVerificationRequestsView,
     SuspendAssociationMemberView,
 )
 
@@ -45,5 +50,25 @@ urlpatterns = [
     path(
         "schools/<uuid:school_id>/transferverify/network/match/",
         NetworkPhoneMatchView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/requests/",
+        SendVerificationRequestView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/requests/sent/",
+        SentVerificationRequestsView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/requests/received/",
+        ReceivedVerificationRequestsView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/requests/<uuid:request_id>/respond/",
+        RespondVerificationRequestView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/requests/<uuid:request_id>/cancel/",
+        CancelVerificationRequestView.as_view(),
     ),
 ]

@@ -381,3 +381,56 @@ class NetworkSearchAudit(models.Model):
 
     class Meta:
         ordering = ["-searched_at"]
+
+
+class TransferVerificationRequestStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    CONFIRMED = "confirmed", "Confirmed"
+    REJECTED = "rejected", "Rejected"
+    CANCELLED = "cancelled", "Cancelled"
+    EXPIRED = "expired", "Expired"
+
+
+class TransferVerificationRequest(models.Model):
+    """One requesting school's factual question to the source school about a
+    single TransferAlert it found through a candidate match - "does this
+    still concern the student we are admitting, and what is its status?" A
+    flat, single-transition state machine: the source school gives one
+    factual response, never a back-and-forth negotiation inside the request
+    itself - a dispute, if any, is its own separate object (a later phase)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    transfer_alert = models.ForeignKey(TransferAlert, on_delete=models.CASCADE, related_name="verification_requests")
+    requesting_school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="sent_verification_requests")
+    requested_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="sent_verification_requests")
+    status = models.CharField(
+        max_length=16, choices=TransferVerificationRequestStatus.choices, default=TransferVerificationRequestStatus.PENDING
+    )
+    note = models.TextField(blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True)
+
+    responded_at = models.DateTimeField(null=True, blank=True)
+    responded_by = models.ForeignKey(
+        Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="answered_verification_requests"
+    )
+    response_note = models.TextField(blank=True)
+    #: The classification's status at the moment of response, frozen - so a
+    #: later change to the source school's own case never silently rewrites
+    #: what the requesting school was actually told.
+    response_status_snapshot = models.CharField(max_length=24, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-requested_at"]
+        constraints = [
+            # One open request at a time per (alert, requesting school) - a
+            # school cannot spam several pending requests for the same case.
+            models.UniqueConstraint(
+                fields=["transfer_alert", "requesting_school"],
+                condition=Q(status=TransferVerificationRequestStatus.PENDING),
+                name="one_pending_request_per_alert_school",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Verification request {self.id} ({self.status})"

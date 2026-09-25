@@ -10,6 +10,7 @@ from .models import (
     SchoolProprietorAssociation,
     StudentNetworkEnrollment,
     TransferAlert,
+    TransferVerificationRequest,
 )
 
 
@@ -74,3 +75,11 @@ class TransferAlertAdmin(admin.ModelAdmin):
 
 
 admin.site.register(NetworkSearchAudit)
+
+
+@admin.register(TransferVerificationRequest)
+class TransferVerificationRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "requesting_school", "status", "requested_at", "responded_at")
+    list_filter = ("status",)
+    search_fields = ("requesting_school__name",)
+    readonly_fields = ("requested_at", "responded_at", "updated_at")

@@ -10,6 +10,7 @@ from apps.schools.models import Role
 
 from . import associations as association_services
 from . import network as network_services
+from . import verification as verification_services
 
 
 def _transferverify_error(view):
@@ -121,3 +122,62 @@ class NetworkPhoneMatchView(APIView):
             return Response({"code": "transferverify_error", "message": "phone is required."}, status=status.HTTP_400_BAD_REQUEST)
         candidates = network_services.match_by_phone(membership=membership, phone=phone)
         return Response({"candidates": candidates})
+
+
+class SendVerificationRequestView(APIView):
+    @_transferverify_error
+    def post(self, request, school_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR, Role.ADMINISTRATOR], membership_id=request.data.get("membership")
+        )
+        item = verification_services.send_request(
+            membership=membership,
+            transfer_alert_id=request.data.get("transferAlertId"),
+            note=request.data.get("note", ""),
+        )
+        return Response({"request": verification_services.serialize_request(item)}, status=status.HTTP_201_CREATED)
+
+
+class SentVerificationRequestsView(APIView):
+    @_transferverify_error
+    def get(self, request, school_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR, Role.ADMINISTRATOR], membership_id=request.query_params.get("membership")
+        )
+        items = verification_services.requests_sent_by(membership.school)
+        return Response({"requests": [verification_services.serialize_request(item) for item in items]})
+
+
+class ReceivedVerificationRequestsView(APIView):
+    @_transferverify_error
+    def get(self, request, school_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR], membership_id=request.query_params.get("membership")
+        )
+        items = verification_services.requests_received_by(membership.school)
+        return Response({"requests": [verification_services.serialize_request(item) for item in items]})
+
+
+class RespondVerificationRequestView(APIView):
+    @_transferverify_error
+    def post(self, request, school_id, request_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR], membership_id=request.data.get("membership")
+        )
+        item = verification_services.respond_to_request(
+            membership=membership,
+            request_id=request_id,
+            decision=request.data.get("decision"),
+            note=request.data.get("note", ""),
+        )
+        return Response({"request": verification_services.serialize_request(item)})
+
+
+class CancelVerificationRequestView(APIView):
+    @_transferverify_error
+    def post(self, request, school_id, request_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PROPRIETOR, Role.ADMINISTRATOR], membership_id=request.data.get("membership")
+        )
+        item = verification_services.cancel_request(membership=membership, request_id=request_id)
+        return Response({"request": verification_services.serialize_request(item)})
