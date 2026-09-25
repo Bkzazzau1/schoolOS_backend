@@ -16,7 +16,6 @@ PARENT = workspace(
         ("attendance", "Attendance"),
         ("finance", "Finance & Payments", "sensitive"),
         ("messages", "Messages"),
-        ("discussions", "School Discussions"),
         ("community", "Community"),
         ("school-life", "School Life"),
         ("documents", "Documents & Consent", "sensitive"),

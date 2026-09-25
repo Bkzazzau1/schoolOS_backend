@@ -34,7 +34,7 @@ APP_SCREENS = {
     ],
     "parent": [
         "dashboard", "children", "progress", "weekly-learning", "attendance", "finance", "messages",
-        "discussions", "school-life", "documents", "ai",
+        "school-life", "documents", "ai",
     ],
     "schoollife": [
         "community", "noticeboard", "activities", "events", "houses", "gallery", "excursions", "transport",
