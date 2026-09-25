@@ -23,6 +23,20 @@ AFTERNOON_RUN = "driver_afternoon_run"
 VEHICLE_CHECK = "driver_vehicle_check"
 VEHICLE_DEFECT = "driver_vehicle_defect"
 
+TRANSPORT_EVENT = "driver_transport_event"
+
+#: The fixed catalog of vehicle check items every check is built from, and each one's
+#: severity (see driver_vehicle_check_demo_data.dart) - a check can't invent a new item,
+#: and severity is the server's own truth, never taken from the device: it decides
+#: whether a failure blocks the trip, so a device must not be able to soften it.
+VEHICLE_CHECK_ITEM_SEVERITY = {
+    "fuel_charge": "critical", "tyres": "critical", "brakes": "critical",
+    "steering": "critical", "lights_horn": "critical", "doors": "critical",
+    "seat_belts": "critical", "warning_lights": "critical", "fire_extinguisher": "critical",
+    "first_aid": "critical", "interior": "advisory",
+}
+VEHICLE_CHECK_ITEM_IDS = frozenset(VEHICLE_CHECK_ITEM_SEVERITY)
+
 #: School management: sets policy (routes, stops, driver/rider assignments, vehicle clearance).
 MANAGERS = frozenset({"proprietor", "administrator"})
 #: Adds read-only oversight to MANAGERS.
