@@ -14,6 +14,7 @@ DRIVER = workspace(
         ("incidents", "Incidents"),
         ("messages", "Messages & Alerts"),
         ("history", "Trip History & Profile"),
+        ("community", "Community"),
     ],
 )
 
@@ -41,6 +42,7 @@ PRINCIPAL = workspace(
         ("ai", "Principal AI"),
         ("performance", "School Performance"),
         ("profile", "Profile"),
+        ("community", "Community"),
     ],
 )
 
@@ -66,6 +68,7 @@ ADMINISTRATOR = workspace(
         ("attendance", "Attendance Desk"),
         ("operations", "Operations"),
         ("notices", "Notices"),
+        ("community", "Community"),
     ],
 )
 
@@ -89,6 +92,7 @@ FINANCE = workspace(
         ("payroll", "Payroll Handoff", "sensitive"),
         ("reports", "Reports"),
         ("ai", "Finance AI"),
+        ("community", "Community"),
     ],
 )
 
@@ -113,5 +117,6 @@ TEACHER = workspace(
         ("ai", "Teacher AI"),
         ("performance", "My Performance"),
         ("profile", "Profile", "sensitive"),
+        ("community", "Community"),
     ],
 )
