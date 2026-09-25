@@ -356,6 +356,11 @@ class TransferAlert(models.Model):
     published_at = models.DateTimeField()
     withdrawn_at = models.DateTimeField(null=True, blank=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
+    #: Set only by the policy-driven staleness sweep (see
+    #: apps.transferverify.network.expire_stale_alerts) - never a human
+    #: action, and never applied to a DISPUTED alert, which needs a human
+    #: decision, not a timeout.
+    expired_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

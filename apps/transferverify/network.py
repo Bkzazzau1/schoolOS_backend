@@ -6,6 +6,8 @@ platform-level, not tenant-scoped, and for the tenant-isolation reasoning
 behind every query here.
 """
 
+from datetime import timedelta
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -21,6 +23,13 @@ from .models import (
     TransferAlert,
     TransferAlertState,
 )
+
+#: How long an ACTIVE or VERIFICATION_PENDING alert may sit untouched before
+#: apps.transferverify.network.expire_stale_alerts marks it EXPIRED - the
+#: "expired (policy-driven staleness)" state the design's own diagram
+#: describes. A conservative, adjustable default - not a business rule
+#: handed down from anywhere else in the app.
+ALERT_EXPIRY_DAYS = 365
 
 
 def _guardian_phones(student) -> list[str]:
@@ -166,3 +175,21 @@ def match_by_phone(*, membership, phone: str) -> list[dict]:
         searching_school=searching_school, searching_membership=membership, result_count=len(results)
     )
     return results
+
+
+def expire_stale_alerts(*, now=None) -> dict:
+    """Moves every ACTIVE or VERIFICATION_PENDING alert older than
+    ALERT_EXPIRY_DAYS to EXPIRED - never a DISPUTED one, which needs a human
+    decision, not a timeout. Never deletes anything (see TransferAlert's own
+    docstring: "never deleted") - expired is a terminal display state, the
+    same as resolved or withdrawn. Meant to be run periodically (see the
+    expire_transferverify_alerts management command), the same shape as
+    apps.billing.cycle.run_billing_cycles."""
+    now = now or timezone.now()
+    cutoff = now - timedelta(days=ALERT_EXPIRY_DAYS)
+    stale = TransferAlert.objects.filter(
+        state__in=[TransferAlertState.ACTIVE, TransferAlertState.VERIFICATION_PENDING],
+        published_at__lt=cutoff,
+    )
+    count = stale.update(state=TransferAlertState.EXPIRED, expired_at=now)
+    return {"expired": count}

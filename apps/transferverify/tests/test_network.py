@@ -1,3 +1,7 @@
+from datetime import timedelta
+
+from django.utils import timezone
+
 from apps.core.errors import Rejected
 from apps.staff.tests.helpers import StaffTestCase
 from apps.students.models import GuardianLink, Student
@@ -108,6 +112,56 @@ class AlertLifecycleTests(NetworkTestCase):
         )
         services.resolve(membership=self.owner, external_id=published.external_id, note="Paid in full.")
         alert = TransferAlert.objects.get(source_classification_id=published.id)
+        self.assertEqual(alert.state, TransferAlertState.RESOLVED)
+
+
+class ExpiryTests(NetworkTestCase):
+    def _published_alert(self):
+        item = bad_debt(self.student, self.owner)
+        services.advance_status(membership=self.owner, external_id=item.external_id, status="bad_debt")
+        published = services.publish_to_transferverify(
+            membership=self.owner, external_id=item.external_id, reason="withdrew_without_clearance"
+        )
+        return TransferAlert.objects.get(source_classification=published)
+
+    def test_an_old_active_alert_is_expired(self):
+        alert = self._published_alert()
+        old = timezone.now() - timedelta(days=network.ALERT_EXPIRY_DAYS + 1)
+        TransferAlert.objects.filter(id=alert.id).update(published_at=old)
+        summary = network.expire_stale_alerts()
+        self.assertEqual(summary, {"expired": 1})
+        alert.refresh_from_db()
+        self.assertEqual(alert.state, TransferAlertState.EXPIRED)
+        self.assertIsNotNone(alert.expired_at)
+
+    def test_a_recent_alert_is_left_alone(self):
+        self._published_alert()
+        summary = network.expire_stale_alerts()
+        self.assertEqual(summary, {"expired": 0})
+
+    def test_a_disputed_alert_is_never_expired_by_a_timeout(self):
+        alert = self._published_alert()
+        alert.state = TransferAlertState.DISPUTED
+        old = timezone.now() - timedelta(days=network.ALERT_EXPIRY_DAYS + 1)
+        alert.published_at = old
+        alert.save(update_fields=["state", "published_at"])
+        summary = network.expire_stale_alerts()
+        self.assertEqual(summary, {"expired": 0})
+        alert.refresh_from_db()
+        self.assertEqual(alert.state, TransferAlertState.DISPUTED)
+
+    def test_a_resolved_alert_is_never_reopened_into_expired(self):
+        item = bad_debt(self.student, self.owner)
+        services.advance_status(membership=self.owner, external_id=item.external_id, status="bad_debt")
+        published = services.publish_to_transferverify(
+            membership=self.owner, external_id=item.external_id, reason="withdrew_without_clearance"
+        )
+        services.resolve(membership=self.owner, external_id=published.external_id, note="Paid in full.")
+        alert = TransferAlert.objects.get(source_classification_id=published.id)
+        old = timezone.now() - timedelta(days=network.ALERT_EXPIRY_DAYS + 1)
+        TransferAlert.objects.filter(id=alert.id).update(published_at=old)
+        network.expire_stale_alerts()
+        alert.refresh_from_db()
         self.assertEqual(alert.state, TransferAlertState.RESOLVED)
 
 
