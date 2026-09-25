@@ -434,3 +434,108 @@ class TransferVerificationRequest(models.Model):
 
     def __str__(self):
         return f"Verification request {self.id} ({self.status})"
+
+
+# --- The biometric layer -------------------------------------------------
+#
+# No fingerprint capture hardware or vendor SDK is integrated into SchoolOS
+# today (see apps.transferverify.biometrics for the explicit design decision
+# on this). These models are the real, tenant-aware data path a future
+# capture integration will write to - consent, protected storage, revocation
+# - built and tested now so the authority chain (see
+# apps.transferverify.biometrics.evaluate_confidence) does not have to wait
+# for that vendor decision.
+
+
+class BiometricConsentStatus(models.TextChoices):
+    GRANTED = "granted", "Granted"
+    WITHDRAWN = "withdrawn", "Withdrawn"
+
+
+class BiometricConsent(models.Model):
+    """Explicit, revocable guardian consent to capture and store a
+    biometric template for TransferVerify matching - required before any
+    StudentBiometricTemplate may ever be captured for a student. Tenant-
+    scoped: consent is given to, and recorded by, one school at a time."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="biometric_consents")
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="biometric_consents")
+    status = models.CharField(max_length=16, choices=BiometricConsentStatus.choices, default=BiometricConsentStatus.GRANTED)
+    guardian_name = models.CharField(max_length=200)
+    note = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="recorded_biometric_consents")
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+    withdrawn_by = models.ForeignKey(
+        Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="withdrawn_biometric_consents"
+    )
+
+    class Meta:
+        ordering = ["-recorded_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "student"], condition=Q(status=BiometricConsentStatus.GRANTED),
+                name="one_active_consent_per_student_school",
+            ),
+        ]
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == BiometricConsentStatus.GRANTED
+
+    def __str__(self):
+        return f"Consent for {self.student} at {self.school} ({self.status})"
+
+
+class BiometricFinger(models.TextChoices):
+    RIGHT_THUMB = "right_thumb", "Right thumb"
+    RIGHT_INDEX = "right_index", "Right index"
+    RIGHT_MIDDLE = "right_middle", "Right middle"
+    RIGHT_RING = "right_ring", "Right ring"
+    RIGHT_LITTLE = "right_little", "Right little"
+    LEFT_THUMB = "left_thumb", "Left thumb"
+    LEFT_INDEX = "left_index", "Left index"
+    LEFT_MIDDLE = "left_middle", "Left middle"
+    LEFT_RING = "left_ring", "Left ring"
+    LEFT_LITTLE = "left_little", "Left little"
+    OTHER = "other", "Other"
+
+
+class StudentBiometricTemplate(models.Model):
+    """A protected biometric template - never the raw scan/image, and never
+    transferred between schools directly (only ever compared inside the
+    matching service - see apps.transferverify.biometrics). Platform-level
+    and linked to the NetworkStudentIdentity, not to any one school's
+    Student row, because matching must work across schools. Not hardcoded to
+    two fingers - a normal FK-many table, so a school may register as many
+    as its capture device supports."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    network_identity = models.ForeignKey(NetworkStudentIdentity, on_delete=models.CASCADE, related_name="biometric_templates")
+    enrolled_school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="enrolled_biometric_templates")
+    consent = models.ForeignKey(BiometricConsent, on_delete=models.PROTECT, related_name="templates")
+    finger = models.CharField(max_length=16, choices=BiometricFinger.choices)
+    #: Opaque and encrypted at rest - never returned to any caller as-is,
+    #: only ever read by the matching service itself.
+    template_data = models.BinaryField()
+    template_version = models.CharField(max_length=40)
+    quality_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    source_device = models.CharField(max_length=120, blank=True)
+    captured_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="captured_biometric_templates")
+    captured_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(
+        Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="revoked_biometric_templates"
+    )
+
+    class Meta:
+        ordering = ["-captured_at"]
+        indexes = [models.Index(fields=["network_identity"], name="biometric_tpl_identity_idx")]
+
+    @property
+    def is_active(self) -> bool:
+        return self.revoked_at is None
+
+    def __str__(self):
+        return f"{self.get_finger_display()} template for identity {self.network_identity_id}"

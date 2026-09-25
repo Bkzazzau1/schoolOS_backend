@@ -4,10 +4,12 @@ from .models import (
     AssociationAdministrator,
     BadDebtClassification,
     BadDebtEvent,
+    BiometricConsent,
     NetworkSearchAudit,
     NetworkStudentIdentity,
     SchoolAssociationMembership,
     SchoolProprietorAssociation,
+    StudentBiometricTemplate,
     StudentNetworkEnrollment,
     TransferAlert,
     TransferVerificationRequest,
@@ -83,3 +85,23 @@ class TransferVerificationRequestAdmin(admin.ModelAdmin):
     list_filter = ("status",)
     search_fields = ("requesting_school__name",)
     readonly_fields = ("requested_at", "responded_at", "updated_at")
+
+
+@admin.register(BiometricConsent)
+class BiometricConsentAdmin(admin.ModelAdmin):
+    list_display = ("student", "school", "status", "guardian_name", "recorded_at")
+    list_filter = ("status", "school")
+    search_fields = ("student__first_name", "student__surname", "guardian_name")
+    readonly_fields = ("recorded_at", "withdrawn_at")
+
+
+@admin.register(StudentBiometricTemplate)
+class StudentBiometricTemplateAdmin(admin.ModelAdmin):
+    """No school has real capture hardware yet (see apps.transferverify.
+    biometrics' own docstring) - this exists so the data path can be
+    exercised and tested ahead of that vendor decision."""
+
+    list_display = ("network_identity", "enrolled_school", "finger", "quality_score", "captured_at", "revoked_at")
+    list_filter = ("enrolled_school", "finger")
+    exclude = ("template_data",)
+    readonly_fields = ("captured_at",)
