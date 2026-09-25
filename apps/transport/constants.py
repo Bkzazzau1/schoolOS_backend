@@ -25,6 +25,28 @@ VEHICLE_DEFECT = "driver_vehicle_defect"
 
 TRANSPORT_EVENT = "driver_transport_event"
 
+INCIDENT = "driver_transport_incident"
+CASE_EVENT = "transport_case_event"
+
+DRIVER_MESSAGE = "driver_message"
+DRIVER_MESSAGE_RECEIPT = "driver_message_receipt"
+DRIVER_ALERT_RECEIPT = "driver_alert_receipt"
+
+INCIDENT_CATEGORIES = (
+    "vehicleBreakdown", "accident", "trafficDelay", "routeObstruction", "studentNotAtStop",
+    "guardianUnavailable", "studentUnwell", "vehicleIssue", "safetyConcern", "other",
+)
+INCIDENT_SEVERITIES = ("low", "medium", "high", "critical")
+INCIDENT_PHASES = (
+    "beforeMorningRun", "morningRoute", "atSchool", "beforeAfternoonRun", "afternoonRoute", "afterService",
+)
+#: A manager moves an incident forward through these; "queued"/"submitted" are the driver's side.
+INCIDENT_REVIEW_STATUSES = ("acknowledged", "underReview", "resolved")
+
+#: The status words the app uses on a vehicle defect. Closed ones can never be reopened.
+DEFECT_STATUSES = ("reported", "acknowledged", "under_review", "cleared", "resolved", "closed")
+DEFECT_CLOSED = frozenset({"cleared", "resolved", "closed"})
+
 #: The fixed catalog of vehicle check items every check is built from, and each one's
 #: severity (see driver_vehicle_check_demo_data.dart) - a check can't invent a new item,
 #: and severity is the server's own truth, never taken from the device: it decides

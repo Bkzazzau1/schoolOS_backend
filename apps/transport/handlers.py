@@ -2,11 +2,14 @@
 
 Phase 1: Transport Control's own policy records - driver and rider assignments, route
 stop plans, vehicle clearance. Phase 2: a Driver's own daily runs and vehicle checks.
+Phase 3: incidents (and Transport Control's review of them) and a Driver's own messages.
 
 school_transport_route itself is not here: apps.schoollife already owns it."""
 
 from .afternoon_run import AfternoonRunHandler
 from .driver_assignment import AssignmentEventHandler, DriverAssignmentHandler
+from .driver_messages import AlertReceiptHandler, DriverMessageHandler, MessageReceiptHandler
+from .incident import CaseEventHandler, IncidentHandler
 from .morning_run import MorningRunHandler
 from .rider_assignment import RiderAssignmentEventHandler, RiderAssignmentHandler
 from .route_plan import RouteEventHandler, RoutePlanHandler
@@ -28,4 +31,9 @@ HANDLERS = [
     VehicleCheckHandler(),
     VehicleDefectHandler(),
     TransportEventHandler(),
+    IncidentHandler(),
+    CaseEventHandler(),
+    DriverMessageHandler(),
+    MessageReceiptHandler(),
+    AlertReceiptHandler(),
 ]

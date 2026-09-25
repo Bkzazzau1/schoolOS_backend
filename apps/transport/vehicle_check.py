@@ -12,7 +12,6 @@ from . import shared
 
 _CHECK_STATUSES = {"notStarted", "inProgress", "ready", "blocked"}
 _ITEM_STATUSES = {"unchecked", "passed", "failed"}
-_DEFECT_STATUSES = {"reported", "acknowledged", "resolved", "cleared"}
 _MANAGERS = c.MANAGERS
 
 
@@ -115,8 +114,7 @@ class VehicleDefectHandler(EntityHandler):
             raise Rejected("A vehicle defect is never deleted, only resolved.")
         if ctx.operation == "create" and role != "driver":
             raise Rejected("Only the Driver who observed the defect reports it.")
-        if ctx.operation == "update" and role not in _MANAGERS:
-            raise Rejected("Only Transport Control can change a reported defect.")
+        super().authorize(ctx)
 
     def visible(self, membership, payload):
         if membership.role in c.READERS:
@@ -128,16 +126,7 @@ class VehicleDefectHandler(EntityHandler):
     def clean(self, ctx: MutationContext) -> dict[str, Any]:
         p, old = ctx.payload, ctx.existing
         if old is not None:
-            # A manager may only move an existing defect toward resolved - everything
-            # about what was observed is fixed once the Driver reported it.
-            status = choice(p.get("status"), _DEFECT_STATUSES, "status")
-            return {
-                **old,
-                "status": status,
-                "resolutionNote": text(p, "resolutionNote", max_len=500, required=False),
-                "resolvedByMembershipId": str(ctx.membership.id) if status in ("resolved", "cleared") else old.get("resolvedByMembershipId", ""),
-                "resolvedAt": ctx.now if status in ("resolved", "cleared") else old.get("resolvedAt", ""),
-            }
+            return self._update(ctx, old)
 
         member_id = str(ctx.membership.id)
         check_id = text(p, "checkId", max_len=160)
@@ -171,3 +160,41 @@ class VehicleDefectHandler(EntityHandler):
             "reportedAt": ctx.now,
             "reportedByMembershipId": member_id,
         }
+
+    def _update(self, ctx: MutationContext, old: dict[str, Any]) -> dict[str, Any]:
+        p, role, member_id = ctx.payload, ctx.membership.role, str(ctx.membership.id)
+        if role == "driver":
+            # The app re-sends a defect when the same failed item is submitted again. That must
+            # never undo Transport Control's progress on it, so once anyone has acted on it the
+            # driver's re-send changes nothing; while it is still just reported, the note may be
+            # refreshed. Only the Driver who reported it may do even that.
+            if old.get("reportedByMembershipId") != member_id:
+                raise Rejected("Only the Driver who reported this defect may re-send it.")
+            if old.get("status") != "reported":
+                return old
+            return {**old, "note": text(p, "note", max_len=500)}
+        if role not in _MANAGERS:
+            raise Rejected("Only Transport Control can change a reported defect.")
+
+        # Transport Control moves it forward; everything about what was observed stays fixed.
+        if str(old.get("status", "")).lower() in c.DEFECT_CLOSED:
+            raise Rejected("This vehicle defect is already closed.")
+        status = choice(p.get("status"), c.DEFECT_STATUSES, "status")
+        if status == "reported":
+            raise Rejected("A defect that has been acted on cannot go back to reported.")
+        note = text(p, "managementNote", max_len=500, required=False)
+        closing = status in c.DEFECT_CLOSED
+        if closing and not note:
+            raise Rejected("Add a clearance note describing the completed safety action.")
+        stored = {
+            **old,
+            "status": status,
+            "managementNote": note or old.get("managementNote", ""),
+            "updatedAt": ctx.now,
+            "updatedByMembershipId": member_id,
+            "requiresTransportReview": not closing,
+        }
+        if closing:
+            stored["clearedAt"] = ctx.now
+            stored["clearedByMembershipId"] = member_id
+        return stored

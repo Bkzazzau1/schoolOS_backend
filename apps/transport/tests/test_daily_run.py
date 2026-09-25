@@ -219,17 +219,51 @@ class VehicleDefectTests(DailyRunTestCase):
         stored = self.stored(c.VEHICLE_DEFECT, self.defect_id).payload
         self.assertEqual((stored["severity"], stored["blocksTrip"], stored["status"]), ("critical", True, "reported"))
 
-    def test_management_can_resolve_it_but_the_driver_cannot(self):
+    def test_management_moves_it_forward_and_a_closed_defect_stays_closed(self):
         self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, self.defect_payload(), who=self.driver))
+        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, {"status": "under_review", "managementNote": "Booked in."}, operation="update", who=self.admin))
+        self.assertEqual(self.stored(c.VEHICLE_DEFECT, self.defect_id).payload["status"], "under_review")
         self.rejected(
-            self.push(c.VEHICLE_DEFECT, self.defect_id, {"status": "resolved", "resolutionNote": "Pads replaced."}, operation="update", who=self.driver),
-            "Only Transport Control",
+            self.push(c.VEHICLE_DEFECT, self.defect_id, {"status": "cleared", "managementNote": ""}, operation="update", who=self.admin),
+            "clearance note",
         )
-        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, {"status": "resolved", "resolutionNote": "Pads replaced."}, operation="update", who=self.admin))
-        self.assertEqual(self.stored(c.VEHICLE_DEFECT, self.defect_id).payload["status"], "resolved")
+        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, {"status": "cleared", "managementNote": "Pads replaced."}, operation="update", who=self.admin))
+        stored = self.stored(c.VEHICLE_DEFECT, self.defect_id).payload
+        self.assertEqual((stored["status"], stored["clearedByMembershipId"], stored["requiresTransportReview"]), ("cleared", str(self.admin.id), False))
+        self.rejected(
+            self.push(c.VEHICLE_DEFECT, self.defect_id, {"status": "reported", "managementNote": "x"}, operation="update", who=self.admin),
+            "already closed",
+        )
+
+    def test_clearing_the_defect_lets_the_vehicle_be_released_again(self):
+        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, self.defect_payload(), who=self.driver))
+        release = {"routeId": "BUS-01", "status": "released", "note": ""}
+        self.rejected(self.push(c.VEHICLE_CLEARANCE, "BUS-01", release, who=self.admin), "blocking safety")
+        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, {"status": "cleared", "managementNote": "Fixed."}, operation="update", who=self.admin))
+        self.ok(self.push(c.VEHICLE_CLEARANCE, "BUS-01", release, who=self.admin))
+
+    def test_the_driver_resending_the_defect_never_undoes_transport_controls_progress(self):
+        # The app re-sends a defect when the same failed item is submitted again.
+        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, self.defect_payload(), who=self.driver))
+        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, {"status": "acknowledged", "managementNote": "Seen."}, operation="update", who=self.admin))
+        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, self.defect_payload(note="Squeaking again"), operation="update", who=self.driver))
+        stored = self.stored(c.VEHICLE_DEFECT, self.defect_id).payload
+        self.assertEqual((stored["status"], stored["note"]), ("acknowledged", "Squeaking."))
+
+    def test_the_driver_can_refresh_the_note_while_it_is_still_only_reported(self):
+        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, self.defect_payload(), who=self.driver))
+        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, self.defect_payload(note="Squeaking and pulling left"), operation="update", who=self.driver))
+        self.assertEqual(self.stored(c.VEHICLE_DEFECT, self.defect_id).payload["note"], "Squeaking and pulling left")
 
     def test_a_manager_cannot_report_a_new_defect(self):
         self.rejected(self.push(c.VEHICLE_DEFECT, self.defect_id, self.defect_payload(), who=self.admin), "Only the Driver")
+
+    def test_an_unrelated_role_cannot_touch_it(self):
+        self.ok(self.push(c.VEHICLE_DEFECT, self.defect_id, self.defect_payload(), who=self.driver))
+        self.rejected(
+            self.push(c.VEHICLE_DEFECT, self.defect_id, {"status": "cleared", "managementNote": "x"}, operation="update", who=self.members["teacher"]),
+            "role may not",
+        )
 
 
 class TransportEventTests(DailyRunTestCase):
