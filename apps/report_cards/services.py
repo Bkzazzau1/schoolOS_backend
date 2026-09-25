@@ -333,6 +333,21 @@ def release_report_card(*, actor: Membership, external_id: str) -> ReportCard:
     return item
 
 
+def _serialize_events(item: ReportCard) -> list[dict]:
+    events = item.events.select_related("actor_membership__user").order_by("-revision")
+    return [
+        {
+            "revision": event.revision,
+            "action": event.action,
+            "actorMembershipId": str(event.actor_membership_id),
+            "actor": _membership_name(event.actor_membership),
+            "comment": event.comment,
+            "occurredAt": event.created_at.isoformat(),
+        }
+        for event in events
+    ]
+
+
 def serialize_report_card(item: ReportCard) -> dict:
     lines = item.lines.select_related("class_subject__subject").order_by("class_subject__subject__name")
     return {
@@ -369,6 +384,11 @@ def serialize_report_card(item: ReportCard) -> dict:
         "releasedAt": item.released_at.isoformat() if item.released_at else None,
         "version": item.version,
         "updatedAt": item.updated_at.isoformat(),
+        # Same visibility as the report card itself - whoever may see the card
+        # sees its full review history (Student/Parent only once released,
+        # matching every other field here). A returned-then-fixed history is
+        # ordinary transparency, not something to hide from a family.
+        "events": _serialize_events(item),
     }
 
 
