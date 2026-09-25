@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "apps.assessments",
     "apps.report_cards",
     "apps.class_teachers",
+    "apps.cbt",
     "apps.domains",
     "apps.notifications",
     "apps.access",
