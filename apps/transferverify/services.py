@@ -7,6 +7,7 @@ from apps.schools.models import Membership, Role
 from apps.students.models import Student
 from apps.sync.models import SyncRecord
 
+from .associations import active_association_ids
 from .models import BadDebtClassification, BadDebtEvent, BadDebtStatus, PublicationReason
 
 BAD_DEBT_ENTITY = "transferverify_bad_debt_classification"
@@ -259,17 +260,33 @@ def resolve(*, membership: Membership, external_id: str, note: str = "", publish
     return item
 
 
+def _validated_association_scope(school, association_ids) -> list[str]:
+    """Only associations this school currently has an ACTIVE membership in -
+    never guessed, never defaulted to "every association this school has
+    ever touched"."""
+    if not association_ids:
+        return []
+    unique = sorted({str(value) for value in association_ids})
+    allowed = active_association_ids(school)
+    unknown = [value for value in unique if value not in allowed]
+    if unknown:
+        raise Rejected("Choose only associations this school is an active member of.")
+    return unique
+
+
 @transaction.atomic
 def publish_to_transferverify(
-    *, membership: Membership, external_id: str, reason: str, note: str = "", publish_sync: bool = True
+    *, membership: Membership, external_id: str, reason: str, note: str = "",
+    association_ids: list[str] | None = None, publish_sync: bool = True,
 ) -> BadDebtClassification:
     """The one action that turns a school's private classification into
     something TransferVerify is meant to eventually make discoverable to
     other schools - Proprietor-only, requires explicit confirmation from the
     caller (the review screen showing student/guardian/amount/reason before
-    this is called), and only ever from a BAD_DEBT-status case. Nothing here
-    yet reaches another school (see the model docstring) - this phase proves
-    the authority chain, not the network."""
+    this is called), and only ever from a BAD_DEBT-status case. association_ids
+    may be left empty (a school with no association yet still proves the
+    authority chain); given, every one of them must be an association this
+    school is an ACTIVE member of - see apps.transferverify.associations."""
     _assert_publish_authority(membership)
     item = _loaded(membership.school, external_id, lock=True)
     if item.status != BadDebtStatus.BAD_DEBT:
@@ -278,13 +295,19 @@ def publish_to_transferverify(
         raise Rejected("This case has already been published to TransferVerify.")
     if reason not in PublicationReason.values:
         raise Rejected("Choose a reason for publishing this case.")
+    scope = _validated_association_scope(membership.school, association_ids)
 
     item.published_at = timezone.now()
     item.published_by = membership
     item.publication_reason = reason
     item.publication_note = note
-    item.save(update_fields=["published_at", "published_by", "publication_reason", "publication_note", "updated_at"])
-    _append_event(item, actor=membership, action="published", detail={"reason": reason})
+    item.association_scope = scope
+    item.save(
+        update_fields=[
+            "published_at", "published_by", "publication_reason", "publication_note", "association_scope", "updated_at",
+        ]
+    )
+    _append_event(item, actor=membership, action="published", detail={"reason": reason, "associationScope": scope})
     if publish_sync:
         publish_classification_sync(item, actor=membership)
     return item

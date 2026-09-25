@@ -76,6 +76,13 @@ class BadDebtClassificationHandler(EntityHandler):
         elif action == "publish":
             cleaned["reason"] = choice(p.get("reason"), set(PublicationReason.values), "reason")
             cleaned["note"] = text(p, "note", max_len=2000, required=False)
+            raw_scope = p.get("associationIds")
+            if raw_scope is None:
+                cleaned["associationIds"] = []
+            elif isinstance(raw_scope, list) and all(isinstance(value, str) for value in raw_scope):
+                cleaned["associationIds"] = raw_scope
+            else:
+                raise Rejected("associationIds must be a list of association ids.")
         # withdrawPublication needs nothing beyond id/action.
         return cleaned
 
@@ -98,7 +105,7 @@ class BadDebtClassificationHandler(EntityHandler):
         elif action == "publish":
             item = publish_to_transferverify(
                 membership=ctx.membership, external_id=stored["id"], reason=stored["reason"],
-                note=stored.get("note", ""), publish_sync=False,
+                note=stored.get("note", ""), association_ids=stored.get("associationIds") or [], publish_sync=False,
             )
         elif action == "withdrawPublication":
             item = withdraw_publication(membership=ctx.membership, external_id=stored["id"], publish_sync=False)

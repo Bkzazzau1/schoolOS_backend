@@ -21,4 +21,5 @@ urlpatterns = [
     path("alumni/", include("apps.alumni.urls")),
     path("", include("apps.invitations.urls")),
     path("dashboards/", include("apps.dashboards.urls")),
+    path("", include("apps.transferverify.urls")),
 ]

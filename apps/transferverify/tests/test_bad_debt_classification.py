@@ -1,7 +1,14 @@
 from apps.staff.tests.helpers import StaffTestCase
 from apps.students.models import Student
 from apps.sync.models import SyncRecord
-from apps.transferverify.models import BadDebtClassification, BadDebtEvent, BadDebtStatus
+from apps.transferverify.models import (
+    AssociationStatus,
+    BadDebtClassification,
+    BadDebtEvent,
+    BadDebtStatus,
+    SchoolAssociationMembership,
+    SchoolProprietorAssociation,
+)
 
 TYPE = "transferverify_bad_debt_classification"
 
@@ -244,6 +251,25 @@ class PublishingTests(BadDebtClassificationTestCase):
         p = self.stored_classification()
         self.assertEqual(p["status"], "resolved")
         self.assertTrue(p["publishedToTransferVerify"])  # a resolved case stays a real, auditable published record
+
+    def test_publishing_only_accepts_associations_this_school_actively_belongs_to(self):
+        association = SchoolProprietorAssociation.objects.create(name="Kaduna Association", status=AssociationStatus.ACTIVE)
+        foreign_association = SchoolProprietorAssociation.objects.create(name="Lagos Association", status=AssociationStatus.ACTIVE)
+        active_membership = SchoolAssociationMembership.objects.create(
+            association=association, school=self.school, requested_by=self.owner, status="active",
+        )
+        # A membership that exists but for a DIFFERENT association this school never joined.
+        SchoolAssociationMembership.objects.create(
+            association=foreign_association, school=self.other_school, requested_by=self.other_owner, status="active",
+        )
+
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        refused = self.publish(associationIds=[str(foreign_association.id)])
+        self.rejected(refused, "an active member of")
+
+        self.ok(self.publish(associationIds=[str(active_membership.association_id)]))
+        p = self.stored_classification()
+        self.assertEqual(p["associationScope"], [str(active_membership.association_id)])
 
 
 class WhoReceivesItTests(BadDebtClassificationTestCase):
