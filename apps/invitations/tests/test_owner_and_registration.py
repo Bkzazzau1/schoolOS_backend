@@ -304,3 +304,31 @@ class EndToEndTests(InviteTestCase):
         response = self.client.post("/api/v1/staff/me/onboarding/", {"personal": details(), "payment": BANK}, format="json")
         self.assertEqual(response.json()["staffId"], first_id)
         self.assertEqual(self.profile(second_id)["onboardingStatus"], "invitePending")
+
+    def test_the_same_person_can_be_appointed_a_second_role_at_the_same_school(self):
+        """A 'director' appointment: someone already linked as staff is proposed and
+        approved again under a second, separate staff record for the extra role, and
+        accepting that invitation while signed in as their existing account adds a
+        second real Membership - it does not touch or replace the first."""
+        staff_id, token = self.staff_with_link(
+            email="director@school.ng", systemRole="staff", name="Peter James"
+        )
+        self.accept(token, self.new_person_body(firstName="Peter", lastName="James"))
+        user = User.objects.get(email="director@school.ng")
+        self.assertEqual(Membership.objects.get(user=user, school=self.school).role, "staff")
+
+        director_id, director_token = self.staff_with_link(
+            email="director@school.ng", systemRole="administrator", name="Peter James (Director)"
+        )
+        self.assertNotEqual(director_id, staff_id)
+
+        accepted = self.accept(director_token, {}, user=user)
+        self.assertEqual(accepted.status_code, 200, accepted.json())
+
+        memberships = Membership.objects.filter(user=user, school=self.school)
+        self.assertEqual(set(memberships.values_list("role", flat=True)), {"staff", "administrator"})
+        # The original staff link and membership are untouched, not replaced.
+        self.assertEqual(StaffLink.objects.get(school=self.school, staff_id=staff_id).membership.role, "staff")
+        self.assertEqual(
+            StaffLink.objects.get(school=self.school, staff_id=director_id).membership.role, "administrator"
+        )
