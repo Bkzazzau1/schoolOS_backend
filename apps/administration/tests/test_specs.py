@@ -1,6 +1,6 @@
-"""The Administrator's front-desk modules: only the Administrator writes, leadership reads."""
+"""The school office's own operational modules: who writes and who reads varies per module."""
 
-from apps.schoollife.framework import SchoolLifeHandler
+from apps.schoollife.framework import EVERYONE, SchoolLifeHandler
 from apps.staff.tests.helpers import StaffTestCase
 from apps.sync import registry
 from apps.sync.models import SyncRecord
@@ -33,44 +33,51 @@ class ModuleTestCase(StaffTestCase):
 
 
 class EveryModuleTests(ModuleTestCase):
-    def test_every_module_is_registered(self):
+    def test_every_module_is_registered_and_none_is_left_open(self):
         for spec in SPECS:
             self.assertIsInstance(registry.get(spec.entity_type), SchoolLifeHandler, spec.entity_type)
         self.assertEqual(len({s.entity_type for s in SPECS}), len(SPECS))
 
-    def test_the_administrator_can_add_every_module_and_the_server_stamps_it(self):
-        admin = self.members["administrator"]
+    def test_its_own_manager_can_add_each_module_and_the_server_stamps_it(self):
         for spec in SPECS:
-            self.ok(self.send(spec, admin))
+            manager = self.members[sorted(spec.manage)[0]]
+            self.ok(self.send(spec, manager))
             p = self.stored_of(spec)
-            self.assertEqual((p["createdByMembershipId"], p["updatedByMembershipId"]), (str(admin.id),) * 2, spec.entity_type)
+            self.assertEqual((p["createdByMembershipId"], p["updatedByMembershipId"]), (str(manager.id),) * 2, spec.entity_type)
             self.assertTrue(p["createdAt"] and p["updatedAt"])
 
-    def test_no_other_role_may_write_any_of_it(self):
+    def test_people_without_a_role_in_the_module_cannot_write(self):
         for spec in SPECS:
-            for role in ("proprietor", "principal", "teacher", "accountant", "parent", "student", "staff", "driver"):
+            for role in EVERYONE - spec.manage - spec.contribute:
                 self.rejected(self.send(spec, self.members[role]), "role may not")
                 self.assertFalse(SyncRecord.objects.filter(entity_type=spec.entity_type).exists(), (spec.entity_type, role))
 
     def test_required_fields_are_required(self):
-        admin = self.members["administrator"]
         for spec in SPECS:
+            manager = self.members[sorted(spec.manage)[0]]
             for name in spec.required:
-                self.rejected(self.send(spec, admin, payload=sample(spec, **{name: "  "})), name)
+                self.rejected(self.send(spec, manager, payload=sample(spec, **{name: "  "})), name)
 
-    def test_only_school_leadership_reads_any_of_it(self):
-        admin = self.members["administrator"]
+    def test_reads_go_only_to_the_roles_each_module_names(self):
         for spec in SPECS:
-            self.ok(self.send(spec, admin, "r1"))
-        kinds_seen = lambda who: {t for t, _ in self.pulled(who)}
-        for role in ("proprietor", "principal", "administrator"):
-            seen = kinds_seen(self.members[role])
-            for spec in SPECS:
-                self.assertIn(spec.entity_type, seen, (spec.entity_type, role))
-        for role in ("teacher", "accountant", "parent", "student", "staff", "driver"):
-            seen = kinds_seen(self.members[role])
-            for spec in SPECS:
-                self.assertNotIn(spec.entity_type, seen, (spec.entity_type, role))
+            manager = self.members[sorted(spec.manage)[0]]
+            self.ok(self.send(spec, manager, "r1"))
+            for role in EVERYONE:
+                seen = spec.entity_type in {t for t, _ in self.pulled(self.members[role])}
+                expected = role in spec.manage or role in spec.read
+                self.assertEqual(seen, expected, (spec.entity_type, role))
+
+
+class ParentMessageContributorTests(ModuleTestCase):
+    """A parent may add a message toward their child's class channel; the whole staff side reads it."""
+
+    def test_a_parent_can_add_their_own_message_and_a_teacher_can_read_it(self):
+        from apps.schoollife.specs.communications import PARENT_MESSAGE
+
+        parent = self.members["parent"]
+        self.ok(self.send(PARENT_MESSAGE, parent, "msg-1"))
+        self.assertIn(("parent_message", "msg-1"), self.pulled(self.members["teacher"]))
+        self.assertNotIn(("parent_message", "msg-1"), self.pulled(self.members["student"]))
 
 
 class AttendanceEventIdentityTests(ModuleTestCase):
@@ -103,3 +110,20 @@ class AttendanceDeviceIdentityTests(ModuleTestCase):
         payload = {"name": "Main Gate Face Terminal", "location": "Main entrance", "type": "Face", "status": "Online", "lastEvent": "", "events": "0"}
         self.ok(self.send(ATTENDANCE_DEVICES, admin, "main-gate-face-terminal", payload=payload))
         self.assertEqual(self.stored_of(ATTENDANCE_DEVICES, "main-gate-face-terminal")["name"], "Main Gate Face Terminal")
+
+
+class PrincipalTeacherNoteTests(ModuleTestCase):
+    """A Principal's private note about a teacher: not even the owner reads it."""
+
+    def test_a_principal_can_save_and_clear_a_note_and_no_one_else_ever_reads_it(self):
+        from ..specs import PRINCIPAL_TEACHER_NOTES
+
+        principal = self.members["principal"]
+        self.ok(self.send(PRINCIPAL_TEACHER_NOTES, principal, "teacher-1", payload={"teacherId": "teacher-1", "text": "Excellent CA moderation this term."}))
+        for role in EVERYONE - {"principal"}:
+            self.assertNotIn(("principal_teacher_note", "teacher-1"), self.pulled(self.members[role]), role)
+        self.assertIn(("principal_teacher_note", "teacher-1"), self.pulled(principal))
+
+        # Clearing the note (empty text) is a real, supported action, not a validation error.
+        self.ok(self.push(PRINCIPAL_TEACHER_NOTES.entity_type, "teacher-1", {"teacherId": "teacher-1", "text": ""}, operation="update", who=principal))
+        self.assertEqual(self.stored_of(PRINCIPAL_TEACHER_NOTES, "teacher-1")["text"], "")

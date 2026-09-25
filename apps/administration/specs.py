@@ -1,11 +1,12 @@
-"""The Administrator's own front-desk modules: attendance, notices, document records, staff attendance.
+"""The school office's own operational modules: attendance, notices, records, the public website.
 
 Every one of these was already being written by the app and queued for sync - there was simply no
-handler on this end to receive them, so they sat pending forever. They are Administrator-only writes
-today (the app's own permissionsFor() never lets any other role act on them), so each spec keeps that
-shape exactly rather than widening it to the broader MANAGERS tier used elsewhere. Reads go to school
+handler on this end to receive them, so they sat pending forever. Most are Administrator-only writes
+(the app's own permissionsFor() never lets any other role act on them), so each spec keeps that shape
+exactly rather than widening it to the broader MANAGERS tier used elsewhere. Reads go to school
 leadership (Proprietor, Principal, Administrator) for oversight, since none of these are yet read by
-any other role's screen.
+any other role's screen - PRINCIPAL_TEACHER_NOTES and PUBLIC_WEBSITE are the two exceptions, explained
+next to each.
 
 Reuses the same generic Spec/SchoolLifeHandler engine schoollife's modules use - the engine has no
 schoollife-specific logic in it, so there is nothing to duplicate.
@@ -14,6 +15,7 @@ schoollife-specific logic in it, so there is nothing to duplicate.
 from apps.schoollife.framework import MANAGERS, Spec
 
 _ADMINISTRATOR = frozenset({"administrator"})
+_PRINCIPAL = frozenset({"principal"})
 
 ATTENDANCE_EVENTS = Spec(
     "administrator_attendance_event",
@@ -86,6 +88,25 @@ OPERATIONS_QUEUE = Spec(
     required=("title",),
 )
 
+# The app's own note: "Private Principal note" - one Principal's confidential note about one
+# teacher. Not even Proprietor or Administrator reads this; only the Principal who keeps it does.
+PRINCIPAL_TEACHER_NOTES = Spec(
+    "principal_teacher_note",
+    manage=_PRINCIPAL,
+    read=frozenset(),
+    id_field="teacherId",
+    required=("teacherId",),
+)
+
+# The one homepage record a school has, meant to be public-facing content - read by anyone in the
+# school (or, once a real public site exists, by anyone at all), written by the Administrator only.
+PUBLIC_WEBSITE = Spec(
+    "public_website_settings",
+    manage=_ADMINISTRATOR,
+    id_field=None,
+    required=("heroHeadline", "heroSupportingText"),
+)
+
 SPECS = [
     ATTENDANCE_EVENTS,
     ATTENDANCE_CORRECTIONS,
@@ -95,4 +116,6 @@ SPECS = [
     STAFF_ATTENDANCE,
     PAYROLL_ATTENDANCE_SUMMARY,
     OPERATIONS_QUEUE,
+    PRINCIPAL_TEACHER_NOTES,
+    PUBLIC_WEBSITE,
 ]

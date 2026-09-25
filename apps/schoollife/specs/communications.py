@@ -1,4 +1,4 @@
-"""Official communication: the noticeboard."""
+"""Official communication: the noticeboard, and a family's own class channel."""
 
 from ..framework import EVERYONE, LEADERS, MANAGERS, STAFF_SIDE, Spec
 
@@ -21,4 +21,17 @@ NOTICEBOARD = Spec(
     audience=_notice_audience,
 )
 
-SPECS = [NOTICEBOARD]
+# A guardian's message toward their child's class channel. No real school-to-guardian sending
+# exists yet (the app is honest that every message here is guardian-authored so far), so this is
+# one-directional today: a parent writes, and the whole staff side can read - the class teacher
+# among them. Leadership can manage/moderate a channel; a parent may only change their own message.
+PARENT_MESSAGE = Spec(
+    "parent_message",
+    manage=MANAGERS,
+    contribute=frozenset({"parent"}),
+    read=STAFF_SIDE,
+    id_field="messageId",
+    required=("messageId", "threadId", "body"),
+)
+
+SPECS = [NOTICEBOARD, PARENT_MESSAGE]
