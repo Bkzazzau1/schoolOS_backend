@@ -20,6 +20,7 @@ PARENT = workspace(
         ("school-life", "School Life"),
         ("documents", "Documents & Consent", "sensitive"),
         ("ai", "Parent AI"),
+        ("transferverify", "TransferVerify Case", "sensitive"),
     ],
 )
 
