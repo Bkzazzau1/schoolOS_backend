@@ -47,6 +47,26 @@ def check_available(school, holder_type: str, holder_id: str, *, phone=None, nin
         raise Duplicate(" ".join(messages))
 
 
+def confirmed_holder(school, *, phone, nin) -> str | None:
+    """The staff id that already holds BOTH this exact phone and this exact NIN -
+    proof this really is the same real person, not a coincidence or a typo. Used
+    only to let an owner appoint someone already on staff to a second role
+    without fighting their own claim; every other clash is still refused as
+    normal by `check_available`, which this never loosens. None if phone and NIN
+    do not both point to the same existing staff member."""
+    if not phone or not nin:
+        return None
+    phone_claim = IdentityClaim.objects.filter(
+        school=school, holder_type=IdentityClaim.Holder.STAFF, kind=IdentityClaim.Kind.PHONE, value=phone
+    ).first()
+    nin_claim = IdentityClaim.objects.filter(
+        school=school, holder_type=IdentityClaim.Holder.STAFF, kind=IdentityClaim.Kind.NIN, value=nin
+    ).first()
+    if phone_claim is None or nin_claim is None or phone_claim.holder_id != nin_claim.holder_id:
+        return None
+    return phone_claim.holder_id
+
+
 @transaction.atomic
 def set_claims(school, holder_type: str, holder_id: str, holder_name: str, *, phone=None, nin=None) -> None:
     """Make these the holder's numbers: claim new ones, release ones they dropped."""

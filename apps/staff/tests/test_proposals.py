@@ -136,3 +136,72 @@ class ProposalIdentityTests(StaffTestCase):
     def test_different_numbers_are_fine(self):
         self.ok(self.propose(phone=fresh_phone(), nin=fresh_nin()))
         self.ok(self.propose(phone=fresh_phone(), nin=fresh_nin()))
+
+
+class SecondAppointmentTests(StaffTestCase):
+    """A 'director' appointment: an owner proposes someone already on staff
+    again, under a second staff record, for a different role - confirmed by
+    reusing their exact real phone and NIN rather than inventing different
+    ones, which is what makes it trustworthy."""
+
+    def make_director_staff(self, phone="08031234567", nin="11111111111", name="Peter James"):
+        staff_id = self.make_staff(name=name, systemRole="staff", phone=phone, nin=nin)
+        return staff_id
+
+    def test_the_same_numbers_are_still_refused_without_confirming_the_appointment(self):
+        self.make_director_staff()
+        self.rejected(
+            self.propose(name="Peter James", phone="08031234567", nin="11111111111", systemRole="administrator"),
+            "already used by Peter James",
+        )
+
+    def test_a_confirmed_appointment_of_the_exact_holder_succeeds_and_keeps_their_original_claim(self):
+        staff_id = self.make_director_staff()
+        response = self.propose(
+            name="Peter James", phone="08031234567", nin="11111111111",
+            systemRole="administrator", appointmentOfStaffId=staff_id,
+        )
+        self.ok(response)
+        director_id = self.last_proposal_id
+        approved = self.approve(self.owner, director_id)
+        self.assertEqual(approved.status_code, 200, approved.json())
+        second_staff_id = approved.json()["staffId"]
+        self.assertNotEqual(second_staff_id, staff_id)
+
+        # Both numbers are still claimed by the original staff record, not moved
+        # or duplicated onto the new one.
+        claims = {(c.kind, c.value): c.holder_id for c in IdentityClaim.objects.all()}
+        self.assertEqual(claims[("phone", "08031234567")], staff_id)
+        self.assertEqual(claims[("nin", "11111111111")], staff_id)
+        self.assertEqual(self.profile(second_staff_id)["appointmentOfStaffId"], staff_id)
+        self.assertEqual(self.profile(staff_id)["appointmentOfStaffId"], "")
+
+    def test_a_mismatched_appointment_id_is_refused(self):
+        self.make_director_staff()
+        other_id = self.make_staff(name="Someone Else", phone=fresh_phone(), nin=fresh_nin())
+        self.rejected(
+            self.propose(
+                name="Peter James", phone="08031234567", nin="11111111111",
+                systemRole="administrator", appointmentOfStaffId=other_id,
+            ),
+            "no longer match",
+        )
+
+    def test_a_confirmed_appointment_with_the_wrong_name_is_refused(self):
+        staff_id = self.make_director_staff()
+        self.rejected(
+            self.propose(
+                name="Someone Else", phone="08031234567", nin="11111111111",
+                systemRole="administrator", appointmentOfStaffId=staff_id,
+            ),
+            "does not match",
+        )
+
+    def test_a_second_role_that_does_not_match_any_real_holder_is_refused(self):
+        self.rejected(
+            self.propose(
+                name="Nobody Yet", phone=fresh_phone(), nin=fresh_nin(),
+                systemRole="administrator", appointmentOfStaffId="STAFF-made-up",
+            ),
+            "no longer match",
+        )

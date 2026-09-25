@@ -93,9 +93,15 @@ def approve(actor: Membership, proposal_id: str, *, gross=None, deductions=None,
 
         staff_id = staff_id_for(proposal_id)
         now = _now()
-        # The numbers stay unique: they pass from the proposal to the new staff member.
-        identity.transfer(school, "proposal", proposal_id, "staff", staff_id, p["name"])
-        identity.set_claims(school, "staff", staff_id, p["name"], phone=p["phone"], nin=p["nin"])
+        if p.get("appointmentOfStaffId"):
+            # A confirmed second appointment for someone already on staff: their
+            # numbers stay exactly where they already are, held by the original
+            # staff record - never duplicated onto this one.
+            pass
+        else:
+            # The numbers stay unique: they pass from the proposal to the new staff member.
+            identity.transfer(school, "proposal", proposal_id, "staff", staff_id, p["name"])
+            identity.set_claims(school, "staff", staff_id, p["name"], phone=p["phone"], nin=p["nin"])
 
         records.write(school, DIRECTORY, staff_id, {
             "id": staff_id, "name": p["name"], "role": p["roleTitle"], "section": p["workArea"],
@@ -167,6 +173,9 @@ def new_profile(staff_id: str, proposal: dict, role: str, actor: Membership, now
         "onboardingEmail": proposal["email"],
         "linkedMembershipId": "",
         "systemRole": role,
+        # Who this is a confirmed second appointment of, if any - see
+        # StaffProposalHandler.clean. Empty for an ordinary new staff member.
+        "appointmentOfStaffId": proposal.get("appointmentOfStaffId", ""),
         "updatedAt": now,
         "updatedByMembershipId": str(actor.id),
     }
