@@ -119,6 +119,7 @@ class RiderAssignmentEventHandler(EntityHandler):
             "newRouteId": text(p, "newRouteId", max_len=64, required=False),
             "newStopId": text(p, "newStopId", max_len=96, required=False),
             "at": ctx.now,
+            "occurredAt": shared.occurred_at(p),
             "actorMembershipId": str(ctx.membership.id),
             "actorRole": ctx.membership.role,
         }

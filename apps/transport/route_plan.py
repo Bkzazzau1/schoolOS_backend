@@ -131,6 +131,7 @@ class RouteEventHandler(EntityHandler):
             "vehicle": text(p, "vehicle", max_len=120, required=False),
             "eventType": text(p, "eventType", max_len=64),
             "at": ctx.now,
+            "occurredAt": shared.occurred_at(p),
             "actorMembershipId": str(ctx.membership.id),
             "actorRole": ctx.membership.role,
         }

@@ -29,6 +29,14 @@ def extra_event_detail(payload: dict, *, exclude) -> dict:
     return extra
 
 
+def occurred_at(payload: dict, key: str = "at") -> str:
+    """When the app says something happened. An offline device syncs later, so the server's own
+    `at` is only when it *arrived*; this keeps the moment the driver or manager really acted,
+    as a claim, next to it - never used to decide anything."""
+    value = payload.get(key)
+    return value.strip()[:40] if isinstance(value, str) else ""
+
+
 def replace_payload(school, entity_type: str, entity_id: str, payload: dict, actor=None) -> None:
     """Server-derived write to a record another handler owns (the route's own rider/stop
     counts). Never used for a device's own change - only for keeping a derived field

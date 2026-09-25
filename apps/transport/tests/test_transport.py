@@ -134,6 +134,12 @@ class AssignmentEventTests(TransportTestCase):
         self.ok(self.push(c.ASSIGNMENT_EVENT, "e1", payload, who=self.admin))
         self.rejected(self.push(c.ASSIGNMENT_EVENT, "e1", payload, operation="update", who=self.admin))
 
+    def test_the_managers_own_time_is_kept_beside_the_servers(self):
+        payload = {"id": "e1", "eventType": "driver_route_assigned", "driverMembershipId": str(self.driver.id), "at": "2026-09-25T05:00:00Z"}
+        self.ok(self.push(c.ASSIGNMENT_EVENT, "e1", payload, who=self.admin))
+        stored = self.stored(c.ASSIGNMENT_EVENT, "e1").payload
+        self.assertEqual((stored["occurredAt"], stored["at"] != "2026-09-25T05:00:00Z"), ("2026-09-25T05:00:00Z", True))
+
     def test_a_driver_cannot_add_an_event(self):
         payload = {"id": "e1", "eventType": "driver_route_assigned", "driverMembershipId": str(self.driver.id)}
         self.rejected(self.push(c.ASSIGNMENT_EVENT, "e1", payload, who=self.driver), "role may not")

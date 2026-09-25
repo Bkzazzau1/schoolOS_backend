@@ -158,6 +158,7 @@ class CaseEventHandler(EntityHandler):
             "eventType": text(p, "eventType", max_len=64),
             "status": text(p, "status", max_len=40, required=False),
             "at": ctx.now,
+            "occurredAt": shared.occurred_at(p),
             "actorMembershipId": str(ctx.membership.id),
             "actorRole": ctx.membership.role,
         }

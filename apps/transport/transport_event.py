@@ -35,6 +35,7 @@ class TransportEventHandler(EntityHandler):
             "id": ctx.entity_id,
             "eventType": text(p, "eventType", max_len=64),
             "at": ctx.now,
+            "occurredAt": shared.occurred_at(p),
             "actorMembershipId": str(ctx.membership.id),
         }
         stored.update(shared.extra_event_detail(p, exclude=stored.keys()))

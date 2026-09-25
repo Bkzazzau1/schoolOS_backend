@@ -97,6 +97,7 @@ class AssignmentEventHandler(EntityHandler):
             "previousRouteId": text(p, "previousRouteId", max_len=64, required=False),
             "newRouteId": text(p, "newRouteId", max_len=64, required=False),
             "at": ctx.now,
+            "occurredAt": shared.occurred_at(p),
             "actorMembershipId": str(ctx.membership.id),
             "actorRole": ctx.membership.role,
         }

@@ -272,6 +272,14 @@ class TransportEventTests(DailyRunTestCase):
         self.ok(self.push(c.TRANSPORT_EVENT, "e1", payload, who=self.driver))
         self.rejected(self.push(c.TRANSPORT_EVENT, "e1", payload, operation="update", who=self.driver))
 
+    def test_the_server_stamps_when_it_arrived_and_keeps_when_the_driver_says_it_happened(self):
+        # An offline driver syncs later: the moment they acted is a claim kept beside the server's own time.
+        payload = {"id": "e1", "eventType": "morning_run_started", "at": "2026-09-25T06:00:00Z"}
+        self.ok(self.push(c.TRANSPORT_EVENT, "e1", payload, who=self.driver))
+        stored = self.stored(c.TRANSPORT_EVENT, "e1").payload
+        self.assertEqual(stored["occurredAt"], "2026-09-25T06:00:00Z")
+        self.assertNotEqual(stored["at"], "2026-09-25T06:00:00Z")
+
     def test_management_reads_it_an_unrelated_role_does_not(self):
         payload = {"id": "e1", "eventType": "morning_run_started"}
         self.ok(self.push(c.TRANSPORT_EVENT, "e1", payload, who=self.driver))

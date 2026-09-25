@@ -157,7 +157,8 @@ class VehicleDefectHandler(EntityHandler):
             "blocksTrip": severity == "critical",
             "note": text(p, "note", max_len=500),
             "status": "reported",
-            "reportedAt": ctx.now,
+            "reportedAt": shared.occurred_at(p, "reportedAt") or ctx.now,
+            "receivedAt": ctx.now,
             "reportedByMembershipId": member_id,
         }
 
