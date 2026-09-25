@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     "apps.schoollife",
     "apps.administration",
     "apps.transport",
+    "apps.bankconnect",
     "apps.staff",
     "apps.invitations",
     "apps.alumni",
@@ -180,6 +181,13 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="SchoolOS <no-reply@local
 PAYSTACK_SECRET_KEY = env("PAYSTACK_SECRET_KEY", default="")
 PAYSTACK_API_BASE_URL = env("PAYSTACK_API_BASE_URL", default="https://api.paystack.co")
 PAYSTACK_CALLBACK_URL = env("PAYSTACK_CALLBACK_URL", default="")
+
+# Bank / collection-provider connections (apps.bankconnect). Provider credentials are sealed
+# with these keys before they reach the database: newest key first, older keys stay listed
+# until every record has been re-sealed. With no key the app refuses to store a credential.
+BANKCONNECT_SECRET_KEYS = env.list("BANKCONNECT_SECRET_KEYS", default=[])
+# The sandbox connector produces synthetic transactions: never on unless asked for.
+BANKCONNECT_ENABLE_SANDBOX = env.bool("BANKCONNECT_ENABLE_SANDBOX", default=DEBUG)
 
 PLATFORM_DOMAIN = env("PLATFORM_DOMAIN", default="")
 ANDROID_APP_PACKAGE = env("ANDROID_APP_PACKAGE", default="")
