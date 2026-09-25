@@ -157,6 +157,95 @@ class ProgressionTests(BadDebtClassificationTestCase):
         self.assertEqual(actions, ["classified", "status_advanced", "updated", "resolved"])
 
 
+class PublishingTests(BadDebtClassificationTestCase):
+    def setUp(self):
+        super().setUp()
+        self.ok(self.classify())
+
+    def publish(self, who=None, reason="withdrew_without_clearance", **over):
+        return self.act("publish", who=who, reason=reason, **over)
+
+    def withdraw(self, who=None):
+        return self.act("withdrawPublication", who=who)
+
+    def test_only_a_bad_debt_status_case_can_be_published(self):
+        self.rejected(self.publish(), "classified as bad debt")
+        self.ok(self.act("advanceStatus", status="recovery_in_progress"))
+        self.rejected(self.publish(), "classified as bad debt")
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        self.ok(self.publish())
+
+    def test_publishing_records_who_when_and_why(self):
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        self.ok(self.publish(reason="guardian_unreachable", note="No answer after three calls."))
+        p = self.stored_classification()
+        self.assertTrue(p["publishedToTransferVerify"])
+        self.assertEqual(p["publishedByMembershipId"], str(self.owner.id))
+        self.assertEqual(p["publicationReason"], "guardian_unreachable")
+        self.assertEqual(p["publicationNote"], "No answer after three calls.")
+        self.assertTrue(p["publishedAt"])
+        self.assertEqual(p["associationScope"], [])  # nothing to scope to yet
+
+    def test_a_reason_is_required_and_must_be_a_real_choice(self):
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        self.rejected(self.publish(reason="fraud"), "not a valid choice")
+
+    def test_publishing_is_owner_only_even_for_a_classify_duty_holder(self):
+        self.give_duty(self.finance)
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        self.rejected(self.publish(who=self.finance), "Only the owner can publish")
+        self.ok(self.publish())
+
+    def test_it_cannot_be_published_twice(self):
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        self.ok(self.publish())
+        self.rejected(self.publish(), "already been published")
+
+    def test_a_published_case_cannot_be_edited_until_withdrawn(self):
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        self.ok(self.publish())
+        self.rejected(self.act("update", notes="Trying to change it"), "Withdraw the publication")
+        self.ok(self.withdraw())
+        self.ok(self.act("update", notes="Now editable again."))
+        self.assertEqual(self.stored_classification()["notes"], "Now editable again.")
+
+    def test_withdrawing_clears_publication_but_keeps_the_classification_and_its_history(self):
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        self.ok(self.publish(reason="arrangement_defaulted"))
+        self.ok(self.withdraw())
+        p = self.stored_classification()
+        self.assertEqual(
+            (p["publishedToTransferVerify"], p["publishedByMembershipId"], p["publishedAt"], p["publicationReason"]),
+            (False, None, None, ""),
+        )
+        self.assertEqual(p["status"], "bad_debt")  # the classification itself is untouched
+
+    def test_withdrawing_when_not_published_is_refused(self):
+        self.rejected(self.withdraw(), "not been published")
+
+    def test_withdrawing_is_also_owner_only(self):
+        self.give_duty(self.finance)
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        self.ok(self.publish())
+        self.rejected(self.withdraw(who=self.finance), "Only the owner can publish")
+
+    def test_publish_and_withdraw_are_both_audited(self):
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        self.ok(self.publish())
+        self.ok(self.withdraw())
+        item = BadDebtClassification.objects.get(school=self.school, external_id="BDC-2026-001")
+        actions = list(BadDebtEvent.objects.filter(classification=item).order_by("revision").values_list("action", flat=True))
+        self.assertEqual(actions, ["classified", "status_advanced", "published", "publication_withdrawn"])
+
+    def test_resolving_a_published_case_keeps_the_publication_intact(self):
+        self.ok(self.act("advanceStatus", status="bad_debt"))
+        self.ok(self.publish())
+        self.ok(self.act("resolve", note="Guardian paid in full."))
+        p = self.stored_classification()
+        self.assertEqual(p["status"], "resolved")
+        self.assertTrue(p["publishedToTransferVerify"])  # a resolved case stays a real, auditable published record
+
+
 class WhoReceivesItTests(BadDebtClassificationTestCase):
     def kinds(self, who):
         self.client.force_authenticate(who.user)

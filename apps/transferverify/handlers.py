@@ -4,26 +4,31 @@ from apps.core.errors import Rejected
 from apps.core.validation import choice, integer, text
 from apps.sync.registry import EntityHandler, MutationContext
 
-from .models import BadDebtStatus
+from .models import BadDebtStatus, PublicationReason
 from .services import (
     BAD_DEBT_ENTITY,
     advance_status,
     classify,
+    publish_to_transferverify,
     replace_current_sync_payload,
     resolve,
     serialize_classification,
     update_classification,
+    withdraw_publication,
 )
 from .visibility import bad_debt_classification_visible_payload
 
 
 class BadDebtClassificationHandler(EntityHandler):
-    """A school's own private bad debt classification. Authority here is
-    duty-based (the Proprietor, or a Finance delegate holding the
+    """A school's own private bad debt classification. Authority for most
+    actions is duty-based (the Proprietor, or a Finance delegate holding the
     finance.bad_debt_classification duty - see apps.transferverify.services),
     not role-based, so no fixed `roles` set applies: every action is
-    re-checked against that duty independently of which role the acting
-    membership happens to hold, the same way apps.concessions already works.
+    re-checked independently of which role the acting membership happens to
+    hold, the same way apps.concessions already works. publish and
+    withdrawPublication are the one exception - always Proprietor-only, never
+    delegable, because that is the action that would make a school's private
+    financial fact reachable by another school.
     """
 
     entity_type = BAD_DEBT_ENTITY
@@ -40,7 +45,11 @@ class BadDebtClassificationHandler(EntityHandler):
         entity_id = text(p, "id", max_len=128)
         if entity_id != ctx.entity_id:
             raise Rejected("id must match the classification entity id.")
-        action = choice(p.get("action"), {"classify", "update", "advanceStatus", "resolve"}, "action")
+        action = choice(
+            p.get("action"),
+            {"classify", "update", "advanceStatus", "resolve", "publish", "withdrawPublication"},
+            "action",
+        )
         cleaned: dict[str, Any] = {"id": entity_id, "action": action}
         if action == "classify":
             cleaned["studentId"] = text(p, "studentId", max_len=64)
@@ -64,6 +73,10 @@ class BadDebtClassificationHandler(EntityHandler):
             )
         elif action == "resolve":
             cleaned["note"] = text(p, "note", max_len=2000, required=False)
+        elif action == "publish":
+            cleaned["reason"] = choice(p.get("reason"), set(PublicationReason.values), "reason")
+            cleaned["note"] = text(p, "note", max_len=2000, required=False)
+        # withdrawPublication needs nothing beyond id/action.
         return cleaned
 
     def after_write(self, ctx: MutationContext, stored: dict[str, Any]) -> None:
@@ -82,6 +95,13 @@ class BadDebtClassificationHandler(EntityHandler):
             item = resolve(
                 membership=ctx.membership, external_id=stored["id"], note=stored.get("note", ""), publish_sync=False
             )
+        elif action == "publish":
+            item = publish_to_transferverify(
+                membership=ctx.membership, external_id=stored["id"], reason=stored["reason"],
+                note=stored.get("note", ""), publish_sync=False,
+            )
+        elif action == "withdrawPublication":
+            item = withdraw_publication(membership=ctx.membership, external_id=stored["id"], publish_sync=False)
         else:
             raise Rejected("Unsupported bad debt classification action.")
 

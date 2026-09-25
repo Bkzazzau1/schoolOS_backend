@@ -19,6 +19,18 @@ class BadDebtStatus(models.TextChoices):
     RESOLVED = "resolved", "Resolved"
 
 
+class PublicationReason(models.TextChoices):
+    """Factual, neutral reasons a Proprietor may give for publishing a case -
+    never an accusation. Matches the wording the brief itself specifies."""
+
+    WITHDREW_WITHOUT_CLEARANCE = "withdrew_without_clearance", "Withdrew without financial clearance"
+    GUARDIAN_UNREACHABLE = "guardian_unreachable", "Guardian unreachable after recovery attempts"
+    ARRANGEMENT_DEFAULTED = "arrangement_defaulted", "Payment arrangement defaulted"
+    UNRESOLVED_AFTER_WITHDRAWAL = "unresolved_after_withdrawal", "Unresolved balance after withdrawal"
+    TRANSFER_SUSPECTED = "transfer_suspected", "Transfer suspected while balance remains"
+    OTHER = "other", "Other documented reason"
+
+
 class BadDebtClassification(models.Model):
     """One school's own internal record of an unresolved student-account
     obligation. This is the source school's private data: nothing here is
@@ -72,8 +84,28 @@ class BadDebtClassification(models.Model):
     )
     resolution_note = models.TextField(blank=True)
 
+    #: Publication is deliberately kept on this record rather than a separate
+    #: platform-level TransferAlert for now: a real TransferAlert must
+    #: reference a NetworkStudentIdentity, which does not exist until the
+    #: cross-school discovery phase is built. Until then, "published" only
+    #: proves the authority chain itself (Proprietor-only, explicit
+    #: confirmation, audited) - it does not yet make anything visible to any
+    #: other school, because no cross-school lookup exists yet to find it.
+    published_at = models.DateTimeField(null=True, blank=True)
+    published_by = models.ForeignKey(
+        Membership, null=True, blank=True, on_delete=models.PROTECT, related_name="published_bad_debts"
+    )
+    publication_reason = models.CharField(max_length=32, choices=PublicationReason.choices, blank=True)
+    publication_note = models.TextField(blank=True)
+    #: Reserved for the association-scope phase - always empty until then.
+    association_scope = models.JSONField(default=list, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def is_published(self) -> bool:
+        return self.published_at is not None
 
     class Meta:
         ordering = ["-classified_at", "-id"]

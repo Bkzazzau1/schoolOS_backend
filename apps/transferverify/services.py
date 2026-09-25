@@ -7,7 +7,7 @@ from apps.schools.models import Membership, Role
 from apps.students.models import Student
 from apps.sync.models import SyncRecord
 
-from .models import BadDebtClassification, BadDebtEvent, BadDebtStatus
+from .models import BadDebtClassification, BadDebtEvent, BadDebtStatus, PublicationReason
 
 BAD_DEBT_ENTITY = "transferverify_bad_debt_classification"
 
@@ -35,6 +35,14 @@ def _assert_classify_authority(membership: Membership) -> None:
         raise Rejected(
             "Only the owner, or someone the owner has specifically authorized, can classify a bad debt."
         )
+
+
+def _assert_publish_authority(membership: Membership) -> None:
+    """Publishing is never delegable, unlike classification - the one action
+    that would make a school's private financial fact reachable by another
+    school stays with the owner alone."""
+    if not membership.is_active or membership.role != Role.PROPRIETOR:
+        raise Rejected("Only the owner can publish a case to TransferVerify.")
 
 
 def _membership_name(membership):
@@ -97,9 +105,14 @@ def serialize_classification(item: BadDebtClassification) -> dict:
         "resolvedByMembershipId": str(item.resolved_by_id) if item.resolved_by_id else None,
         "resolvedAt": item.resolved_at.isoformat() if item.resolved_at else None,
         "resolutionNote": item.resolution_note,
-        # Not yet true anywhere in this phase - the platform-level publish
-        # action is a later phase. Always false until then, never guessed.
-        "publishedToTransferVerify": False,
+        "publishedToTransferVerify": item.is_published,
+        "publishedByMembershipId": str(item.published_by_id) if item.published_by_id else None,
+        "publishedAt": item.published_at.isoformat() if item.published_at else None,
+        "publicationReason": item.publication_reason,
+        "publicationNote": item.publication_note,
+        # Always empty until the association-membership phase exists to
+        # choose from - never guessed or defaulted to "every association".
+        "associationScope": item.association_scope,
         "version": item.updated_at.isoformat(),
     }
 
@@ -184,6 +197,8 @@ def update_classification(*, membership: Membership, external_id: str, payload: 
     item = _loaded(membership.school, external_id, lock=True)
     if item.status == BadDebtStatus.RESOLVED:
         raise Rejected("This classification is resolved and cannot be edited. Open a new one instead.")
+    if item.is_published:
+        raise Rejected("This case has been published to TransferVerify. Withdraw the publication before editing it.")
 
     item.outstanding_amount_minor = payload.get("outstandingAmountMinor", item.outstanding_amount_minor)
     item.reason = payload.get("reason", item.reason)
@@ -239,6 +254,58 @@ def resolve(*, membership: Membership, external_id: str, note: str = "", publish
     item.last_updated_by = membership
     item.save(update_fields=["status", "resolved_by", "resolved_at", "resolution_note", "last_updated_by", "updated_at"])
     _append_event(item, actor=membership, action="resolved", detail={"note": note} if note else {})
+    if publish_sync:
+        publish_classification_sync(item, actor=membership)
+    return item
+
+
+@transaction.atomic
+def publish_to_transferverify(
+    *, membership: Membership, external_id: str, reason: str, note: str = "", publish_sync: bool = True
+) -> BadDebtClassification:
+    """The one action that turns a school's private classification into
+    something TransferVerify is meant to eventually make discoverable to
+    other schools - Proprietor-only, requires explicit confirmation from the
+    caller (the review screen showing student/guardian/amount/reason before
+    this is called), and only ever from a BAD_DEBT-status case. Nothing here
+    yet reaches another school (see the model docstring) - this phase proves
+    the authority chain, not the network."""
+    _assert_publish_authority(membership)
+    item = _loaded(membership.school, external_id, lock=True)
+    if item.status != BadDebtStatus.BAD_DEBT:
+        raise Rejected("Only a case classified as bad debt can be published to TransferVerify.")
+    if item.is_published:
+        raise Rejected("This case has already been published to TransferVerify.")
+    if reason not in PublicationReason.values:
+        raise Rejected("Choose a reason for publishing this case.")
+
+    item.published_at = timezone.now()
+    item.published_by = membership
+    item.publication_reason = reason
+    item.publication_note = note
+    item.save(update_fields=["published_at", "published_by", "publication_reason", "publication_note", "updated_at"])
+    _append_event(item, actor=membership, action="published", detail={"reason": reason})
+    if publish_sync:
+        publish_classification_sync(item, actor=membership)
+    return item
+
+
+@transaction.atomic
+def withdraw_publication(*, membership: Membership, external_id: str, publish_sync: bool = True) -> BadDebtClassification:
+    """The owner pulls a published case back - it stops being eligible for
+    any future TransferVerify discovery. The classification itself, and its
+    full history, is untouched; only the publication is undone."""
+    _assert_publish_authority(membership)
+    item = _loaded(membership.school, external_id, lock=True)
+    if not item.is_published:
+        raise Rejected("This case has not been published to TransferVerify.")
+
+    item.published_at = None
+    item.published_by = None
+    item.publication_reason = ""
+    item.publication_note = ""
+    item.save(update_fields=["published_at", "published_by", "publication_reason", "publication_note", "updated_at"])
+    _append_event(item, actor=membership, action="publication_withdrawn")
     if publish_sync:
         publish_classification_sync(item, actor=membership)
     return item
