@@ -8,6 +8,7 @@ from .views import (
     ExitAssociationMembershipView,
     IssueClearanceView,
     JoinAssociationView,
+    MyCaseStatusView,
     MyDisputesView,
     NetworkPhoneMatchView,
     OpenDisputeView,
@@ -108,4 +109,8 @@ urlpatterns = [
         RevokeClearanceView.as_view(),
     ),
     path("transferverify/clearances/verify/", VerifyClearanceView.as_view()),
+    path(
+        "schools/<uuid:school_id>/transferverify/network/my-case/",
+        MyCaseStatusView.as_view(),
+    ),
 ]

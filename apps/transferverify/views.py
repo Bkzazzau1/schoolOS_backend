@@ -279,3 +279,17 @@ class VerifyClearanceView(APIView):
     def get(self, request):
         result = dispute_services.verify_clearance(request.query_params.get("token", ""))
         return Response(result)
+
+
+class MyCaseStatusView(APIView):
+    """A guardian's own read-only view of any published case this school
+    has against their own recorded child - see
+    apps.transferverify.disputes.case_status_for_guardian."""
+
+    @_transferverify_error
+    def get(self, request, school_id):
+        membership = require_membership(
+            request.user, school_id, roles=[Role.PARENT], membership_id=request.query_params.get("membership")
+        )
+        items = dispute_services.case_status_for_guardian(membership)
+        return Response({"cases": items})

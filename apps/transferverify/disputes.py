@@ -147,6 +147,43 @@ def disputes_opened_by(membership: Membership) -> list[TransferClearanceDispute]
     )
 
 
+def case_status_for_guardian(membership: Membership) -> list[dict]:
+    """Every published TransferVerify case this school has against one of
+    this guardian's own recorded children - read-only, and only ever this
+    school's own case, matching the role matrix exactly: a guardian sees
+    their own case status, never another school's internal notes."""
+    if not membership.is_active or membership.role != Role.PARENT:
+        raise Rejected("Only a guardian can view this.")
+    student_ids = GuardianLink.objects.filter(
+        account_user=membership.user, student__school=membership.school
+    ).values_list("student_id", flat=True)
+    alerts = TransferAlert.objects.select_related("source_classification__student").filter(
+        source_school=membership.school, source_classification__student_id__in=list(student_ids)
+    )
+    results = []
+    for alert in alerts:
+        student = alert.source_classification.student
+        has_open_dispute = TransferClearanceDispute.objects.filter(
+            transfer_alert=alert, status=DisputeStatus.OPENED
+        ).exists()
+        has_active_clearance = TransferClearance.objects.filter(
+            source_alert=alert, status=ClearanceStatus.ACTIVE
+        ).exists()
+        results.append(
+            {
+                "transferAlertId": str(alert.id),
+                "studentName": f"{student.first_name} {student.surname}".strip(),
+                "state": alert.state,
+                "status": alert.snapshot_status,
+                "reason": alert.snapshot_reason,
+                "publishedAt": alert.published_at.isoformat(),
+                "hasOpenDispute": has_open_dispute,
+                "hasActiveClearance": has_active_clearance,
+            }
+        )
+    return results
+
+
 # --- Clearance --------------------------------------------------------------
 
 

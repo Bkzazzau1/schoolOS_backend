@@ -1,9 +1,14 @@
+from django.contrib.auth import get_user_model
+
 from apps.core.errors import Rejected
+from apps.schools.models import Membership, Role
 from apps.students.models import GuardianLink
 
 from .. import disputes, services
 from ..models import ClearanceStatus, DisputeStatus, TransferAlertState
 from .test_verification import VerificationTestCase
+
+User = get_user_model()
 
 
 class DisputeTestCase(VerificationTestCase):
@@ -202,6 +207,28 @@ class DisputeAndClearanceEndpointTests(DisputeTestCase):
 
         bogus = self.client.get("/api/v1/transferverify/clearances/verify/?token=not-real")
         self.assertFalse(bogus.json()["valid"])
+
+    def test_the_guardian_sees_their_own_child_case_status_over_http(self):
+        self.client.force_authenticate(self.guardian.user)
+        response = self.client.get(f"/api/v1/schools/{self.school.id}/transferverify/network/my-case/")
+        self.assertEqual(response.status_code, 200)
+        cases = response.json()["cases"]
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0]["transferAlertId"], str(self.alert.id))
+        self.assertFalse(cases[0]["hasOpenDispute"])
+
+        disputes.open_dispute(membership=self.guardian, transfer_alert_id=str(self.alert.id), reason="already_paid")
+        response = self.client.get(f"/api/v1/schools/{self.school.id}/transferverify/network/my-case/")
+        self.assertTrue(response.json()["cases"][0]["hasOpenDispute"])
+
+    def test_a_guardian_never_sees_another_familys_case(self):
+        unrelated_parent = Membership.objects.create(
+            user=User.objects.create_user("unrelated@school.ng", "correct horse battery staple"),
+            school=self.school, role=Role.PARENT,
+        )
+        self.client.force_authenticate(unrelated_parent.user)
+        response = self.client.get(f"/api/v1/schools/{self.school.id}/transferverify/network/my-case/")
+        self.assertEqual(response.json()["cases"], [])
 
     def test_only_a_parent_can_open_a_dispute_over_http(self):
         self.client.force_authenticate(self.members["accountant"].user)
