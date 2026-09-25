@@ -20,7 +20,8 @@ EXCURSIONS = Spec(
     "school_excursion",
     manage=MANAGERS,
     contribute=frozenset({"teacher"}),
-    required=("title", "date"),
+    # termId ties the trip to a real academic term rather than a free-text label.
+    required=("title", "date", "termId"),
     guarded={"readinessReviewed": LEADERS},
     defaults={"readinessReviewed": False},
 )

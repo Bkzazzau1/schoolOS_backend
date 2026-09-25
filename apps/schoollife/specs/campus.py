@@ -53,7 +53,8 @@ GALLERY = Spec(
     "gallery_media_album",
     manage=MANAGERS,
     contribute=frozenset({"teacher", "staff"}),
-    required=("title",),
+    # termId ties an album to the real academic term it was taken in, not a free-text label.
+    required=("title", "termId"),
     # Publishing pictures of children outside the school is the leadership's decision.
     guarded_values={("visibility", "publicShowcase"): LEADERS},
     audience=_gallery_audience,
