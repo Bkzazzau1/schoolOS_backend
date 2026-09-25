@@ -11,6 +11,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.errors import Rejected
+from apps.notifications.services import notify
 from apps.schools.models import Membership, Role
 from apps.students.models import GuardianLink
 
@@ -78,6 +79,13 @@ def open_dispute(
     )
     alert.state = TransferAlertState.DISPUTED
     alert.save(update_fields=["state", "updated_at"])
+
+    for proprietor in Membership.objects.filter(school=alert.source_school, role=Role.PROPRIETOR, is_active=True):
+        notify(
+            proprietor, "transferverify_dispute_opened", "TransferVerify dispute opened",
+            "A guardian has disputed one of your published TransferVerify cases.",
+            {"disputeId": str(item.id), "transferAlertId": str(alert.id)},
+        )
     return item
 
 
@@ -128,6 +136,12 @@ def review_dispute(*, membership: Membership, dispute_id: str, decision: str, no
             alert.save(update_fields=["state", "resolved_at", "updated_at"])
         else:
             alert.save(update_fields=["state", "updated_at"])
+
+    notify(
+        item.opened_by, "transferverify_dispute_reviewed", "TransferVerify dispute reviewed",
+        f"The school has {item.status} your TransferVerify dispute.",
+        {"disputeId": str(item.id)},
+    )
     return item
 
 

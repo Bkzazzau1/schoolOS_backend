@@ -1,4 +1,5 @@
 from apps.core.errors import Rejected
+from apps.notifications.models import Notification
 
 from .. import services, verification
 from ..models import (
@@ -55,6 +56,12 @@ class SendingTests(VerificationTestCase):
         with self.assertRaises(Rejected):
             verification.send_request(membership=self.other_principal, transfer_alert_id=str(self.alert.id))
 
+    def test_the_source_owner_is_notified(self):
+        verification.send_request(membership=self.other_owner, transfer_alert_id=str(self.alert.id))
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.owner, kind="transferverify_request_received").exists()
+        )
+
 
 class RespondingTests(VerificationTestCase):
     def setUp(self):
@@ -69,6 +76,9 @@ class RespondingTests(VerificationTestCase):
         self.assertEqual(answered.response_status_snapshot, "bad_debt")
         self.alert.refresh_from_db()
         self.assertEqual(self.alert.state, TransferAlertState.ACTIVE)
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.other_owner, kind="transferverify_request_answered").exists()
+        )
 
     def test_the_source_owner_rejects_with_a_note(self):
         answered = verification.respond_to_request(

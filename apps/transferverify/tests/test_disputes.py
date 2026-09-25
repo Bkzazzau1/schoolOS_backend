@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 
 from apps.core.errors import Rejected
+from apps.notifications.models import Notification
 from apps.schools.models import Membership, Role
 from apps.students.models import GuardianLink
 
@@ -50,6 +51,12 @@ class OpeningTests(DisputeTestCase):
         with self.assertRaises(Rejected):
             disputes.open_dispute(membership=self.guardian, transfer_alert_id=str(self.alert.id), reason="amount_disputed")
 
+    def test_the_source_owner_is_notified(self):
+        disputes.open_dispute(membership=self.guardian, transfer_alert_id=str(self.alert.id), reason="already_paid")
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.owner, kind="transferverify_dispute_opened").exists()
+        )
+
 
 class ReviewTests(DisputeTestCase):
     def setUp(self):
@@ -63,6 +70,9 @@ class ReviewTests(DisputeTestCase):
         self.assertEqual(reviewed.status, DisputeStatus.ACCEPTED)
         self.alert.refresh_from_db()
         self.assertEqual(self.alert.state, TransferAlertState.ACTIVE)
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.guardian, kind="transferverify_dispute_reviewed").exists()
+        )
 
     def test_the_owner_rejects_with_a_note(self):
         reviewed = disputes.review_dispute(membership=self.owner, dispute_id=str(self.dispute.id), decision="rejected", note="No record of payment found.")

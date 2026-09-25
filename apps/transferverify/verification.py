@@ -10,6 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.errors import Rejected
+from apps.notifications.services import notify
 from apps.schools.models import Membership, Role
 
 from .associations import active_association_ids
@@ -73,6 +74,13 @@ def send_request(*, membership: Membership, transfer_alert_id: str, note: str = 
     if alert.state == TransferAlertState.ACTIVE:
         alert.state = TransferAlertState.VERIFICATION_PENDING
         alert.save(update_fields=["state", "updated_at"])
+
+    for proprietor in Membership.objects.filter(school=alert.source_school, role=Role.PROPRIETOR, is_active=True):
+        notify(
+            proprietor, "transferverify_request_received", "TransferVerify request received",
+            f"{membership.school.name} asked to verify one of your published TransferVerify cases.",
+            {"transferVerificationRequestId": str(item.id), "transferAlertId": str(alert.id)},
+        )
     return item
 
 
@@ -114,6 +122,12 @@ def respond_to_request(*, membership: Membership, request_id: str, decision: str
     if alert.state == TransferAlertState.VERIFICATION_PENDING:
         alert.state = TransferAlertState.ACTIVE
         alert.save(update_fields=["state", "updated_at"])
+
+    notify(
+        item.requested_by, "transferverify_request_answered", "TransferVerify request answered",
+        f"{membership.school.name} {item.status} your TransferVerify request.",
+        {"transferVerificationRequestId": str(item.id)},
+    )
     return item
 
 
