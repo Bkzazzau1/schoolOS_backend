@@ -1,0 +1,116 @@
+import uuid
+
+from django.db import models
+from django.db.models import Q
+
+from apps.schools.models import Membership, School
+from apps.students.models import Student
+
+
+class BadDebtStatus(models.TextChoices):
+    """A single classification's own progression, private to the classifying
+    school. Only BAD_DEBT can ever be published to TransferVerify (a separate,
+    explicit, Proprietor-only action - see apps.transferverify.services);
+    reaching this status never publishes anything by itself."""
+
+    OUTSTANDING = "outstanding", "Outstanding"
+    RECOVERY_IN_PROGRESS = "recovery_in_progress", "Recovery in progress"
+    BAD_DEBT = "bad_debt", "Bad debt / unresolved obligation"
+    RESOLVED = "resolved", "Resolved"
+
+
+class BadDebtClassification(models.Model):
+    """One school's own internal record of an unresolved student-account
+    obligation. This is the source school's private data: nothing here is
+    visible to any other school, or discoverable through TransferVerify,
+    until a Proprietor takes the separate "Publish to TransferVerify" action
+    on a BAD_DEBT-status record (a later phase; see the platform-level
+    TransferAlert).
+
+    SchoolOS does not decide that a debt is bad - the Proprietor, or someone
+    they specifically authorized (see apps.owner.jobs, duty
+    "finance.bad_debt_classification"), does. This record exists to make that
+    human decision auditable: who classified it, when, why, and what the
+    amount was understood to be at the time.
+
+    There is currently no canonical Student-finance ledger anywhere in
+    SchoolOS (fee structures/payments/balances are still local-only demo
+    data on the Flutter client with no backend behind them), so
+    outstanding_amount_minor is a snapshot this record owns, not a reference
+    to a ledger row that does not yet exist. current_canonical_balance_minor
+    stays null until a real Finance backend exists to refresh it from - it
+    is never invented.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="bad_debt_classifications")
+    external_id = models.CharField(max_length=128)
+    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name="bad_debt_classifications")
+
+    status = models.CharField(max_length=24, choices=BadDebtStatus.choices, default=BadDebtStatus.OUTSTANDING)
+
+    #: Snapshots, in kobo (minor units), matching the naming convention
+    #: apps.billing already uses (*_minor) for money fields.
+    outstanding_amount_minor = models.PositiveIntegerField()
+    current_canonical_balance_minor = models.PositiveIntegerField(null=True, blank=True)
+
+    reason = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+    evidence_reference = models.CharField(max_length=200, blank=True)
+
+    classified_by = models.ForeignKey(
+        Membership, on_delete=models.PROTECT, related_name="classified_bad_debts"
+    )
+    classified_at = models.DateTimeField()
+    last_updated_by = models.ForeignKey(
+        Membership, null=True, blank=True, on_delete=models.PROTECT, related_name="updated_bad_debts"
+    )
+
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        Membership, null=True, blank=True, on_delete=models.PROTECT, related_name="resolved_bad_debts"
+    )
+    resolution_note = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-classified_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["school", "external_id"], name="bad_debt_external_uq"),
+            # A student can have at most one classification open at a time -
+            # resolve (or, later, publish and let the network case carry the
+            # thread) before starting a new one, so history never forks.
+            models.UniqueConstraint(
+                fields=["student"],
+                condition=Q(status__in=[BadDebtStatus.OUTSTANDING, BadDebtStatus.RECOVERY_IN_PROGRESS, BadDebtStatus.BAD_DEBT]),
+                name="bad_debt_one_open_per_student",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["school", "status"], name="bad_debt_school_status_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.student} · {self.get_status_display()}"
+
+
+class BadDebtEvent(models.Model):
+    """Append-only history for one classification - created, status changes,
+    edits, resolution. Never edited once written, the same pattern
+    apps.access.AccessChange and apps.cbt.CbtEvent already use."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    classification = models.ForeignKey(BadDebtClassification, on_delete=models.PROTECT, related_name="events")
+    revision = models.PositiveIntegerField()
+    action = models.CharField(max_length=32)
+    actor_membership = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="bad_debt_events")
+    detail = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-revision"]
+        constraints = [
+            models.UniqueConstraint(fields=["classification", "revision"], name="bad_debt_event_revision_uq"),
+        ]

@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     "apps.staff",
     "apps.invitations",
     "apps.alumni",
+    "apps.transferverify",
 ]
 
 MIDDLEWARE = [
