@@ -83,7 +83,7 @@ FINANCE = workspace(
         ("dashboard", "Dashboard", "essential"),
         ("fee-structure", "Fee Structure"),
         ("scholarships", "Scholarships & Discounts"),
-        ("collections", "Smart Collections"),
+        ("collections", "Smart Money Collection", "sensitive"),
         ("reminders", "Fee Reminders"),
         ("store", "School Store"),
         ("mandates", "Payment Mandates"),
