@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     "apps.administration",
     "apps.transport",
     "apps.bankconnect",
+    "apps.receivables",
     "apps.staff",
     "apps.invitations",
     "apps.alumni",
