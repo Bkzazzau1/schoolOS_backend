@@ -11,7 +11,7 @@ from . import bridge, collection_accounts, credit, families, issuers, ledger, me
 from .errors import Refused
 from .http import ReceivablesView, body, found, paging, uuid_arg
 from .models import Family, FamilyCollectionAccount, FamilyStatement, StudentReceivable
-from .permissions import acting_membership
+from .permissions import acting_membership, can_manage_billing
 
 
 def _family(membership, family_id) -> Family:
@@ -45,7 +45,11 @@ class FamiliesView(ReceivablesView):
         rows = families.search(membership.school, params.get("q", ""), limit=limit + 1, offset=offset, accounts=params.get("accounts") or None)
         more = len(rows) > limit
         show = params.get("withAccounts") in ("1", "true", "yes")
-        return Response({"families": [serializers.family(f, accounts=show) for f in rows[:limit]], "hasMore": more})
+        return Response({
+            "families": [serializers.family(f, accounts=show) for f in rows[:limit]], "hasMore": more,
+            # What this person may do here, so a screen offers only what will be accepted.
+            "permissions": {"canDecideBilling": can_manage_billing(membership)},
+        })
 
     def post(self, request, school_id):
         """Make a family, optionally with its students."""

@@ -510,6 +510,11 @@ class FamilyAccountApiTests(test_api.ApiTestCase):
         self.assertEqual([f["id"] for f in self.get("families/?accounts=with").json()["families"]], [str(self.family.id)])
         self.assertNotIn("collectionAccounts", self.get("families/").json()["families"][0])  # plain listing stays light
 
+    def test_the_family_list_says_whether_this_person_may_decide_billing_so_a_screen_offers_only_what_is_accepted(self):
+        self.assertTrue(self.get("families/", who=self.owner).json()["permissions"]["canDecideBilling"])
+        self.assertFalse(self.get("families/", who=self.finance).json()["permissions"]["canDecideBilling"])
+        self.assertTrue(self.get("families/", who=self.authority).json()["permissions"]["canDecideBilling"])
+
     def test_the_family_list_is_paged(self):
         for i in range(5):
             families.create_family(self.school, display_name=f"Family {i}", actor=self.owner)
