@@ -42,7 +42,8 @@ from .models import (
 from .permissions import require_operator
 
 _STAMPS = {
-    AccountStatus.ACTIVE: "activated_at", AccountStatus.DORMANT: "dormant_at", AccountStatus.SETTLED: "settled_at", AccountStatus.CLOSED: "closed_at",
+    AccountStatus.ACTIVE: "activated_at", AccountStatus.DORMANT: "dormant_at", AccountStatus.SETTLED: "settled_at", AccountStatus.GRACE: "settled_at",
+    AccountStatus.CLOSED: "closed_at",
 }
 
 
@@ -51,7 +52,7 @@ def live_account(family: Family) -> FamilyCollectionAccount | None:
     return FamilyCollectionAccount.objects.filter(school=family.school, family=family, status__in=LIVE_STATUSES).first()
 
 
-def _set(account: FamilyCollectionAccount, status: str, actor, why: str, *, reason: str = "") -> tuple:
+def _set(account: FamilyCollectionAccount, status: str, actor, why: str, *, reason: str = "", grace_until=None, after_grace: str = "") -> tuple:
     before = account.status
     now = timezone.now()
     account.status = status
@@ -61,7 +62,10 @@ def _set(account: FamilyCollectionAccount, status: str, actor, why: str, *, reas
     if stamp:
         setattr(account, stamp, now)
         fields.append(stamp)
-    if status == AccountStatus.CLOSED and reason:
+    # The wait after settlement belongs to the GRACE state only: leaving it clears it.
+    account.grace_until, account.after_grace = (grace_until, after_grace) if status == AccountStatus.GRACE else (None, "")
+    fields += ["grace_until", "after_grace"]
+    if status in (AccountStatus.CLOSING, AccountStatus.CLOSED) and reason:
         account.close_reason = reason[:200]
         fields.append("close_reason")
     account.save(update_fields=fields)
@@ -78,11 +82,20 @@ def sync_state(family: Family, position=None, *, actor=None) -> list[tuple]:
     changes = []
     # Includes an account left on a family that was merged into this one: it still receives this family's money.
     for account in FamilyCollectionAccount.objects.select_for_update().filter(Q(family=family) | Q(family__merged_into=family)):
-        if position.outstanding > 0 and account.status == AccountStatus.DORMANT:
+        if position.outstanding > 0 and account.status in (AccountStatus.DORMANT, AccountStatus.SETTLED, AccountStatus.GRACE):
             changes.append(_set(account, AccountStatus.ACTIVE, actor, "The family owes money again"))
         elif position.outstanding == 0 and account.status == AccountStatus.ACTIVE:
-            changes.append(_set(account, AccountStatus.DORMANT, actor, "The family has paid everything it owes"))
+            # What happens to an account whose family has paid everything is the school's collection policy (close it, make it dormant,
+            # wait first, leave it for a person, or let the provider decide); with no policy chosen it becomes dormant, as it always did.
+            from apps.smartcollect import lifecycle
+
+            changes.extend(lifecycle.on_settled(account, actor=actor))
     return changes
+
+
+def set_state(account: FamilyCollectionAccount, status: str, *, actor, why: str, reason: str = "", grace_until=None, after_grace: str = "") -> tuple:
+    """Move an account to another state and record why. For the code that carries out the school's policy (lifecycle, retirement)."""
+    return _set(account, status, actor, why, reason=reason, grace_until=grace_until, after_grace=after_grace)
 
 
 def _ready_status(family: Family) -> str:
@@ -136,6 +149,7 @@ def register(
 def create_from_provider(
     family: Family, connection, provisioned, *, actor=None, mode: str = AccountMode.STATIC, scope_session=None, scope_term=None,
     valid_from=None, valid_until=None, target_minor: int | None = None, idempotency_key: str = "", checkpoint: dict | None = None,
+    reuse_scope: str = "", reuse_count: int | None = None,
 ) -> FamilyCollectionAccount:
     """Record the account the school's ACTIVE provider made for this family. Idempotent: the same `idempotency_key` gives back the account
     it made the first time, so a retry, a double click or a worker race can never make a second one.
@@ -164,7 +178,7 @@ def create_from_provider(
             account = FamilyCollectionAccount.objects.create(
                 school=family.school, family=family, provider=connection.provider, connection=connection, origin=AccountOrigin.PROVIDER,
                 account_mode=mode, scope_session=scope_session, scope_term=scope_term, valid_from=valid_from, valid_until=valid_until,
-                collection_target_minor=target_minor, idempotency_key=idempotency_key, external_account_ref=provisioned.provider_account_ref,
+                reuse_scope=reuse_scope, reuse_count=reuse_count, collection_target_minor=target_minor, idempotency_key=idempotency_key, external_account_ref=provisioned.provider_account_ref,
                 account_number=provisioned.account_number, account_name=provisioned.account_name[:200], bank_name=provisioned.bank_name[:120],
                 public_details=clean_details(provisioned.public_details), provider_meta=meta, status=AccountStatus.PROVISIONING,
             )
@@ -248,8 +262,34 @@ def close(account: FamilyCollectionAccount, *, actor, reason: str) -> FamilyColl
     if not reason:
         raise Refused("Say why the account is being closed.", "reason_required")
     account = FamilyCollectionAccount.objects.select_for_update().get(pk=account.pk)
+    if account.status in (AccountStatus.CLOSED, AccountStatus.CLOSING):
+        raise Refused("This account is already closed or closing.", "already_closed")
+    if account.origin == AccountOrigin.PROVIDER and account.connection_id:
+        # An account the school's provider made is retired AT the provider, through the job queue: it is closing until the provider says so.
+        from apps.smartcollect import lifecycle
+
+        lifecycle.begin_close(account, actor=actor, reason=reason)
+        return FamilyCollectionAccount.objects.get(pk=account.pk)
+    _set(account, AccountStatus.CLOSED, actor, reason, reason=reason)
+    return account
+
+
+@transaction.atomic
+def mark_closing(account: FamilyCollectionAccount, *, actor, reason: str) -> FamilyCollectionAccount:
+    """The account is being retired at the provider (the provider call is queued or in flight). It still counts as the family's live
+    account and still receives, until the provider has confirmed. For the code that retires accounts; a person uses `close`."""
+    account = FamilyCollectionAccount.objects.select_for_update().get(pk=account.pk)
+    if account.status in (AccountStatus.CLOSING, *ENDED_STATUSES):
+        return account
+    _set(account, AccountStatus.CLOSING, actor, reason, reason=reason)
+    return account
+
+
+@transaction.atomic
+def mark_closed(account: FamilyCollectionAccount, *, actor, reason: str) -> FamilyCollectionAccount:
+    account = FamilyCollectionAccount.objects.select_for_update().get(pk=account.pk)
     if account.status == AccountStatus.CLOSED:
-        raise Refused("This account is already closed.", "already_closed")
+        return account
     _set(account, AccountStatus.CLOSED, actor, reason, reason=reason)
     return account
 

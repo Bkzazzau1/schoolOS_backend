@@ -42,6 +42,9 @@ def serialize_provider(info) -> dict:
         "description": info.description,
         "accountLabel": info.account_label,
         "payerNote": info.payer_note,
+        # What the provider needs to know about a family's payer before it will make an account, and whether it makes accounts for an amount.
+        "customerRequirements": list(info.customer_requirements),
+        "requiresAmount": info.requires_amount,
     }
 
 

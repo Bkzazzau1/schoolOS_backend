@@ -177,6 +177,7 @@ class MonnifyConnector(CollectionConnector):
         description="Family payment accounts issued as Monnify Customer Reserved Accounts, on the school's own Monnify account. Monnify requires the payer's BVN or NIN.",
         account_label="Account number",
         payer_note="Pay by bank transfer to this account number.",
+        customer_requirements=("email", "identity"),
     )
 
     # -- connecting -----------------------------------------------------------------------------

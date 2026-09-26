@@ -175,6 +175,8 @@ class RemitaConnector(CollectionConnector):
         description="Family payment references made as Remita invoices (an RRR for the family's collection target), on the school's own Remita account. Remita has no reusable family bank account.",
         account_label="Remita Retrieval Reference (RRR)",
         payer_note="Pay this Remita Retrieval Reference through Remita.",
+        customer_requirements=("name", "email", "phone"),
+        requires_amount=True,
     )
 
     # -- connecting -----------------------------------------------------------------------------

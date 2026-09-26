@@ -148,6 +148,12 @@ class ProviderInfo:
     account_label: str = "Account number"
     payer_note: str = ""
     connection_type: str = "collection_provider"
+    #: What the provider needs to know about the family's payer before it will make an account, from: "name", "email", "phone",
+    #: "identity" (a BVN or NIN). Smart Money Collection shows a family that lacks one of them as "details missing" and never sends a
+    #: request the provider would refuse.
+    customer_requirements: tuple = ("email",)
+    #: The provider makes the account for an amount (Remita's invoice), so a family with nothing to collect has nothing to generate.
+    requires_amount: bool = False
 
     @property
     def is_sandbox(self) -> bool:

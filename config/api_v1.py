@@ -24,4 +24,5 @@ urlpatterns = [
     path("", include("apps.transferverify.urls")),
     path("", include("apps.bankconnect.urls")),
     path("", include("apps.receivables.urls")),
+    path("", include("apps.smartcollect.urls")),
 ]

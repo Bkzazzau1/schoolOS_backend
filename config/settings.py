@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "apps.transport",
     "apps.bankconnect",
     "apps.receivables",
+    "apps.smartcollect",
     "apps.staff",
     "apps.invitations",
     "apps.alumni",
@@ -195,6 +196,11 @@ BANKCONNECT_ENABLE_SANDBOX = env.bool("BANKCONNECT_ENABLE_SANDBOX", default=DEBU
 # is refused until then.
 COLLECTION_REMITA_LIVE_BASE_URL = env("COLLECTION_REMITA_LIVE_BASE_URL", default="")
 COLLECTION_ALLOW_HTTP = env.bool("COLLECTION_ALLOW_HTTP", default=False)
+# Smart Money Collection makes provider calls from a durable job queue, never inside a database transaction. A worker
+# (`manage.py run_collection_jobs --loop`) drains it. Where no worker runs (a small school on one server, local development) the server
+# drains a bounded slice itself when a batch is started and while its progress is being watched.
+SMART_COLLECTION_INLINE_JOBS = env.bool("SMART_COLLECTION_INLINE_JOBS", default=True)
+SMART_COLLECTION_INLINE_SECONDS = env.int("SMART_COLLECTION_INLINE_SECONDS", default=8)
 
 PLATFORM_DOMAIN = env("PLATFORM_DOMAIN", default="")
 ANDROID_APP_PACKAGE = env("ANDROID_APP_PACKAGE", default="")

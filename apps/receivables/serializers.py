@@ -33,8 +33,19 @@ def guardian(link) -> dict:
     return {"id": str(link.guardian_id), "name": link.guardian.name, "relationship": link.guardian.relationship, "phone": link.guardian.phone, "isPrimaryPayer": link.is_primary_payer, "active": link.is_active}
 
 
-def account(a) -> dict:
-    """A collection account as the school's staff may see it: never `provider_meta`, never a credential."""
+def account(a, *, history: bool = False) -> dict:
+    """A collection account as the school's staff may see it: never `provider_meta`, never a credential. `history=True` adds which
+    collection batch made it (for a family's account history)."""
+    body = _account(a)
+    if history:
+        item = a.generation_items.select_related("batch").order_by("-created_at").first()
+        body["batch"] = (
+            {"id": str(item.batch_id), "title": item.batch.title, "status": item.batch.status, "generatedAt": _time(item.completed_at)} if item else None
+        )
+    return body
+
+
+def _account(a) -> dict:
     return {
         "id": str(a.id), "familyId": str(a.family_id), "provider": a.provider, "bankName": a.bank_name,
         "accountNumber": a.account_number, "numberLabel": account_shapes.label_for(a.provider), "accountName": a.account_name,
@@ -42,7 +53,8 @@ def account(a) -> dict:
         "currency": a.currency, "status": a.status, "origin": a.origin, "mode": a.account_mode,
         "scopeSessionId": str(a.scope_session_id) if a.scope_session_id else None, "scopeTermId": str(a.scope_term_id) if a.scope_term_id else None,
         "validFrom": a.valid_from.isoformat() if a.valid_from else None, "validUntil": a.valid_until.isoformat() if a.valid_until else None,
-        "collectionTargetMinor": a.collection_target_minor,
+        "collectionTargetMinor": a.collection_target_minor, "reuseScope": a.reuse_scope, "reuseCount": a.reuse_count,
+        "graceUntil": _time(a.grace_until), "afterGrace": a.after_grace,
         "activatedAt": _time(a.activated_at), "dormantAt": _time(a.dormant_at), "settledAt": _time(a.settled_at),
         "closedAt": _time(a.closed_at), "closeReason": a.close_reason, "statusChangedAt": _time(a.status_changed_at),
     }

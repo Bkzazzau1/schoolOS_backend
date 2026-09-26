@@ -218,7 +218,7 @@ class FamilyAccountsView(ReceivablesView):
     def get(self, request, school_id, family_id):
         membership = acting_membership(request, school_id)
         family = _family(membership, family_id)
-        return Response({"accounts": [serializers.account(a) for a in family.collection_accounts.all()]})
+        return Response({"accounts": [serializers.account(a, history=True) for a in family.collection_accounts.select_related("connection").all()]})
 
 
 class FamilyLegacyAccountView(ReceivablesView):
@@ -282,6 +282,10 @@ class CollectionAccountActionView(ReceivablesView):
             account = collection_accounts.reinstate(account, actor=membership)
         elif self.action == "close":
             account = collection_accounts.close(account, actor=membership, reason=data.get("reason"))
+            from apps.smartcollect import jobs
+
+            jobs.drain_inline()  # a server with no worker makes the provider call now, after the change is saved
+            account.refresh_from_db()
         elif self.action == "mark-provisioned":
             account = collection_accounts.mark_provisioned(account, actor=membership)
         return Response({"account": serializers.account(account)})

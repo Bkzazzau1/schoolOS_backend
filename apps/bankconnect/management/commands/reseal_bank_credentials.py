@@ -34,8 +34,23 @@ class Command(BaseCommand):
                 connection.sealed_credentials = blob
                 connection.save(update_fields=["sealed_credentials", "updated_at"])
 
+        # A payer's identity number (Smart Money Collection) is sealed by the same vault and rotates with it.
+        from apps.smartcollect.models import FamilyPayerIdentity
+
+        for identity in FamilyPayerIdentity.objects.exclude(sealed=b"").iterator():
+            try:
+                blob = vault.reseal(bytes(identity.sealed))
+            except VaultError:
+                unreadable += 1
+                self.stderr.write(f"payer identity {identity.id}: could not be opened with any configured key")
+                continue
+            resealed += 1
+            if not options["dry_run"]:
+                identity.sealed = blob
+                identity.save(update_fields=["sealed", "updated_at"])
+
         verb = "would be re-encrypted" if options["dry_run"] else "re-encrypted"
-        self.stdout.write(self.style.SUCCESS(f"Bank credentials: {resealed} {verb}, {unreadable} unreadable."))
+        self.stdout.write(self.style.SUCCESS(f"Sealed credentials and identity numbers: {resealed} {verb}, {unreadable} unreadable."))
         if unreadable:
             raise CommandError(
                 f"{unreadable} credential(s) could not be opened. Do NOT remove the old key until they are dealt with."

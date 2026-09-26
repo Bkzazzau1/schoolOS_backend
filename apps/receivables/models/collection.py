@@ -79,6 +79,14 @@ class FamilyCollectionAccount(models.Model):
     valid_from = models.DateField(null=True, blank=True)
     #: The last day a static account is reused for (empty: no end date - see the policy's reuse scope).
     valid_until = models.DateField(null=True, blank=True)
+    #: How long the school's policy said this account is reused, as it was when the account was made (one term, selected terms, one
+    #: session, multiple sessions, until a date, indefinitely, until replaced), and how many terms or sessions where that applies.
+    #: Recorded on the account so a later change of policy never quietly changes what an account already made was promised.
+    reuse_scope = models.CharField(max_length=20, blank=True)
+    reuse_count = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: While the account is settled and waiting out the school's grace period: when the wait ends and what follows it ("dormant" or "close").
+    grace_until = models.DateTimeField(null=True, blank=True)
+    after_grace = models.CharField(max_length=8, blank=True)
     #: What the account was made to collect, in minor units, when it was made (the family's collection target). A record of what
     #: was decided then; it is never how much the family owes (the ledger says that).
     collection_target_minor = models.BigIntegerField(null=True, blank=True)
