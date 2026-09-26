@@ -198,3 +198,11 @@ def search(school, term: str, *, limit: int = 30):
             | Q(members__student__student_code__icontains=term) | Q(members__student__admission_number__icontains=term)
         ).distinct()
     return families.order_by("display_name", "code")[:limit]
+
+
+def students_without_family(school):
+    """Students who could be charged but belong to no family yet - who someone must place before they can be billed."""
+    from .applicability import BILLABLE_STATUSES
+
+    placed = FamilyStudent.objects.filter(school=school, is_active=True).values_list("student_id", flat=True)
+    return Student.objects.filter(school=school, status__in=BILLABLE_STATUSES).exclude(id__in=placed).order_by("surname", "first_name", "id")
