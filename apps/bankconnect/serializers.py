@@ -62,6 +62,33 @@ def serialize_connection(connection) -> dict:
     }
 
 
+def serialize_transaction(t) -> dict:
+    return {
+        "id": str(t.id),
+        "connectionId": str(t.connection_id),
+        "provider": t.provider,
+        "bankName": t.bank_name,
+        "bankAccountName": t.bank_account_name,
+        "maskedAccountNumber": t.masked_account_number,
+        "transactionReference": t.transaction_reference,
+        "transactionType": t.transaction_type,
+        "direction": t.direction,
+        "amountMinor": t.amount_minor,
+        "currency": t.currency,
+        "senderName": t.sender_name,
+        "senderAccountMask": t.sender_account_mask,
+        "senderBank": t.sender_bank,
+        "narration": t.narration,
+        "transactionDate": _iso(t.transaction_date),
+        "balanceAfterMinor": t.balance_after_minor,
+        "isSandbox": t.is_sandbox,
+        "reconciliationStatus": t.reconciliation_status,
+        "confidence": t.reconciliation_confidence,
+        "matchReasons": t.match_reasons,
+        "receivedAt": _iso(t.created_at),
+    }
+
+
 def serialize_audit_event(event) -> dict:
     return {
         "id": str(event.id),

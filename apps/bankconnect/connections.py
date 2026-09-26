@@ -166,11 +166,19 @@ def _obtain_grant(membership, connector, *, credentials, authorization_code, sta
         raise BankRejected(error.message, error.code)
 
 
+@sensitive_variables("secret")
+def open_secret(connection: BankConnection) -> dict:
+    """The stored credential, opened, with the connection's id added for connectors that need it.
+    It exists only in the caller's memory. Raises `VaultError`."""
+    secret = get_vault().open(context_for(connection), connection.sealed_credentials)
+    return {**secret, "connection_id": str(connection.id)}
+
+
 @sensitive_variables("secret", "renewed")
 def open_for_provider(connection: BankConnection):
     """The connector and the connection's opened credential, ready for a provider call, renewing an
-    expiring token first. Raises `ConnectorError` or `VaultError`; the credential exists only in the
-    caller's memory and is never stored back unsealed."""
+    expiring token first. Raises `ConnectorError` or `VaultError`; the credential is never stored
+    back unsealed."""
     connector = registry.get_connector(connection.provider)
     if connector is None:
         raise ConnectorError("provider_unavailable", "This provider is not available on this server.")
@@ -197,11 +205,15 @@ def record_failure(connection: BankConnection, code: str) -> None:
     connection.save(update_fields=["status", "last_error_code", "updated_at"])
 
 
-def record_success(connection: BankConnection) -> None:
+def record_success(connection: BankConnection, *, synced: bool = False) -> None:
     if connection.status in (ConnectionStatus.NEEDS_REAUTH, ConnectionStatus.ERROR):
         connection.status = ConnectionStatus.CONNECTED
     connection.last_error_code = ""
-    connection.save(update_fields=["status", "last_error_code", "updated_at"])
+    fields = ["status", "last_error_code", "updated_at"]
+    if synced:
+        connection.last_synced_at = timezone.now()
+        fields.append("last_synced_at")
+    connection.save(update_fields=fields)
 
 
 # -- lifecycle ----------------------------------------------------------------------------------

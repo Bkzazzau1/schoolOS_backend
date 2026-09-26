@@ -146,6 +146,7 @@ REST_FRAMEWORK = {
         "anon": "30/min", "user": "600/min",
         "invite_preview": "20/min" if "test" not in sys.argv else "10000/min",
         "invite_accept": "5/min" if "test" not in sys.argv else "10000/min",
+        "bank_webhook": "300/min" if "test" not in sys.argv else "10000/min",
     },
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
     "DEFAULT_PARSER_CLASSES": ("rest_framework.parsers.JSONParser",),

@@ -56,6 +56,8 @@ class ReconStatus(models.TextChoices):
     UNRELATED_INCOME = "unrelated_income", "Unrelated income"
     #: Set aside by a person for someone to look into.
     INVESTIGATING = "investigating", "Under investigation"
+    #: Money going out of the account. It is kept, but there is nothing to match it to.
+    NOT_APPLICABLE = "not_applicable", "Not applicable"
 
 
 #: A person still has something to do with these.
