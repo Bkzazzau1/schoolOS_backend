@@ -209,10 +209,11 @@ parent accounts hear of new fees, a payment received and fees settled. Test data
 
 ## Verification
 
-`manage.py test apps.receivables` (286 tests) covers: authority (every role, revoked/pending duties, other schools);
+`manage.py test apps.receivables` (293 tests) covers: authority (every role, revoked/pending duties, other schools);
 families and the bridge; fee schedules (every rejection, freezing, applicability, instalments, idempotent publishing);
 adjustments, reversals, voids and credit release; credit; allocation policy, reversals and corrections; collection account
-lifecycle; bank integration; concession integration; statements; notifications; every API endpoint against a second
+lifecycle; bank integration, including the real public webhook route into a family account (a repeated or forged
+delivery pays nothing twice); concession integration; statements; notifications; every API endpoint against a second
 school; and a **seeded random sequence of every operation with the whole ledger's invariants and conservation of money
 checked after each step**. Run once at larger scale (60 seeds x 40 steps) with no violation.
 

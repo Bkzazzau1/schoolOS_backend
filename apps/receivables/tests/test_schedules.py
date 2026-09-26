@@ -7,7 +7,7 @@ from apps.schools.models import Membership, Role
 
 from .. import families, plans, schedules
 from ..errors import Refused
-from ..models import FeeItem, FeeSchedule, FinanceAuditEvent, ScheduleStatus, StudentReceivable
+from ..models import FeeItem, FinanceAuditEvent, StudentReceivable
 from .base import ReceivablesTestCase
 
 DUE = date(2026, 10, 15)

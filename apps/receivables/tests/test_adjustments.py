@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 
 from apps.bankconnect.models import TransactionAllocation
 
-from .. import adjustments, allocation, credit, ledger, schedules
+from .. import adjustments, allocation, ledger, schedules
 from ..errors import Refused
 from ..models import FinanceAuditEvent, ReceivableAdjustment, StudentReceivable
 from .base import ReceivablesTestCase

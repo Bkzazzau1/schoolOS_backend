@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 
-from .. import adjustments, allocation, collection_accounts, credit, ledger
-from ..models import FamilyCollectionAccount, FamilyCreditEntry
+from .. import adjustments, allocation, collection_accounts, ledger
+from ..models import FamilyCollectionAccount
 from .base import ReceivablesTestCase
 
 NAIRA = 100
@@ -18,7 +18,7 @@ class TheWholeFlowTests(ReceivablesTestCase):
         account = collection_accounts.register(family, provider="monnify", account_number="8012345678", actor=self.owner)
         self.assertEqual(account.status, "dormant")  # nothing is owed yet
 
-        schedule = self.publish_bello_fees()
+        self.publish_bello_fees()
         account.refresh_from_db()
         self.assertEqual(account.status, "active")  # published debt: the account wakes up
         self.assertEqual(ledger.family_position(family).outstanding, 300_000 * NAIRA)

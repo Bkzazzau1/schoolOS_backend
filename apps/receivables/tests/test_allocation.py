@@ -4,7 +4,7 @@ from django.db import IntegrityError, transaction
 
 from apps.bankconnect.models import ReconciliationDecision, TransactionAllocation
 
-from .. import adjustments, allocation, credit, ledger, policy, schedules
+from .. import adjustments, allocation, ledger, policy, schedules
 from ..errors import Refused
 from ..models import CreditKind, FamilyCreditEntry, FinanceAuditEvent, StudentReceivable
 from .base import ReceivablesTestCase

@@ -2,7 +2,7 @@
 nothing about how the school decides fees. A parent is found through the guardian records linked to their
 signed-in account, never through anything the app claims."""
 
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from apps.core.permissions import require_membership

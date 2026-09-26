@@ -18,7 +18,7 @@ says: nobody decides their own family's fees.
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.permissions import require_membership
-from apps.owner.jobs.access import has_duty
+from apps.owner.jobs.access import JOB, has_duty
 from apps.schools.models import Role
 
 from .constants import BILLING_AUTHORITY_DUTY, OPERATE_DUTIES
@@ -66,8 +66,19 @@ def billing_authorities(school) -> list:
     """Everyone at the school who may determine fees: the proprietor(s) and the duty holders. These
     are the people told when something needs a decision."""
     from apps.schools.models import Membership
+    from apps.sync.models import SyncRecord
 
-    return [m for m in Membership.objects.select_related("school").filter(school=school, is_active=True) if can_manage_billing(m)]
+    # One query for everyone holding the duty, instead of one per membership. Same rule as `has_duty`: the
+    # grant must be active and linked to that membership.
+    holders = {
+        str(row.payload.get("membershipId"))
+        for row in SyncRecord.objects.filter(school=school, entity_type=JOB, deleted=False)
+        if row.payload.get("status") == "active" and BILLING_AUTHORITY_DUTY in (row.payload.get("duties") or [])
+    }
+    return [
+        m for m in Membership.objects.select_related("school").filter(school=school, is_active=True)
+        if m.role not in NON_STAFF_ROLES and (m.role == Role.PROPRIETOR or str(m.id) in holders)
+    ]
 
 
 def acting_membership(request, school_id, *, manage: bool = False):

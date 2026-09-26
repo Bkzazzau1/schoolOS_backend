@@ -4,7 +4,7 @@ from apps.bankconnect.models import BankTransaction, ReconciliationDecision, Tra
 from apps.notifications.models import Notification
 
 from .. import collection_accounts, credit, families, ledger
-from ..models import CreditKind, FamilyCreditEntry, StudentReceivable
+from ..models import CreditKind, FamilyCreditEntry
 from .base import ReceivablesTestCase
 
 N = 100
