@@ -375,3 +375,29 @@ def clone(schedule: FeeSchedule, *, actor, name=None) -> FeeSchedule:
             student=item.student, metadata=item.metadata,
         )
     return copy
+
+
+def preview(schedule: FeeSchedule) -> dict:
+    """Who this schedule would charge, and how much, WITHOUT charging anyone - so a billing authority can
+    check a draft before publishing it. Students it applies to who have no family, or who cannot be placed in
+    a class for the session, are listed: they would not be charged."""
+    resolution = applicability.resolve(schedule)
+    with_family = {
+        m.student_id
+        for m in FamilyStudent.objects.select_related("family").filter(school=schedule.school, is_active=True)
+        if m.family.status == "active"
+    }
+    lines, without = [], {}
+    for item in schedule.items.all():
+        students = resolution.by_item.get(item.id, [])
+        chargeable = [s for s in students if s.id in with_family]
+        without.update({s.id: s for s in students if s.id not in with_family})
+        lines.append({
+            "itemId": str(item.id), "code": item.code, "name": item.name, "students": len(students), "chargeable": len(chargeable),
+            "totalMinor": item.amount_minor * len(chargeable),
+        })
+    return {
+        "items": lines, "totalMinor": sum(line["totalMinor"] for line in lines),
+        "withoutFamily": sorted(without.values(), key=lambda s: (s.surname, s.first_name, str(s.id))),
+        "unclassified": resolution.unclassified,
+    }

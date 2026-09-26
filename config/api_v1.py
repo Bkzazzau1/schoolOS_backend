@@ -23,4 +23,5 @@ urlpatterns = [
     path("dashboards/", include("apps.dashboards.urls")),
     path("", include("apps.transferverify.urls")),
     path("", include("apps.bankconnect.urls")),
+    path("", include("apps.receivables.urls")),
 ]
