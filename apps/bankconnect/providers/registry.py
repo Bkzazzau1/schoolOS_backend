@@ -83,7 +83,7 @@ _pending_connectors = [
         "Paystack",
         ConnectionType.COLLECTION_PROVIDER,
         "payments",
-        "Collections processed through the school's own Paystack account. This is not access to its bank account.",
+        "Collections processed through the school's own Paystack account (not SchoolOS's, which is only for what schools pay SchoolOS). This is not access to its bank account.",
     ),
 ]
 

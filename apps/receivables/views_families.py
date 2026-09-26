@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from apps.bankconnect.models import BankTransaction, TransactionAllocation
 from apps.students.models import GuardianLink, Student
 
-from . import bridge, collection_accounts, credit, families, ledger, serializers, statements
+from . import bridge, collection_accounts, credit, families, issuers, ledger, serializers, statements
 from .errors import Refused
 from .http import ReceivablesView, body, found, paging, uuid_arg
 from .models import Family, FamilyCollectionAccount, FamilyStatement, StudentReceivable
@@ -25,11 +25,27 @@ def _student(membership, student_id) -> Student:
     return student
 
 
+def _connection(membership, data):
+    """The school's own bank connection a request names, or a refusal."""
+    from apps.bankconnect.models import BankConnection
+
+    if not data.get("connectionId"):
+        raise Refused("Choose which of the school's bank accounts this is for.", "connection_required")
+    return found(BankConnection.objects.filter(school=membership.school, id=uuid_arg(data["connectionId"], "connection")), "bank connection")
+
+
 class FamiliesView(ReceivablesView):
+    """GET families (?q= search, ?accounts=with|without filters by having a payment account, ?withAccounts=1 lists each
+    family's accounts and students, paged by ?limit= and ?offset=)."""
+
     def get(self, request, school_id):
         membership = acting_membership(request, school_id)
-        rows = families.search(membership.school, request.query_params.get("q", ""))
-        return Response({"families": [serializers.family(f) for f in rows]})
+        limit, offset = paging(request, default=30)
+        params = request.query_params
+        rows = families.search(membership.school, params.get("q", ""), limit=limit + 1, offset=offset, accounts=params.get("accounts") or None)
+        more = len(rows) > limit
+        show = params.get("withAccounts") in ("1", "true", "yes")
+        return Response({"families": [serializers.family(f, accounts=show) for f in rows[:limit]], "hasMore": more})
 
     def post(self, request, school_id):
         """Make a family, optionally with its students."""
@@ -203,17 +219,47 @@ class FamilyAccountsView(ReceivablesView):
     def post(self, request, school_id, family_id):
         membership = acting_membership(request, school_id)
         family, data = _family(membership, family_id), body(request)
-        connection = None
-        if data.get("connectionId"):
-            from apps.bankconnect.models import BankConnection
-
-            connection = found(BankConnection.objects.filter(school=membership.school, id=uuid_arg(data["connectionId"], "connection")), "bank connection")
+        connection = _connection(membership, data) if data.get("connectionId") else None
         account = collection_accounts.register(
             family, provider=data.get("provider"), actor=membership, account_number=data.get("accountNumber", ""),
             external_account_ref=data.get("externalAccountRef", ""), account_name=data.get("accountName", ""),
-            bank_name=data.get("bankName", ""), connection=connection, provisioned=data.get("provisioned", True) is not False,
+            bank_name=data.get("bankName", ""), connection=connection, public_details=data.get("details"),
+            provisioned=data.get("provisioned", True) is not False,
         )
         return Response({"account": serializers.account(account)}, status=201)
+
+
+class FamilyAccountIssueView(ReceivablesView):
+    """POST to have the school's provider issue this family its account, under one of the school's connections."""
+
+    def post(self, request, school_id, family_id):
+        membership = acting_membership(request, school_id)
+        family, data = _family(membership, family_id), body(request)
+        account = collection_accounts.issue(family, connection=_connection(membership, data), actor=membership)
+        return Response({"account": serializers.account(account)}, status=201)
+
+
+class IssueMissingAccountsView(ReceivablesView):
+    """POST to give every active family without one an account under a connection."""
+
+    def post(self, request, school_id):
+        membership = acting_membership(request, school_id)
+        return Response(collection_accounts.issue_missing(_connection(membership, body(request)), actor=membership))
+
+
+class AccountProvidersView(ReceivablesView):
+    """GET the providers a family account can come from, with what each one's account looks like."""
+
+    def get(self, request, school_id):
+        acting_membership(request, school_id)
+        return Response({"providers": issuers.describe()})
+
+
+class StatementVoidView(ReceivablesView):
+    def post(self, request, school_id, statement_id):
+        membership = acting_membership(request, school_id)
+        statement = found(FamilyStatement.objects.filter(school=membership.school, id=statement_id), "statement")
+        return Response({"statement": serializers.statement_record(statements.void(statement, actor=membership, reason=body(request).get("reason")))})
 
 
 class CollectionAccountActionView(ReceivablesView):

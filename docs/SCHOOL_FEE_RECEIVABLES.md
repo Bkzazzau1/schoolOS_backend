@@ -202,7 +202,36 @@ transaction): a charge's `paid` is the sum of both.
 
 ## Collection accounts
 
-Provider-agnostic. After **every** ledger change: family owes something -> the account is **ACTIVE**; owes nothing ->
+**The account belongs to the family, never to a child.** A family may have several children; they share one place to pay,
+and the ledger shares what arrives across whichever of them owe (see *Payment allocation*). A child's id or student code is
+never an account number.
+
+**What an account looks like depends on the bank.** Providers do not all give a ten-digit number: one gives an account
+number, another a payment code or wallet id, another a reference to quote alongside a shared account. Nothing assumes a
+format. Each provider has an `AccountShape` (`account_shapes.py`): what it *calls* the identifier (`numberLabel`), what one may
+look like (broad by default; narrowed only for a provider that has documented its format, never guessed), and a one-line
+`payerNote`. An account also carries `details` - extra facts the payer must be told, as label/value pairs (a payment
+reference, a sort code) - and a family may hold accounts with several banks at once (one live account per family per provider).
+
+**Where an account comes from** (`issuers.py`):
+- *Recorded by hand* - the finance side records the account a bank gave a family (`POST families/<id>/collection-accounts/`),
+  for any provider and any format.
+- *Issued by a provider adapter* - `POST families/<id>/collection-accounts/issue/` (or `collection-accounts/issue-missing/` for
+  every active family without one) asks the school's own connected provider to make it. **No real bank adapter exists yet**: a
+  real one is written only against that bank's published documentation, so every listed bank answers `issuer_unavailable` and
+  says to record it by hand. The **sandbox** issuer (only where the sandbox is on) makes clearly-labelled test accounts so the
+  whole path - issue, show the parent, receive a payment, settle the family - is exercised end to end.
+- `GET collection-accounts/providers/` lists the providers with their shapes and whether each can issue, so a form can adapt.
+
+**What a parent is shown** (`me/families/`, `me/families/<id>/statement/`): the family's accounts, once, with `numberLabel`,
+`details`, `note`, `status`, `canPay` and `isTest`. An account still being set up, or paused by the school, is listed but its
+number is withheld (`canPay: false`), so a family is never sent to pay one that may not receive. Provider internals are never shown.
+
+**School fees are the school's money.** Every account here is the school's own provider account under one of its connections;
+SchoolOS does not receive, hold or settle it. What schools pay SchoolOS (the SaaS subscription) is a separate matter
+(`apps/billing`), and no school-fee path uses SchoolOS's own payment provider.
+
+**Lifecycle.** Provider-agnostic. After **every** ledger change: family owes something -> the account is **ACTIVE**; owes nothing ->
 **DORMANT**. A dormant account is not closed or deleted: it keeps its provider identity and the **same** account is active
 again when new fees are published. Accounts that are still being set up, suspended by a person, or closed are never changed
 by a settled bill. How dormant is enforced (the provider refusing transfers, or SchoolOS only flagging what arrives) is for
@@ -225,7 +254,7 @@ behaves exactly as it always did.
 Under `/api/v1/schools/<school>/receivables/` (all school-scoped; another school's object looks like it does not exist;
 a refusal is a 400 with a stable `code` and words a person can act on):
 
-- **Families** (operator): `families/` (GET search, POST create), `families/<id>/`, `.../rename|add-student|remove-student|link-guardian|set-status/`, `.../receivables/`, `.../statement/` (GET, derived), `.../statements/` (GET, POST issue), `.../credit/`, `.../credit/refund/`, `.../payments/`, `.../collection-accounts/` (GET, POST register), `families/unassigned-students/`, `families/bridge/` (GET report, POST apply); `collection-accounts/<id>/suspend|reinstate|close|mark-provisioned/`.
+- **Families** (operator): `families/` (GET search, POST create), `families/<id>/`, `.../rename|add-student|remove-student|link-guardian|set-status/`, `.../receivables/`, `.../statement/` (GET, derived), `.../statements/` (GET, POST issue), `.../credit/`, `.../credit/refund/`, `.../payments/`, `.../collection-accounts/` (GET, POST register), `.../collection-accounts/issue/` (POST), `collection-accounts/providers/` (GET), `collection-accounts/issue-missing/` (POST), `statements/<id>/void/` (POST), `families/unassigned-students/`, `families/bridge/` (GET report, POST apply); `collection-accounts/<id>/suspend|reinstate|close|mark-provisioned/`.
 - **Fee schedules** (read: operator; change: billing authority): `fee-schedules/` (filter `?status=&session=&term=`; a POST with no `sessionId` is for the current period), `.../<id>/`, `.../preview/`, `.../rename|publish|refresh|retire|clone|void-charges/`, `.../items/`, `.../items/<item>/update|remove/`.
 - **Calendar and reports** (operator): `calendar/`, `reports/terms/`, `reports/position/` (see Sessions and terms).
 - **Charges and decisions**: `charges/` (filters incl. `?session=&term=`, and paging), `charges/<id>/`, `charges/<id>/adjust|void/` (billing authority), `adjustments/` (history), `adjustments/<id>/reverse/` (billing authority).
@@ -272,14 +301,14 @@ checked after each step**. Run once at larger scale (60 seeds x 40 steps) with n
 - **Direct-debit mandates** (Remita, Lendsqr) are not implemented. The ledger answers what a mandate integration will ask:
   who owes (`family_position`), how much, what is due (`outstanding`, `overdue`), what has been paid, what credit exists,
   and whether anything is collectible (`collectible`).
-- **No provider adapter issues family accounts yet.** `collection_accounts.register` records the account a provider has
-  given a family; issuing one is a provider connector's job (and needs that provider's documentation).
+- **No real provider adapter issues family accounts yet.** The framework, the per-bank account shapes and the sandbox issuer
+  exist; a real bank's issuer is written only against its own published documentation. Until then the finance side records
+  the account the bank gave a family by hand.
 - Currency is NGN only.
 - A student removed from a family leaves the charges already raised with the family that was billed; a family set inactive
   raises no new charges but its existing ones stand. Merging two families is not built.
-- A statement's `void` status exists; there is no endpoint to void one.
-- The app (Flutter) is not changed here except offering the duty. In particular the Parent Finance screen still shows the
-  child's internal id as an "account number" until it is moved to `me/families/`.
+- A statement issued in error is voided (`POST statements/<id>/void/`, with a reason): it stays on record with who and why,
+  its number is never reused, and what the family owes is untouched.
 - Migrations: `receivables` and `bankconnect` reference each other, so the order is `receivables 0002`, `bankconnect 0003`,
   `receivables 0003` (Django resolves it). `makemigrations` also proposes unrelated migrations for existing model drift in
   `students` and `academics`; those are not part of this work.

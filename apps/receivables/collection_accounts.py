@@ -18,10 +18,13 @@ receiving identifier, nothing more.
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from . import audit, ledger
+from . import audit, issuers, ledger
+from .account_shapes import clean_details
 from .errors import Refused
-from .models import AccountStatus, Family, FamilyCollectionAccount
+from .models import AccountStatus, Family, FamilyCollectionAccount, FamilyStatus
 from .permissions import require_operator
+
+_ISSUE_TRIES = 5
 
 
 def _set(account: FamilyCollectionAccount, status: str, actor, why: str) -> tuple:
@@ -56,18 +59,25 @@ def sync_state(family: Family, position=None, *, actor=None) -> list[tuple]:
 @transaction.atomic
 def register(
     family: Family, *, provider: str, actor, account_number: str = "", external_account_ref: str = "",
-    account_name: str = "", bank_name: str = "", connection=None, provider_meta=None, provisioned: bool = True,
+    account_name: str = "", bank_name: str = "", connection=None, provider_meta=None, public_details=None,
+    provisioned: bool = True,
 ) -> FamilyCollectionAccount:
     """Record the account a provider has given a family. With `provisioned=True` (the provider has the
     account ready) it starts ACTIVE if the family owes money and DORMANT if not; otherwise it waits in
-    PROVISIONING until `mark_provisioned`."""
+    PROVISIONING until `mark_provisioned`.
+
+    The account belongs to the FAMILY, whichever of its children owe, and what it looks like depends on the
+    provider: the number is checked against that provider's own shape (broad if it has none), and any extra
+    facts the payer needs (`public_details`) are kept with it."""
     require_operator(actor, family.school)
     provider = " ".join(str(provider or "").split())
     if not provider:
         raise Refused("Say which provider gave this account.", "provider_required")
-    account_number, external_account_ref = str(account_number or "").strip(), str(external_account_ref or "").strip()
+    account_number = issuers.shape_for(provider).clean_number(account_number)
+    external_account_ref = str(external_account_ref or "").strip()
     if not account_number and not external_account_ref:
         raise Refused("An account needs a number or the provider's reference for it.", "identifier_required")
+    public_details = clean_details(public_details)
     if connection is not None and connection.school_id != family.school_id:
         raise Refused("That bank connection is not at this school.", "connection_not_found")
     from . import credit
@@ -80,12 +90,73 @@ def register(
             account = FamilyCollectionAccount.objects.create(
                 school=family.school, family=family, provider=provider, connection=connection,
                 external_account_ref=external_account_ref, account_number=account_number, account_name=account_name[:200],
-                bank_name=bank_name[:120], provider_meta=provider_meta or {}, status=AccountStatus.PROVISIONING,
+                bank_name=bank_name[:120], provider_meta=provider_meta or {}, public_details=public_details, status=AccountStatus.PROVISIONING,
             )
     except IntegrityError:
         raise Refused("That account number or reference is already in use.", "identifier_in_use")
     audit.record(family.school, "collection_account_registered", actor=actor, obj=account, family=str(family.id), provider=provider)
     return mark_provisioned(account, actor=actor) if provisioned else account
+
+
+def _issuer_for(connection, family=None):
+    """The issuer that can make accounts under this connection, or a refusal saying why not."""
+    from apps.bankconnect.constants import ConnectionStatus
+
+    if family is not None and connection.school_id != family.school_id:
+        raise Refused("That bank connection is not at this school.", "connection_not_found")
+    if connection.status != ConnectionStatus.CONNECTED:
+        raise Refused("That bank account is not connected right now, so it cannot give families accounts.", "connection_not_ready")
+    issuer = issuers.issuer_for(connection.provider)
+    if issuer is None:
+        raise Refused("SchoolOS does not know how to issue family accounts for that provider.", "issuer_unavailable")
+    if not issuer.can_issue:
+        issuer.issue(family=family, connection=connection)  # a pending issuer refuses, in its own words
+    return issuer
+
+
+def issue(family: Family, *, connection, actor) -> FamilyCollectionAccount:
+    """Have the school's provider issue this family its payment account, and record it. One family, one account per
+    provider; the family's children share it. Refuses, with a reason, for a provider that cannot issue yet."""
+    require_operator(actor, family.school)
+    if family.status != FamilyStatus.ACTIVE:
+        raise Refused("Only an active family can be given an account.", "family_inactive")
+    issuer = _issuer_for(connection, family)
+    for attempt in range(_ISSUE_TRIES):
+        issued = issuer.issue(family=family, connection=connection, attempt=attempt)
+        try:
+            account = register(
+                family, provider=connection.provider, actor=actor, account_number=issued.account_number,
+                external_account_ref=issued.external_account_ref, account_name=issued.account_name, bank_name=issued.bank_name,
+                connection=connection, provider_meta=issued.provider_meta, public_details=issued.public_details,
+            )
+        except Refused as refused:
+            if refused.code == "identifier_in_use" and attempt < _ISSUE_TRIES - 1:
+                continue  # the provider's number was taken a moment ago: ask for another
+            raise
+        audit.record(family.school, "collection_account_issued", actor=actor, obj=account, family=str(family.id), provider=connection.provider)
+        return account
+    raise Refused("An account could not be made. Try again.", "issue_failed")  # unreachable: the loop returns or raises
+
+
+def issue_missing(connection, *, actor) -> dict:
+    """Give every active family that has none an account under this connection's provider. Each family is its own
+    step: one that cannot be given an account is reported and does not stop the rest."""
+    require_operator(actor, connection.school)
+    _issuer_for(connection, None)
+    has = FamilyCollectionAccount.objects.filter(school=connection.school, provider=connection.provider).exclude(status=AccountStatus.CLOSED).values("family_id")
+    waiting = (
+        Family.objects.filter(school=connection.school, status=FamilyStatus.ACTIVE, members__is_active=True)
+        .exclude(id__in=has).distinct().order_by("display_name", "code")
+    )
+    issued, failed = 0, []
+    for family in waiting:
+        try:
+            issue(family, connection=connection, actor=actor)
+            issued += 1
+        except Refused as refused:
+            failed.append({"familyId": str(family.id), "familyName": family.display_name, "code": refused.code, "message": refused.message})
+    audit.record(connection.school, "collection_accounts_issued_in_bulk", actor=actor, provider=connection.provider, issued=issued, failed=len(failed))
+    return {"issued": issued, "failed": failed}
 
 
 @transaction.atomic

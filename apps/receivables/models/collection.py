@@ -50,7 +50,10 @@ class FamilyCollectionAccount(models.Model):
     activated_at = models.DateTimeField(null=True, blank=True)
     dormant_at = models.DateTimeField(null=True, blank=True)
     status_changed_at = models.DateTimeField(null=True, blank=True)
-    #: Safe-to-show facts from the provider. Never credentials.
+    #: Extra facts a payer is shown with the number - what this provider needs them to know, as
+    #: `[{"label", "value"}]` (a payment reference, a sort code). Public: the family sees exactly this.
+    public_details = models.JSONField(default=list, blank=True)
+    #: Safe-to-keep facts from the provider. Never credentials, and never shown to a family.
     provider_meta = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -96,6 +99,10 @@ class FamilyStatement(models.Model):
     issued_by = models.ForeignKey(Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     issued_at = models.DateTimeField(auto_now_add=True)
     snapshot = models.JSONField(default=dict, blank=True)
+    #: A statement is never edited or deleted: one issued in error is VOIDED, with who and why, and stays on record.
+    voided_at = models.DateTimeField(null=True, blank=True)
+    voided_by = models.ForeignKey(Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    void_reason = models.CharField(max_length=300, blank=True)
 
     class Meta:
         ordering = ["-issued_at", "-id"]

@@ -64,7 +64,13 @@ class BuildTests(StatementTestCase):
         allocation.allocate(self.payment(300_000 * N), self.family)
         s = statements.build(self.family)
         self.assertEqual(s["position"]["creditMinor"], 30_000 * N)
-        self.assertEqual(s["collectionAccounts"], [{"provider": "monnify", "bankName": "Wema", "accountNumber": "8012345678", "accountName": "BRIGHTGATE / BELLO", "status": "dormant"}])
+        (shown,) = s["collectionAccounts"]
+        self.assertEqual(
+            {k: shown[k] for k in ("provider", "bankName", "accountNumber", "accountName", "status", "numberLabel", "canPay", "isTest")},
+            {"provider": "monnify", "bankName": "Wema", "accountNumber": "8012345678", "accountName": "BRIGHTGATE / BELLO", "status": "dormant",
+             "numberLabel": "Account number", "canPay": True, "isTest": False},
+        )
+        self.assertNotIn("providerMeta", shown)
         self.assertNotIn("SECRET", str(s))
 
     def test_a_closed_account_is_not_offered(self):

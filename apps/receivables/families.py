@@ -16,7 +16,7 @@ from apps.students.models import GuardianLink, Student
 
 from . import audit
 from .errors import Refused
-from .models import Family, FamilyGuardian, FamilyStatus, FamilyStudent
+from .models import Family, FamilyCollectionAccount, FamilyGuardian, FamilyStatus, FamilyStudent
 
 #: Letters and digits with nothing easily mistaken for another (no 0/O, 1/I).
 _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -187,17 +187,21 @@ def ensure_family_for_student(school, student: Student, *, actor=None) -> tuple[
     return family, True
 
 
-def search(school, term: str, *, limit: int = 30):
-    """Families by their name or code, or by the name, code or admission number of a student in them."""
+def search(school, term: str, *, limit: int = 30, offset: int = 0, accounts: str | None = None):
+    """Families by their name or code, or by the name, code or admission number of a student in them. `accounts` narrows
+    them to those that have a payment account ("with") or have none ("without")."""
     term = " ".join(str(term or "").split())[:60]
     families = Family.objects.filter(school=school)
+    if accounts in ("with", "without"):
+        holders = FamilyCollectionAccount.objects.filter(school=school).exclude(status="closed").values("family_id")
+        families = families.filter(id__in=holders) if accounts == "with" else families.exclude(id__in=holders)
     if term:
         families = families.filter(
             Q(display_name__icontains=term) | Q(code__icontains=term)
             | Q(members__student__first_name__icontains=term) | Q(members__student__surname__icontains=term)
             | Q(members__student__student_code__icontains=term) | Q(members__student__admission_number__icontains=term)
         ).distinct()
-    return families.order_by("display_name", "code")[:limit]
+    return list(families.order_by("display_name", "code")[offset: offset + limit])
 
 
 def students_without_family(school):

@@ -5,7 +5,7 @@ Money is always whole minor units (`...Minor`, kobo) - the canonical value - tog
 nothing here does any arithmetic on it.
 """
 
-from . import families, ledger
+from . import families, issuers, ledger
 
 
 def _iso(value):
@@ -34,16 +34,21 @@ def guardian(link) -> dict:
 
 
 def account(a) -> dict:
-    """A collection account as a client may see it: never `provider_meta`, never a credential."""
+    """A collection account as the school's staff may see it: never `provider_meta`, never a credential."""
     return {
         "id": str(a.id), "familyId": str(a.family_id), "provider": a.provider, "bankName": a.bank_name,
-        "accountNumber": a.account_number, "accountName": a.account_name, "currency": a.currency, "status": a.status,
-        "activatedAt": _time(a.activated_at), "dormantAt": _time(a.dormant_at), "statusChangedAt": _time(a.status_changed_at),
+        "accountNumber": a.account_number, "numberLabel": issuers.shape_for(a.provider).number_label, "accountName": a.account_name,
+        "details": a.public_details, "connectionId": str(a.connection_id) if a.connection_id else None, "isTest": bool(a.provider_meta.get("test")),
+        "currency": a.currency, "status": a.status, "activatedAt": _time(a.activated_at), "dormantAt": _time(a.dormant_at),
+        "statusChangedAt": _time(a.status_changed_at),
     }
 
 
-def family(f, *, detail: bool = False) -> dict:
+def family(f, *, detail: bool = False, accounts: bool = False) -> dict:
     body = {"id": str(f.id), "code": f.code, "displayName": f.display_name, "status": f.status, "createdAt": _time(f.created_at)}
+    if accounts:
+        body["students"] = [student_brief(s) for s in families.active_students(f)]
+        body["collectionAccounts"] = [account(a) for a in f.collection_accounts.exclude(status="closed")]
     if detail:
         body["students"] = [student_brief(s) for s in families.active_students(f)]
         body["guardians"] = [guardian(g) for g in f.guardians.select_related("guardian")]
@@ -119,7 +124,7 @@ def statement_record(s) -> dict:
     return {
         "id": str(s.id), "number": s.number, "status": s.status, "familyId": str(s.family_id), "sessionId": str(s.session_id),
         "termId": str(s.term_id) if s.term_id else None, "issuedAt": _time(s.issued_at), "issuedBy": str(s.issued_by_id) if s.issued_by_id else None,
-        "snapshot": s.snapshot,
+        "snapshot": s.snapshot, "voidedAt": _time(s.voided_at), "voidedBy": str(s.voided_by_id) if s.voided_by_id else None, "voidReason": s.void_reason,
     }
 
 

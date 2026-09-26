@@ -10,9 +10,9 @@ from datetime import date
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from . import audit, ledger, periods, reports
+from . import audit, issuers, ledger, periods, reports
 from .errors import Refused
-from .models import AccountStatus, Family, FamilyCollectionAccount, FamilyStatement, ReceivableStatus, StudentReceivable
+from .models import AccountStatus, Family, FamilyCollectionAccount, FamilyStatement, ReceivableStatus, StatementStatus, StudentReceivable
 from .permissions import require_operator
 
 _NUMBERING_TRIES = 8
@@ -44,13 +44,29 @@ def _totals(lines: list[dict]) -> dict:
     }
 
 
+#: Accounts a family may pay into. One being set up, or paused by the school, is not offered: paying it could go astray.
+_PAYABLE = (AccountStatus.ACTIVE, AccountStatus.DORMANT)
+
+
 def collection_account_facts(family: Family) -> list[dict]:
-    """What a family may be told about the account it pays into. Never provider credentials or internals."""
-    accounts = FamilyCollectionAccount.objects.filter(family=family).exclude(status=AccountStatus.CLOSED)
-    return [
-        {"provider": a.provider, "bankName": a.bank_name, "accountNumber": a.account_number, "accountName": a.account_name, "status": a.status}
-        for a in accounts
-    ]
+    """What a family may be told about where to pay. Never provider credentials or internals.
+
+    The account belongs to the FAMILY, so this is the same whichever child a payment is for. What it looks like depends on the
+    provider: `numberLabel` is what that provider calls the number, `details` are the extra facts it needs the payer to know,
+    and `note` is how to pay it. A family can hold accounts with several providers. An account that is not payable right now
+    is listed with its status but without its number."""
+    rows = []
+    for a in FamilyCollectionAccount.objects.filter(family=family).exclude(status=AccountStatus.CLOSED):
+        shape = issuers.shape_for(a.provider)
+        payable = a.status in _PAYABLE
+        rows.append({
+            "id": str(a.id), "provider": a.provider, "bankName": a.bank_name, "accountName": a.account_name, "status": a.status,
+            "accountNumber": a.account_number if payable else "", "numberLabel": shape.number_label,
+            "details": a.public_details if payable else [], "note": shape.payer_note, "canPay": payable,
+            "isTest": bool(a.provider_meta.get("test")),
+        })
+    order = {AccountStatus.ACTIVE: 0, AccountStatus.DORMANT: 1}
+    return sorted(rows, key=lambda r: (order.get(r["status"], 2), r["bankName"], r["id"]))
 
 
 def build(family: Family, *, session=None, term=None, today: date | None = None) -> dict:
@@ -90,6 +106,25 @@ def build(family: Family, *, session=None, term=None, today: date | None = None)
         "asOf": today.isoformat(),
         "currency": "NGN",
     }
+
+
+@transaction.atomic
+def void(statement: FamilyStatement, *, actor, reason) -> FamilyStatement:
+    """Take back a statement issued in error. It is never deleted or edited: it stays on record as void, with who and why,
+    and its number is not reused. What the family owes is unaffected (a statement only ever reports the ledger)."""
+    require_operator(actor, statement.school)
+    reason = " ".join(str(reason or "").split())
+    if not reason:
+        raise Refused("Say why the statement is being voided.", "reason_required")
+    if len(reason) > 300:
+        raise Refused("A reason can be at most 300 characters.", "reason_too_long")
+    statement = FamilyStatement.objects.select_for_update().get(pk=statement.pk)
+    if statement.status == StatementStatus.VOID:
+        raise Refused("This statement is already void.", "already_void")
+    statement.status, statement.voided_at, statement.voided_by, statement.void_reason = StatementStatus.VOID, timezone.now(), actor, reason
+    statement.save(update_fields=["status", "voided_at", "voided_by", "void_reason"])
+    audit.record(statement.school, "statement_voided", actor=actor, obj=statement, number=statement.number, family=str(statement.family_id), reason=reason)
+    return statement
 
 
 def _next_number(school) -> str:
