@@ -9,6 +9,7 @@ ITEM_ACTIONS = ("override", "override-clear", "arrears")
 
 urlpatterns = [
     path(f"{_BASE}dashboard/", v.DashboardView.as_view()),
+    path(f"{_BASE}periods/", v.PeriodsView.as_view()),
     path(f"{_BASE}policy/", v.PolicyView.as_view()),
     path(f"{_BASE}policy/effective/", v.PolicyEffectiveView.as_view()),
     path(f"{_BASE}policy/overrides/", v.PolicyOverridesView.as_view()),

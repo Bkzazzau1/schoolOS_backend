@@ -45,7 +45,7 @@ def _totals(lines: list[dict]) -> dict:
 
 
 #: Accounts a family may pay into. One being set up, or paused by the school, is not offered: paying it could go astray.
-_PAYABLE = (AccountStatus.ACTIVE, AccountStatus.DORMANT)
+_PAYABLE = (AccountStatus.ACTIVE, AccountStatus.DORMANT, AccountStatus.SETTLED, AccountStatus.GRACE)
 
 
 def collection_account_facts(family: Family) -> list[dict]:
@@ -64,7 +64,7 @@ def collection_account_facts(family: Family) -> list[dict]:
             "details": a.public_details if payable else [], "note": account_shapes.note_for(a.provider), "canPay": payable,
             "isTest": bool(a.provider_meta.get("test")),
         })
-    order = {AccountStatus.ACTIVE: 0, AccountStatus.DORMANT: 1}
+    order = {AccountStatus.ACTIVE: 0, AccountStatus.DORMANT: 1, AccountStatus.SETTLED: 1, AccountStatus.GRACE: 1}
     return sorted(rows, key=lambda r: (order.get(r["status"], 2), r["bankName"], r["id"]))
 
 

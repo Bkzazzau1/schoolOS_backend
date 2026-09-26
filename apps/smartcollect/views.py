@@ -103,6 +103,28 @@ def _uuid(value) -> bool:
     return True
 
 
+class PeriodsView(CollectView):
+    """GET the school's sessions and their terms (newest first) and which are current, for choosing what a batch or an override is for."""
+
+    def get(self, request, school_id):
+        membership = acting_membership(request, school_id)
+        current_session, current_term = periods.current_period(membership.school)
+        rows = AcademicSession.objects.filter(school=membership.school).prefetch_related("terms").order_by("-starts_on")
+        return Response({
+            "sessions": [
+                {
+                    "id": str(s.id), "name": s.name, "status": s.status, "startsOn": s.starts_on.isoformat(), "endsOn": s.ends_on.isoformat(),
+                    "terms": [
+                        {"id": str(t.id), "name": t.name, "sequence": t.sequence, "status": t.status, "startsOn": t.starts_on.isoformat(), "endsOn": t.ends_on.isoformat()}
+                        for t in sorted(s.terms.all(), key=lambda t: t.sequence)
+                    ],
+                }
+                for s in rows
+            ],
+            "current": {"sessionId": str(current_session.id) if current_session else None, "termId": str(current_term.id) if current_term else None},
+        })
+
+
 # -- the policy ---------------------------------------------------------------------------------------
 
 
@@ -255,7 +277,7 @@ class BatchDetailView(CollectView):
 
 
 class BatchItemsView(CollectView):
-    """GET a batch's families (?bucket=eligibility, ?selected=1|0, ?generation=status, ?q=, paged), with how many are in each bucket."""
+    """GET a batch's families (?bucket=eligibility, ?selected=1|0, ?overridden=1, ?generation=status, ?q=, paged), with how many are in each bucket."""
 
     def get(self, request, school_id, batch_id):
         membership = acting_membership(request, school_id)
@@ -266,6 +288,8 @@ class BatchItemsView(CollectView):
             rows = rows.filter(eligibility_status__in=q["bucket"].split(","))
         if q.get("selected") in ("0", "1", "true", "false"):
             rows = rows.filter(selected=_truthy(q["selected"]))
+        if _truthy(q.get("overridden")):
+            rows = rows.filter(eligibility_override=True)
         if q.get("generation"):
             rows = rows.filter(generation_status__in=q["generation"].split(","))
         if q.get("q"):

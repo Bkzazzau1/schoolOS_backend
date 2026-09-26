@@ -145,6 +145,46 @@ class SettlementActionTests(LifecycleCase):
         self.assertEqual(FamilyCollectionAccount.objects.count(), 1)
 
 
+class ParentViewTests(LifecycleCase):
+    def facts(self):
+        from apps.receivables import statements
+
+        (row,) = statements.collection_account_facts(self.family)
+        return row
+
+    def test_a_settled_dormant_or_waiting_account_is_still_offered_to_the_parent_with_its_number(self):
+        for action, hours in (("dormant_immediately", None), ("manual", None), ("grace_then_close", 24)):
+            values = {"settlement_action": action, **({"grace_period_hours": hours} if hours else {})}
+            self.set_policy(**values)
+            family = self.make_family(f"Family {action}", owes=10_000)
+            self.family = family
+            account = self.settle_family_account(family)
+            row = self.facts()
+            self.assertTrue(row["canPay"] and row["accountNumber"] == account.account_number, (action, row["status"]))
+
+    def settle_family_account(self, family):
+        batch = self.new_batch()
+        from .. import batches as b
+
+        for item in self.items(batch).values():
+            if item.family_id != family.id:
+                b.set_selection(self.maker, batch.id, deselect=[str(item.id)])
+        batch = self.refetch(batch)
+        b.submit(self.maker, batch.id, expected_hash=batch.snapshot_hash)
+        b.approve(self.checker, batch.id, expected_hash=self.refetch(batch).snapshot_hash)
+        self.run_batch(self.refetch(batch))
+        (account,) = self.live_accounts(family)
+        self.pay(family, 10_000, account=account)
+        account.refresh_from_db()
+        return account
+
+    def test_an_account_being_closed_is_not_offered(self):
+        account = self.generate()
+        lifecycle.retire(self.owner, account.id, reason="Left")
+        row = self.facts()
+        self.assertEqual((row["status"], row["canPay"], row["accountNumber"]), ("closing", False, ""))
+
+
 class MoneyAfterSettlementTests(LifecycleCase):
     """A payment the provider confirmed goes through the normal pipeline whatever state the account is in."""
 

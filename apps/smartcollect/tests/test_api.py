@@ -65,6 +65,15 @@ class AccessTests(ApiCase):
         self.assertIn(self.client.get(self.path("dashboard/")).status_code, (401, 403))
 
 
+class PeriodsApiTests(ApiCase):
+    def test_the_sessions_and_terms_are_served_newest_first_with_the_current_ones_marked(self):
+        body = self.get("periods/").json()
+        self.assertEqual(body["current"], {"sessionId": str(self.session.id), "termId": str(self.term1.id)})
+        (session,) = body["sessions"]
+        self.assertEqual([t["name"] for t in session["terms"]], ["First Term", "Second Term"])
+        self.assertEqual(self.get("periods/", who=self.members["teacher"]).status_code, 403)
+
+
 class PolicyApiTests(ApiCase):
     def test_the_policy_and_its_choices_are_served_to_the_screen(self):
         body = self.get("policy/").json()["policy"]
@@ -209,6 +218,8 @@ class BatchApiTests(ApiCase):
         self.assertEqual(done.status_code, 200, done.json())
         after = self.get(self.batch_path(made, "items/"), q="Owing").json()["items"][0]
         self.assertEqual((after["eligibilityOverride"], after["overrideReason"], after["selected"], after["overrideBy"]["role"]), (True, "Head teacher agreed", True, "accountant"))
+        overridden = self.get(self.batch_path(made, "items/"), overridden="1").json()["items"]
+        self.assertEqual([i["familyName"] for i in overridden], ["Owing family"])
         cleared = self.post(self.batch_path(made, f"items/{item['id']}/override-clear/"), who=self.maker)
         self.assertFalse(self.get(self.batch_path(made, "items/"), q="Owing").json()["items"][0]["selected"] or cleared.status_code != 200)
 
