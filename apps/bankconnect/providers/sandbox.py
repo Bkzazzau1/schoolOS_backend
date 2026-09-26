@@ -61,6 +61,7 @@ def _parse(item: dict) -> NormalizedTransaction:
         sender_bank=item.get("sender_bank", ""),
         narration=item.get("narration", ""),
         raw_provider_reference=item.get("raw_provider_reference", ""),
+        receiving_account_reference=item.get("receiving_account_reference", ""),
     )
 
 

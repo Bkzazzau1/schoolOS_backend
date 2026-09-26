@@ -106,6 +106,12 @@ class BankTransaction(models.Model):
     value_date = models.DateField(null=True, blank=True)
     balance_after_minor = models.BigIntegerField(null=True, blank=True)
     raw_provider_reference = models.CharField(max_length=200, blank=True)
+    #: The account the money was paid INTO, when the provider says which - for a family collection account
+    #: this is what identifies the family with certainty. Empty when the provider does not say.
+    receiving_account_ref = models.CharField(max_length=200, blank=True)
+    #: The family this payment belongs to when that is known for certain (see `receiving_account_ref`).
+    #: A guess never sets this: fuzzy matching only ever suggests a student.
+    family = models.ForeignKey("receivables.Family", null=True, blank=True, on_delete=models.PROTECT, related_name="bank_transactions")
     is_sandbox = models.BooleanField(default=False)
 
     reconciliation_status = models.CharField(
@@ -136,6 +142,7 @@ class BankTransaction(models.Model):
         indexes = [
             models.Index(fields=["school", "-transaction_date"]),
             models.Index(fields=["school", "reconciliation_status"]),
+            models.Index(fields=["school", "provider", "receiving_account_ref"]),
         ]
 
 
@@ -168,7 +175,11 @@ class TransactionAllocation(models.Model):
     amount_minor = models.BigIntegerField()
     source = models.CharField(max_length=8, choices=[("auto", "Automatic"), ("manual", "Manual")])
     decision = models.ForeignKey(ReconciliationDecision, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
-    #: Reserved for the school fee ledger: the invoice or fee item this pays, once those exist.
+    #: The charge this money pays, once the school's fee ledger has one for the student. Empty for the older
+    #: student-level allocation, which says only who the money is for and what it was paid for.
+    receivable = models.ForeignKey("receivables.StudentReceivable", null=True, blank=True, on_delete=models.PROTECT, related_name="allocations")
+    family = models.ForeignKey("receivables.Family", null=True, blank=True, on_delete=models.PROTECT, related_name="allocations")
+    #: Older free-text reference, kept so nothing stored before the ledger existed is lost.
     receivable_ref = models.CharField(max_length=80, blank=True)
     #: A newer decision replaces an allocation by marking it superseded - it is never deleted.
     superseded = models.BooleanField(default=False)
@@ -176,7 +187,11 @@ class TransactionAllocation(models.Model):
 
     class Meta:
         ordering = ["created_at"]
-        constraints = [models.CheckConstraint(condition=Q(amount_minor__gt=0), name="allocation_amount_positive")]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount_minor__gt=0), name="allocation_amount_positive"),
+            models.CheckConstraint(condition=Q(receivable__isnull=True) | Q(family__isnull=False), name="receivable_allocation_has_a_family"),
+        ]
+        indexes = [models.Index(fields=["receivable", "superseded"])]
 
 
 class BankAuditEvent(models.Model):

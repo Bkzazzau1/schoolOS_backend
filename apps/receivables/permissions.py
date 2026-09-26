@@ -22,6 +22,7 @@ from apps.owner.jobs.access import has_duty
 from apps.schools.models import Role
 
 from .constants import BILLING_AUTHORITY_DUTY, OPERATE_DUTIES
+from .errors import Refused
 
 #: Roles that can never hold financial authority in the school.
 NON_STAFF_ROLES = (Role.PARENT, Role.STUDENT, Role.ALUMNI)
@@ -44,6 +45,21 @@ def can_operate_receivables(membership) -> bool:
         membership.role in (Role.PROPRIETOR, Role.ACCOUNTANT)
         or any(has_duty(membership, duty) for duty in OPERATE_DUTIES)
     )
+
+
+def require_billing_authority(actor, school) -> None:
+    """The actor must be a billing authority AT THIS SCHOOL: a membership from another school never counts."""
+    if actor is None or actor.school_id != school.id or not can_manage_billing(actor):
+        raise Refused(
+            "Only the owner, or someone the owner has given billing authority, can decide what families owe.",
+            "not_billing_authority",
+        )
+
+
+def require_operator(actor, school) -> None:
+    """The actor must work the ledger (owner, Finance Office, or a duty holder) AT THIS SCHOOL."""
+    if actor is None or actor.school_id != school.id or not can_operate_receivables(actor):
+        raise Refused("Only the owner or the Finance Office can do this.", "not_authorised")
 
 
 def billing_authorities(school) -> list:

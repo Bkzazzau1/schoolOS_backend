@@ -26,22 +26,13 @@ from .errors import Refused
 from .models import (
     FamilyStudent, FeeCategory, FeeItem, FeeSchedule, FeeScope, ReceivableStatus, ScheduleStatus, StudentReceivable,
 )
-from .permissions import can_manage_billing
+from .permissions import require_billing_authority  # noqa: F401 - also used by callers through this module
 
 _CODE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$")
 _ITEM_FIELDS = (
     "code", "name", "category", "amount_minor", "is_mandatory", "due_date", "plan", "sort_order", "scope",
     "section", "academic_class", "student", "metadata",
 )
-
-
-def require_billing_authority(actor, school) -> None:
-    """The actor must be a billing authority AT THIS SCHOOL: a membership from another school never counts."""
-    if actor is None or actor.school_id != school.id or not can_manage_billing(actor):
-        raise Refused(
-            "Only the owner, or someone the owner has given billing authority, can decide what families owe.",
-            "not_billing_authority",
-        )
 
 
 def _name(value, what: str) -> str:

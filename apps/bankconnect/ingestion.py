@@ -93,6 +93,7 @@ def ingest(connection, tx) -> IngestResult:
         value_date=tx.value_date,
         balance_after_minor=tx.balance_after_minor,
         raw_provider_reference=_text(tx.raw_provider_reference, 200),
+        receiving_account_ref=_text(tx.receiving_account_reference, 200),
         is_sandbox=connection.is_sandbox,
         # Only money coming in is matched to students; money going out is kept, not reconciled.
         reconciliation_status=ReconStatus.UNMATCHED if tx.direction == Direction.CREDIT else ReconStatus.NOT_APPLICABLE,

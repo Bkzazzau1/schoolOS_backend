@@ -18,6 +18,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.money import format_money  # noqa: F401 - re-exported: other code imports it from here
 from apps.notifications.services import notify_many
 
 from . import matching
@@ -31,12 +32,6 @@ DUPLICATE_WINDOW = timedelta(hours=24)
 NOTIFY_KIND_RECEIVED = "bank_payment_received"
 NOTIFY_KIND_REVIEW = "bank_payment_review"
 SANDBOX_PREFIX = "[Sandbox test data] "
-
-
-def format_money(amount_minor: int, currency: str = "NGN") -> str:
-    symbol = "₦" if currency == "NGN" else f"{currency} "
-    whole, kobo = divmod(amount_minor, 100)
-    return f"{symbol}{whole:,}" if kobo == 0 else f"{symbol}{whole:,}.{kobo:02d}"
 
 
 def _norm(text: str) -> str:

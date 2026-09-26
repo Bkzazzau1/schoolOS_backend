@@ -141,6 +141,9 @@ class NormalizedTransaction:
     value_date: date | None = None
     balance_after_minor: int | None = None
     raw_provider_reference: str = ""
+    #: The account the money was paid into, if the provider says (for example a family's own collection
+    #: account). It identifies who the money is for far more reliably than any guess from a narration.
+    receiving_account_reference: str = ""
 
 
 @dataclass(frozen=True)
