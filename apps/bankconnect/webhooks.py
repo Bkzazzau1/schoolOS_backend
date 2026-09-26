@@ -5,7 +5,7 @@ The route is public - a provider cannot sign in - so it has to defend itself:
 1. The address carries a long random per-connection token (only its hash is stored); an unknown one is a plain 404, so nobody can
    probe which connections exist.
 2. The provider's own authenticity check is applied BEFORE the body is trusted or anything is stored: its signature where it signs
-   (Paystack; Monnify live), or, where it does not sign (Remita; Monnify sandbox), a direct question to the provider whose answer -
+   (Paystack; Monnify live), or, where it does not sign (Monnify sandbox), a direct question to the provider whose answer -
    not the body - decides what was paid and into which account. A forged body is refused; nothing is ever taken on its word.
 3. The delivery is recorded by a hash of the body and the connection, so the same delivery arriving twice is recognised and not
    processed twice - and not asked about twice.

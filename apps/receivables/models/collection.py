@@ -5,6 +5,7 @@ from django.db import models
 from django.db.models import Q
 
 from apps.academics.models import AcademicSession, AcademicTerm
+from apps.bankconnect.constants import COLLECTION_PROVIDER_CODES
 from apps.schools.models import Membership, School
 
 from ..constants import DEFAULT_CURRENCY
@@ -140,6 +141,10 @@ class FamilyCollectionAccount(models.Model):
             raise ValidationError("A collection account's term must be in its session.")
         if self.origin == AccountOrigin.PROVIDER and not self.connection_id:
             raise ValidationError("A provider-generated collection account belongs to a provider connection.")
+        if self.origin == AccountOrigin.PROVIDER and self._state.adding and (
+            self.provider not in COLLECTION_PROVIDER_CODES or self.connection.provider not in COLLECTION_PROVIDER_CODES
+        ):
+            raise ValidationError("A family's collection account can only be made by a Paystack or Monnify connection.")
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):

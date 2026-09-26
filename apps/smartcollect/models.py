@@ -5,6 +5,7 @@ from django.db import models
 from django.db.models import F, Q
 
 from apps.academics.models import AcademicSession, AcademicTerm
+from apps.bankconnect.constants import COLLECTION_PROVIDER_CODES
 from apps.bankconnect.models import CollectionProviderConnection
 from apps.receivables.models import Family, FamilyCollectionAccount
 from apps.schools.models import Membership, School
@@ -210,6 +211,8 @@ class CollectionGenerationBatch(models.Model):
     def save(self, *args, **kwargs):
         if self.session.school_id != self.school_id or self.provider_connection.school_id != self.school_id:
             raise ValidationError("A batch, its session and its provider connection must belong to the same school.")
+        if self._state.adding and self.provider_connection.provider not in COLLECTION_PROVIDER_CODES:
+            raise ValidationError("A collection batch can only be prepared for a Paystack or Monnify connection.")
         if self.term_id and self.term.session_id != self.session_id:
             raise ValidationError("A batch's term must be in its session.")
         super().save(*args, **kwargs)

@@ -10,7 +10,7 @@ Called by a job worker, never by a request handler and never inside a transactio
        can never make a second account for the family.
 
 A provider that does not answer leaves the OUTCOME UNKNOWN: the request may have been carried out. The connectors look before they create
-(a Paystack customer's existing dedicated account, a Monnify reference's existing reservation, a Remita order id's existing RRR), so trying
+(a Paystack customer's existing dedicated account, a Monnify reference's existing reservation), so trying
 again finds what the first attempt made instead of duplicating it. After the last attempt the item is marked failed for a person to retry,
 and every family that succeeded stays succeeded.
 """
@@ -143,7 +143,7 @@ def execute_item(item_id, *, attempt: int = 1) -> Outcome:
                 return _again(item_id, outcome.code or "provider_unavailable", checkpoint=checkpoint) if outcome.result == RETRY else _fail(
                     item_id, outcome.code, "The family's earlier account could not be retired, so a new one was not made."
                 )
-        amount = item.proposed_collection_minor if (scope["mode"] == AccountMode.DYNAMIC or connector.info.requires_amount) else None
+        amount = item.proposed_collection_minor if scope["mode"] == AccountMode.DYNAMIC else None
         valid_until = scope["valid_until"] if scope["valid_until"] and scope["valid_until"] >= timezone.localdate() else None
         request = ProvisionRequest(
             idempotency_key=item.idempotency_key, account_reference=item.provider_request_reference, family_code=family.code,

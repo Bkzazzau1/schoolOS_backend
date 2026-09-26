@@ -8,6 +8,7 @@ from apps.schools.models import Membership, School
 from apps.students.models import Student
 
 from .constants import (
+    COLLECTION_PROVIDER_CODES,
     DEFAULT_CURRENCY,
     SMART_PROVIDERS,
     ConnectionStatus,
@@ -21,7 +22,7 @@ from .constants import (
 
 
 class CollectionProviderConnection(models.Model):
-    """The SCHOOL'S OWN relationship with a collection provider (Paystack, Monnify or Remita), as SchoolOS holds it.
+    """The SCHOOL'S OWN relationship with a collection provider (Paystack or Monnify), as SchoolOS holds it.
 
     The school onboards with the provider directly, receives its own credentials and enters them here. SchoolOS uses them
     to create family collection accounts and to read the provider's signed payment events; the provider moves and settles
@@ -95,6 +96,12 @@ class CollectionProviderConnection(models.Model):
             # Exactly one active collection provider per school, enforced by the database.
             models.UniqueConstraint(
                 fields=["school"], condition=Q(is_active_provider=True), name="one_active_collection_provider_per_school",
+            ),
+            # Only a provider Smart Money Collection offers can be the active one. Remita (reserved for Mandates / Direct Debit) and any
+            # provider left by the earlier bank-account model never can, whatever an application bug might try.
+            models.CheckConstraint(
+                condition=Q(is_active_provider=False) | Q(provider__in=COLLECTION_PROVIDER_CODES),
+                name="active_provider_is_a_collection_provider",
             ),
             # The active provider is one that is still in use: a blip (needs re-authorising, an error) does not take the
             # designation away, but a disabled, pending or disconnected connection cannot hold it.
@@ -293,7 +300,7 @@ class SandboxFeedItem(models.Model):
 
 
 class SandboxProviderAccount(models.Model):
-    """Sandbox only: the provider's side of a family collection account, standing in for what Paystack, Monnify or Remita would
+    """Sandbox only: the provider's side of a family collection account, standing in for what Paystack or Monnify would
     keep. It is what lets the whole path (provision, retire, look up, receive a payment) be exercised without any real provider.
     Nothing else in the system reads this table."""
 

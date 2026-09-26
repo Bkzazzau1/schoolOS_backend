@@ -51,7 +51,7 @@ class BankTestCase(StaffTestCase):
     # -- making connections ------------------------------------------------------------------
 
     def connect(self, who=None, label="School sandbox", key=SANDBOX_KEY, school=None, provider="sandbox", environment="test", credentials=None):
-        """Connect a provider with the SCHOOL'S OWN credentials. (The sandbox stands in for Paystack / Monnify / Remita.)"""
+        """Connect a provider with the SCHOOL'S OWN credentials. (The sandbox stands in for Paystack / Monnify.)"""
         return self.api_post(
             "connections/",
             {"provider": provider, "environment": environment, "label": label, "credentials": credentials or {"sandbox_key": key}},

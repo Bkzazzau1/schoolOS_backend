@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from apps.academics.models import AcademicLifecycleStatus, AcademicTerm
 
-from .constants import DEFAULT_CURRENCY, NEEDS_A_PERSON, ConnectionStatus, Direction, ReconStatus
+from .constants import DEFAULT_CURRENCY, NEEDS_A_PERSON, COLLECTION_PROVIDER_CODES, ConnectionStatus, Direction, ReconStatus
 from .models import BankTransaction, CollectionProviderConnection, TransactionAllocation
 from .serializers import serialize_transaction_brief
 
@@ -78,7 +78,9 @@ def build(school, *, period: str = "term", include_sandbox: bool = False, recent
     counted = naira.exclude(reconciliation_status__in=NOT_COLLECTED)
     window = _period_rows(counted, period, today, week_start, term)
 
-    connections = CollectionProviderConnection.objects.filter(school=school)
+    # Only the providers Smart Money Collection offers are counted: a row left by an earlier bank-account model, or by a provider
+    # that is no longer offered (Remita), is history and is neither "connected" nor "needing attention".
+    connections = CollectionProviderConnection.objects.filter(school=school, provider__in=COLLECTION_PROVIDER_CODES)
     if not include_sandbox:
         connections = connections.filter(is_sandbox=False)
     live = connections.filter(status=ConnectionStatus.CONNECTED)

@@ -168,15 +168,16 @@ class BreakdownTests(SummaryTestCase):
 
 
 class AccountsTests(SummaryTestCase):
-    def test_how_many_providers_are_connected_which_need_attention_and_which_is_active(self):
+    def test_how_many_providers_are_connected_which_need_attention_and_which_is_active_and_only_paystack_and_monnify_count(self):
         good = self.real_connection("paystack", active=True)
         self.real_connection("monnify", status=ConnectionStatus.NEEDS_REAUTH)
-        self.real_connection("remita", status=ConnectionStatus.ERROR)
+        self.real_connection("remita", status=ConnectionStatus.ERROR)  # not a Smart Money Collection provider: never counted
+        self.real_connection("legacy_three", status=ConnectionStatus.CONNECTED)
         self.real_connection("legacy_one", status=ConnectionStatus.DISABLED)
         self.real_connection("legacy_two", status=ConnectionStatus.REVOKED)
         body = self.build()
         self.assertTrue(body["available"])
-        self.assertEqual((body["providers"]["connected"], body["providers"]["needAttention"]), (1, 2))
+        self.assertEqual((body["providers"]["connected"], body["providers"]["needAttention"]), (1, 1))
         self.assertEqual(
             body["providers"]["active"],
             {"connectionId": str(good.id), "provider": "paystack", "environment": "live", "merchantName": "paystack merchant"},

@@ -1,6 +1,6 @@
 """A stand-in provider that makes the whole Smart Money Collection path testable without any real provider.
 
-It plays the part of Paystack / Monnify / Remita for development and tests: it verifies a key, makes a family collection account
+It plays the part of Paystack / Monnify for development and tests: it verifies a key, makes a family collection account
 (deterministically, so a retry gives the same account), deactivates, reactivates and closes it, signs its own webhooks and can
 confirm a payment when asked, so every code path a real connector uses is exercised. Its data is synthetic and flagged so: it is
 never counted as the school's money, and it is never offered to a school in production (`BANKCONNECT_ENABLE_SANDBOX`).
@@ -83,7 +83,7 @@ class SandboxConnector(CollectionConnector):
         capabilities=CollectionCapabilities(
             supports_family_collection_accounts=True, supports_static_accounts=True, supports_dynamic_accounts=True,
             supports_account_deactivation=True, supports_account_reactivation=True, supports_account_closure=True,
-            supports_webhooks=True, supports_transaction_requery=True, supports_direct_debit_mandates=False, requires_customer_kyc=False,
+            supports_webhooks=True, supports_transaction_requery=True, requires_customer_kyc=False,
         ),
         onboarding="Development and tests only.",
         webhook=WebhookSetup(mode="dashboard", where="Not needed: the sandbox signs its own test events.", verification="hmac_sha512", events=("payment",)),

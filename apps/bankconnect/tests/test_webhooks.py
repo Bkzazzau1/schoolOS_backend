@@ -11,7 +11,6 @@ from django.test import override_settings
 
 from .. import sandbox_tools, webhooks
 from ..models import BankAuditEvent, BankTransaction, BankWebhookEvent
-from ..providers import base
 from ..providers.monnify import clear_token_cache
 from ..providers.paystack import SIGNATURE_HEADER as PAYSTACK_SIGNATURE
 from ..providers.sandbox import SIGNATURE_HEADER
@@ -22,9 +21,6 @@ from .test_monnify import CREDS as MONNIFY_CREDS
 from .test_monnify import login, payment as monnify_payment
 from .test_paystack import KEY as PAYSTACK_KEY
 from .test_paystack import charge as paystack_charge
-from .test_remita import CREDS as REMITA_CREDS
-from .test_remita import paid as remita_paid
-from .test_remita import status_path as remita_status_path
 
 
 def header_name(name: str) -> str:
@@ -212,7 +208,6 @@ class RealProviderWebhookTests(BankTestCase):
     def connect_real(self, provider, credentials, environment="test", **kw):
         self.server.on("GET", "/dedicated_account/available_providers", ok({"status": True, "data": []}))
         self.server.on("POST", "/api/v1/auth/login", login())
-        self.server.on("GET", remita_status_path("000000000000"), ok({"status": "021"}))
         connection, hook = self.connected(provider=provider, credentials=credentials, environment=environment, **kw)
         self.client.force_authenticate(None)
         return self.row(connection), f"/api/v1/{hook}"
@@ -254,30 +249,20 @@ class RealProviderWebhookTests(BankTestCase):
         self.assertEqual((response.status_code, response.json()["code"]), (400, "invalid_signature"))
         self.assertEqual(BankTransaction.objects.count(), 0)
 
-    # -- Remita: no signature, so the provider is asked and answers "Ok" -----------------------
+    # -- Remita is not a Smart Money Collection provider ---------------------------------------
 
-    def test_remita_is_never_taken_at_its_word_and_is_answered_ok_or_not_ok_as_it_expects(self):
-        connection, url = self.connect_real("remita", REMITA_CREDS)
-        self.server.on("GET", remita_status_path("R1"), remita_paid("R1", 1500))
-        real = self.client.post(url, data=json.dumps([{"rrr": "R1", "amount": 99999999}]), content_type="application/json")
-        self.assertEqual((real.status_code, real.content, real["Content-Type"].split(";")[0]), (200, b"Ok", "text/plain"))
-        row = BankTransaction.objects.get()
-        self.assertEqual((row.amount_minor, row.receiving_account_ref), (150_000, "R1"))  # Remita's own answer, not the body's claim
-        self.server.on("GET", remita_status_path("FORGED"), ok({"status": "021", "message": "not found"}))
-        forged = self.client.post(url, data=json.dumps([{"rrr": "FORGED", "amount": 5_000_000}]), content_type="application/json")
-        self.assertEqual(forged.content, b"Ok")
-        self.assertEqual(BankTransaction.objects.count(), 1)  # acknowledged, counted for nothing
-        unreadable = self.client.post(url, data=b"not json", content_type="application/json")
-        self.assertEqual((unreadable.status_code, unreadable.content), (400, b"Not Ok"))
-        unknown = self.client.post("/api/v1/bank-webhooks/remita/no-such-token/", data="[]", content_type="application/json")
-        self.assertEqual((unknown.status_code, unknown.content), (404, b"Not Ok"))
-        self.assertEqual(self.row({"id": str(connection.id)}).webhook_status, "active")
+    def test_a_remita_address_is_not_a_route_even_if_an_old_row_still_carries_its_token(self):
+        from .. import identifiers
+        from ..constants import ConnectionStatus
+        from ..models import CollectionProviderConnection
 
-    def test_a_remita_outage_while_confirming_makes_remita_retry_and_records_nothing(self):
-        _, url = self.connect_real("remita", REMITA_CREDS)
-        self.server.on("GET", remita_status_path("R1"), base.ProviderUnavailable())
-        response = self.client.post(url, data=json.dumps([{"rrr": "R1"}]), content_type="application/json")
-        self.assertEqual((response.status_code, response.content), (503, b"Not Ok"))
+        CollectionProviderConnection.objects.create(
+            school=self.school, provider="remita", status=ConnectionStatus.CONNECTED, webhook_token_hash=identifiers.hash_token("old-token"),
+        )
+        self.client.force_authenticate(None)
+        for token in ("old-token", "no-such-token"):
+            response = self.client.post(f"/api/v1/bank-webhooks/remita/{token}/", data="[]", content_type="application/json")
+            self.assertEqual((response.status_code, response.json()["code"]), (404, "not_found"), token)
         self.assertEqual((BankTransaction.objects.count(), BankWebhookEvent.objects.count()), (0, 0))
 
     # -- Monnify: signed in production, confirmed by asking in the sandbox ----------------------

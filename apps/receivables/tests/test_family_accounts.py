@@ -51,9 +51,8 @@ class ShapeTests(ReceivablesTestCase):
     def test_each_supported_provider_names_the_number_a_payer_uses(self):
         self.assertEqual(account_shapes.label_for("paystack"), "Account number")
         self.assertEqual(account_shapes.label_for("monnify"), "Account number")
-        # Remita has no bank account for a family: it gives a payment reference, and says so.
-        self.assertEqual(account_shapes.label_for("remita"), "Remita Retrieval Reference (RRR)")
-        self.assertIn("Remita", account_shapes.note_for("remita"))
+        self.assertEqual(account_shapes.note_for("remita"), "")  # Remita is not a Smart Money Collection provider: it gets the plain word
+        self.assertEqual(account_shapes.label_for("remita"), "Account number")
         self.assertEqual(account_shapes.label_for("some-old-bank"), "Account number")  # a provider SchoolOS no longer knows: the plain word
 
     def test_extra_facts_for_the_payer_are_kept_tidy_and_limited(self):
@@ -157,11 +156,6 @@ class WhatAParentSeesTests(ReceivablesTestCase):
         self.assertEqual((fact["numberLabel"], fact["accountNumber"], fact["canPay"], fact["isTest"]), ("Account number", "0123456789", True, False))
         self.assertIn("bank transfer", fact["note"])
         self.assertEqual(set(fact), {"id", "provider", "bankName", "accountName", "status", "accountNumber", "numberLabel", "details", "note", "canPay", "isTest"})
-
-    def test_a_remita_reference_is_called_what_it_is(self):
-        collection_accounts.register(self.family, provider="remita", account_number="140008260136", actor=self.owner)
-        (fact,) = self.facts()
-        self.assertEqual((fact["numberLabel"], fact["accountNumber"]), ("Remita Retrieval Reference (RRR)", "140008260136"))
 
     def test_an_account_being_set_up_or_paused_is_listed_but_its_number_is_withheld(self):
         setting_up = collection_accounts.register(self.family, provider="gtbank", account_number="0123456789", actor=self.owner, provisioned=False)

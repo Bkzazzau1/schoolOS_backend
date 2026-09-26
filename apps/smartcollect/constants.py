@@ -129,7 +129,7 @@ class Eligibility(models.TextChoices):
     PROVIDER_CONFLICT = "provider_conflict", "Account with another provider"
     #: The provider needs details about the payer that the school has not recorded.
     MISSING_DETAILS = "missing_details", "Payer details missing"
-    #: The provider cannot make this kind of account (for example a static one with Remita).
+    #: The provider cannot make this kind of account (for example a static one, where a provider only makes dynamic accounts).
     UNSUPPORTED_MODE = "unsupported_mode", "Not supported by the provider"
     #: Owes nothing for this period.
     NOTHING_DUE = "nothing_due", "Nothing due"

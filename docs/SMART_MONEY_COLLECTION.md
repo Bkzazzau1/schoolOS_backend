@@ -1,8 +1,12 @@
 # Smart Money Collection (backend)
 
-How a school collects fees from families through **its own** Paystack, Monnify or Remita account, and how SchoolOS finds out what
+How a school collects fees from families through **its own** Paystack or Monnify account, and how SchoolOS finds out what
 was paid. This file says what is real, what is pending and how to run it. School fees are the **school's** money: SchoolOS never
 receives, holds or settles it. (What schools pay SchoolOS - the SaaS subscription - is `apps/billing`, a different thing entirely.)
+
+> **Smart Money Collection currently supports Paystack and Monnify for family collection accounts** (Family Payment Details).
+> **Remita is reserved for SchoolOS Mandates / Direct Debit and is not a Smart Money Collection provider.** The two are separate
+> domains and are never mixed: see [Remita and Mandates](#remita-and-mandates-not-part-of-smart-money-collection) at the end.
 
 ```
 School's own provider account -> school's own credentials -> SchoolOS connector -> ONE active provider
@@ -14,7 +18,7 @@ School's own provider account -> school's own credentials -> SchoolOS connector 
 
 | App | Owns |
 |---|---|
-| `apps/bankconnect` | the provider connections (credentials, webhook, environment), the connector interface and the three adapters, provider events, matching and the review queue |
+| `apps/bankconnect` | the provider connections (credentials, webhook, environment), the connector interface and the two adapters (Paystack, Monnify), provider events, matching and the review queue |
 | `apps/receivables` | families, charges, adjustments, family credit, the family collection accounts and their statements - the canonical ledger |
 | `apps/smartcollect` | policy, batches, approval, generation, provider switching (see the second half of this file) |
 
@@ -25,13 +29,14 @@ School's own provider account -> school's own credentials -> SchoolOS connector 
 merchant name and masked reference, status, webhook status and when it was last verified, plus the **sealed** credential.
 
 * The school enters credentials **its provider issued to it**: Paystack `secret_key`; Monnify `api_key`, `secret_key`,
-  `contract_code`; Remita `merchant_id`, `api_key`, `service_type_id`. There is no settlement account number, no account
+  `contract_code`. There is no settlement account number, no account
   fingerprint and no "is this your school's account?" question.
 * Credentials are sealed by the vault (`vault.py`, MultiFernet, `BANKCONNECT_SECRET_KEYS`, bound to school and connection so a
   copied ciphertext does not open). No serializer, log line, error message, audit detail or admin field can carry one; a provider's
   own error text is never copied, only SchoolOS's words.
-* A school may connect several providers (one live connection per provider per school, enforced by the database) but has exactly
-  **one active collection provider** (also a database rule). It is chosen once with `activate`; any later change is a reviewed
+* A school may connect both providers (one live connection per provider per school, enforced by the database) but has exactly
+  **one active collection provider** (also a database rule). Only Paystack or Monnify (or the development sandbox) can be the active
+  one: the database refuses anything else, so it does not depend on the screen hiding it. It is chosen once with `activate`; any later change is a reviewed
   provider switch.
 * A connected provider that has live family accounts, or is the active provider, can be neither disabled nor disconnected.
 * The webhook address carries a random token (only its hash is stored). It is called **active** only after a verified event has
@@ -57,20 +62,17 @@ One interface (`CollectionConnector`): `validate_credentials`, `get_merchant_pro
 does not do raises `NotSupported`. Every adapter is written only against the provider's published documentation and tested with
 the documented request and response shapes through a fake transport (`tests/fake_transport.py`).
 
-| | Paystack | Monnify | Remita |
-|---|---|---|---|
-| Family collection account | Dedicated Virtual Account for a Customer | Customer Reserved Account | an invoice: an **RRR** payment reference (Remita has no virtual bank accounts) |
-| Static / dynamic | static, dynamic | static, dynamic | **dynamic only** (an RRR is for one amount) |
-| Deactivate / reactivate / close | deactivate and close (`DELETE`); no reactivate documented | close only | close (cancel the RRR) |
-| Customer KYC | no | **BVN or NIN required** | no |
-| Webhook authenticity | `x-paystack-signature`, HMAC-SHA512 of the body with the secret key | `monnify-signature`, HMAC-SHA512 with the client secret - live only; sandbox is unsigned so every event is confirmed by requery | **no signature documented**: every RRR is confirmed with Remita's status API, and its answer (not the body) decides |
-| Webhook set up | in the dashboard | in the dashboard | in the dashboard; Remita is answered `Ok` |
-| Direct-debit mandates | - | capability only | capability only (never part of the family-accounts model) |
+| | Paystack | Monnify |
+|---|---|---|
+| Family collection account | Dedicated Virtual Account for a Customer | Customer Reserved Account |
+| Static / dynamic | static, dynamic | static, dynamic |
+| Deactivate / reactivate / close | deactivate and close (`DELETE`); no reactivate documented | close only |
+| Customer KYC | no | **BVN or NIN required** |
+| Webhook authenticity | `x-paystack-signature`, HMAC-SHA512 of the body with the secret key | `monnify-signature`, HMAC-SHA512 with the client secret - live only; sandbox is unsigned so every event is confirmed by requery |
+| Webhook set up | in the dashboard | in the dashboard |
 
-Pending for lack of official documentation or credentials (nothing is invented): Remita's **live** host is not in its published
-documentation, so a live Remita connection is refused until an operator sets `COLLECTION_REMITA_LIVE_BASE_URL`; Monnify's contract
-code is only proven when the first account is made; a Remita service type is only proven when the first invoice is made. Neither is
-claimed as verified before then.
+Pending for lack of official documentation or credentials (nothing is invented): Monnify's contract code is only proven when the
+first account is made, and is not claimed as verified before then.
 
 ## Provider events and reconciliation
 
@@ -142,7 +144,7 @@ worker runs.
 
 The settlement action in the policy decides. `close` and `wait then close` start **closing** the account: it stays the family's live
 account and keeps receiving while a queued call retires it at the provider (Paystack deactivates the dedicated account, Monnify
-deallocates the reserved account, Remita cancels the RRR). `dormant` and `settled` are SchoolOS states and call no provider. Nothing is
+deallocates the reserved account). `dormant` and `settled` are SchoolOS states and call no provider. Nothing is
 ever deleted, and a payment the provider confirms into an account in **any** state goes through the normal pipeline (anything beyond what
 is owed becomes family credit; nothing is sent to review for the state alone).
 
@@ -166,16 +168,64 @@ date". No response carries a credential or an identity number.
 
 ### Pending (nothing invented)
 
-* Remita's live host, until an operator sets `COLLECTION_REMITA_LIVE_BASE_URL` (its published documentation gives only the demo host).
-* Monnify's contract code and Remita's service type are only proven when the first account is made, and are not claimed as verified before.
+* Monnify's contract code is only proven when the first account is made, and is not claimed as verified before.
 * Whether a provider-side account is "dormant" is SchoolOS's own flag; no provider documents a way to refuse transfers to a reserved
   account without closing it, so none is called for it.
 * A parent-facing way to supply a BVN/NIN; today the school records it (write-only) for the payer.
 
+## Remita and Mandates (not part of Smart Money Collection)
+
+Remita is **not** a Smart Money Collection provider. An earlier version treated a Remita payment reference (an RRR invoice) as though
+it were a family's collection account; that was removed by a product decision, and no RRR is a hidden third mechanism. Remita is
+reserved for a separate **Mandates / Direct Debit** feature, which is **not started**:
+
+```
+School -> own Remita relationship -> mandate integration -> payer authorises a mandate
+   -> direct-debit instruction -> Remita confirms payment -> the receivables ledger (canonical)
+```
+
+What that means in the code, and what is enforced by the **server** rather than by the screens:
+
+* The provider registry (`providers/registry.py`) lists only `paystack` and `monnify` (and the sandbox, in development). There is no
+  Remita adapter, so nothing can connect it: the connect call answers `unknown_provider`.
+* Only a Paystack or Monnify (or sandbox) connection can be the school's active provider: the activate call refuses anything else and a
+  database rule (`active_provider_is_a_collection_provider`) refuses it even if the application did not.
+* A collection batch can only be prepared for such a connection (it takes the school's active provider; the batch model refuses any
+  other), a family collection account can only be made by one (the account model refuses any other, and recording a Remita reference by
+  hand is refused with `provider_not_supported`), and a provider switch is only ever between Paystack and Monnify (a switch that involves
+  anything else is blocked and can never be applied). The webhook route answers 404 for a `remita` address.
+* The summary counts only Paystack and Monnify as connected providers. Payments that were already recorded under an earlier Remita
+  connection stay in the ledger and keep being read deterministically; nothing new is read from Remita.
+* Removed with it, because they existed only for Remita: the "make the account for an amount" provider trait (`requires_amount`), the
+  `COLLECTION_REMITA_LIVE_BASE_URL` setting, the `Ok` / `Not Ok` webhook acknowledgement, and the direct-debit capability flag (mandates
+  are a different domain, not a capability of a family-account provider).
+* The old RRR adapter was written against Remita's invoice API, which is not the direct-debit API, so none of it is carried into
+  mandates: a mandate integration is designed afresh, from Remita's official direct-debit documentation, with its own connection
+  (never `is_active_provider`, never in the "one active collection provider" rule), its own duties (for example
+  `finance.mandate_manage`, `finance.mandate_prepare`, `finance.mandate_approve`, given separately from the four collection duties),
+  audit, idempotency, maker/checker and duplicate protection. Receivables stay the accounting truth: a debit is tied to the canonical
+  receivable position and the school's policy, never to a client-supplied amount, and no mandate table keeps a second school-fee balance.
+  The adapter remains in git history (the commit before this one) for reference only.
+
+Data already made under the earlier design is handled explicitly and deletes nothing (`bankconnect 0005`, `smartcollect 0002`; run them
+over a copy first if a school ever used Remita):
+
+| Left behind | What the migration does |
+|---|---|
+| a Remita connection | disconnected; its sealed credential and callback address are dropped; it stops being the active provider. No other provider is switched on in its place: the school chooses |
+| a family's Remita account | closed (or marked failed if it never had a reference), so the family can be given a Paystack or Monnify account. Nothing is asked of Remita: an RRR it already issued is not cancelled by SchoolOS |
+| a batch that had not made accounts | cancelled; a batch that was generating stops and keeps the families that succeeded; finished batches stay as they were |
+| a planned switch involving Remita, and queued Remita calls | the switch is cancelled and the calls are failed |
+| payments and audit rows | untouched |
+
+Each change is written to the audit trail. On a school that never used Remita the migrations change nothing.
+
 ## Tests
 
 `apps.bankconnect` (connectors against the documented shapes, connection API, permissions, secrecy, webhooks, reconciliation),
-`apps.receivables`, and `apps.smartcollect` (policy layers, expiry and history; preview, eligibility and arrears; maker-checker and
+`apps.receivables`, and `apps.smartcollect` (that only Paystack and Monnify can be connected, made active, batched, switched between or
+given family payment details, with Remita refused by the server, and the migrations that retire what Remita left run over real rows;
+policy layers, expiry and history; preview, eligibility and arrears; maker-checker and
 staleness; generation, idempotency, partial failure and retry; lifecycle; switching; the job queue and that no provider is called inside a
 transaction; identity; exports; the API). No test calls a real provider: connectors are exercised through a fake transport that answers as
 the provider's documentation says it does, and the sandbox connector stands in for a provider everywhere else.

@@ -308,18 +308,14 @@ def evaluate(universe: Universe, family: Family, resolved, prior) -> Evaluation:
             return evaluation
     if proposed == 0:
         evaluation.status = Eligibility.NOTHING_DUE
-        evaluation.note = "Owes nothing for this period." if not info.requires_amount else (
-            f"Owes nothing for this period, and {info.display_name} makes an account for an amount."
-        )
+        evaluation.note = "Owes nothing for this period."
         return evaluation
     evaluation.status, evaluation.note = Eligibility.ELIGIBLE, ""
     return evaluation
 
 
-def can_select(status: str, *, override: bool, requires_amount: bool) -> tuple[bool, str]:
+def can_select(status: str, *, override: bool) -> tuple[bool, str]:
     """Whether a family in this state may be selected, and if not, why."""
-    if status == Eligibility.NOTHING_DUE:
-        return (not requires_amount), ("This provider makes an account for an amount, and there is nothing to collect." if requires_amount else "")
     if status in SELECTABLE:
         return True, ""
     if status in (Eligibility.NEEDS_OVERRIDE, Eligibility.EXCLUDED):
@@ -330,11 +326,11 @@ def can_select(status: str, *, override: bool, requires_amount: bool) -> tuple[b
 # -- the batch's figures and fingerprint ---------------------------------------------------------------
 
 
-def state_of(evaluation: Evaluation, prior, requires_amount: bool) -> dict:
+def state_of(evaluation: Evaluation, prior) -> dict:
     """The item's stored fields as they should be now: the evaluation, with the person's own choices (selection, override) kept where
     they still make sense."""
     override = bool(prior and prior.eligibility_override) and evaluation.status in (Eligibility.NEEDS_OVERRIDE, Eligibility.EXCLUDED)
-    allowed, _ = can_select(evaluation.status, override=override, requires_amount=requires_amount)
+    allowed, _ = can_select(evaluation.status, override=override)
     if prior is None:
         selected = evaluation.status == Eligibility.ELIGIBLE
     elif evaluation.status == Eligibility.ELIGIBLE and prior.eligibility_status != Eligibility.ELIGIBLE:

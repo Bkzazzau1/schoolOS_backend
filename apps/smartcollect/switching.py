@@ -75,6 +75,9 @@ def review(school, from_connection, to_connection) -> tuple[dict, list[str]]:
     )
     processing = open_batches.filter(status=BatchStatus.PROCESSING).count()
     blockers, warnings = [], []
+    for side in (from_connection, to_connection):
+        if registry.get_connector(side.provider) is None:
+            blockers.append(f"{side.merchant_name or side.provider} is not a Smart Money Collection provider. A switch is only between Paystack and Monnify.")
     if to_connection.status != ConnectionStatus.CONNECTED:
         blockers.append(f"{to_connection.merchant_name or to_connection.provider} is not connected. Test it or replace its credentials first.")
     if from_connection.school_id != school.id or not from_connection.is_active_provider:

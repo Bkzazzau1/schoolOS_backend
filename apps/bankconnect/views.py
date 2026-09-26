@@ -1,4 +1,3 @@
-from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.debug import sensitive_post_parameters
 from rest_framework import status
@@ -9,7 +8,7 @@ from rest_framework.views import APIView
 
 from . import provider_connections as connections
 from . import webhooks
-from .constants import SMART_PROVIDERS
+from .constants import COLLECTION_PROVIDER_CODES
 from .http import bank_errors as _bank_errors
 from .http import body as _body
 from .models import BankAuditEvent
@@ -20,7 +19,6 @@ from .vault import VaultError, get_vault
 
 #: Bodies that can carry a credential are kept out of Django's error reports and logs.
 _SENSITIVE = method_decorator(sensitive_post_parameters("credentials", "secret", "settings"), name="dispatch")
-_PROVIDER_CODES = SMART_PROVIDERS + ("sandbox",)
 
 
 def _secure_storage_ready() -> bool:
@@ -33,11 +31,11 @@ def _secure_storage_ready() -> bool:
 
 def _listed(membership):
     """This school's provider connections. (Rows made by the earlier bank-account model are history, not part of Smart Money Collection.)"""
-    return connections.list_connections(membership).filter(provider__in=_PROVIDER_CODES)
+    return connections.list_connections(membership).filter(provider__in=COLLECTION_PROVIDER_CODES)
 
 
 class ProvidersView(APIView):
-    """GET the providers a school can connect (Paystack, Monnify, Remita), what each needs and can do, and what this person may do."""
+    """GET the providers a school can connect (Paystack, Monnify), what each needs and can do, and what this person may do."""
 
     def get(self, request, school_id):
         membership = acting_membership(request, school_id)
@@ -158,9 +156,5 @@ class BankWebhookView(APIView):
         try:
             result = webhooks.receive(provider, token, request.body, headers)
         except webhooks.WebhookRefused as refused:
-            if provider == "remita":
-                return HttpResponse("Not Ok", content_type="text/plain", status=refused.status)
             return Response({"code": refused.code}, status=refused.status)
-        if provider == "remita":
-            return HttpResponse("Ok", content_type="text/plain")  # Remita expects exactly "Ok" as the acknowledgement
         return Response({"received": True, "outcome": result.outcome})

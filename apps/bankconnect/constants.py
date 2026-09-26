@@ -6,7 +6,7 @@ from django.db import models
 #: through a job assignment; being in Finance is never enough by itself, and billing authority
 #: (`finance.billing_authority`) is a different responsibility that does NOT open the school's provider secrets.
 #:
-#: - provider manage: connect, replace, test and disable the school's own Paystack / Monnify / Remita credentials,
+#: - provider manage: connect, replace, test and disable the school's own Paystack / Monnify credentials,
 #:   set up the webhook, choose the active provider and schedule or apply a provider switch;
 #: - policy manage: change the school's collection policy (defaults, session/term/family overrides);
 #: - prepare: the MAKER of a collection batch (build the preview, select families, resolve overrides, submit);
@@ -24,10 +24,15 @@ DUTY_MANAGE_CONNECTIONS = "finance.bank_connections"
 #: receives its own credentials and enters them into SchoolOS; the provider moves and settles the money.
 PROVIDER_PAYSTACK = "paystack"
 PROVIDER_MONNIFY = "monnify"
-PROVIDER_REMITA = "remita"
-SMART_PROVIDERS = (PROVIDER_PAYSTACK, PROVIDER_MONNIFY, PROVIDER_REMITA)
+SMART_PROVIDERS = (PROVIDER_PAYSTACK, PROVIDER_MONNIFY)
+#: Codes that once appeared in Smart Money Collection and no longer do. Remita is reserved for a separate Mandates / Direct Debit
+#: domain, so it is never offered, connected, made active, batched or switched to. A row that still carries one of these codes is
+#: history: it is kept so the payments and accounts recorded under it still read correctly, and nothing new is ever made under it.
+RETIRED_PROVIDERS = ("remita",)
 #: Development and tests only; never offered to a school in production.
 PROVIDER_SANDBOX = "sandbox"
+#: What a school's collection provider connection may be: a supported provider, or (in development) the sandbox.
+COLLECTION_PROVIDER_CODES = SMART_PROVIDERS + (PROVIDER_SANDBOX,)
 
 
 class Environment(models.TextChoices):

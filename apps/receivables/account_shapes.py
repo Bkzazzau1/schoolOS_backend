@@ -62,7 +62,7 @@ def _connector(provider: str):
 
 
 def label_for(provider: str) -> str:
-    """What a provider calls the number a payer uses ("Account number"; Remita's is a payment reference). A provider SchoolOS does not
+    """What a provider calls the number a payer uses ("Account number"). A provider SchoolOS does not
     know gets the plain word."""
     connector = _connector(provider)
     return connector.info.account_label if connector else GENERIC.number_label

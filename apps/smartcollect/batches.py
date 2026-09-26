@@ -86,10 +86,6 @@ def makers_of(batch) -> set:
     return ids
 
 
-def _requires_amount(batch) -> bool:
-    return registry.get_connector(batch.provider).info.requires_amount
-
-
 # -- the active provider ------------------------------------------------------------------------------
 
 
@@ -178,7 +174,6 @@ def _rebuild(batch, actor, kind: str = "preview_refreshed") -> None:
     Families already generated are frozen. Nothing is called at any provider and nothing in the ledger changes."""
     universe = evaluation.build_universe(batch)
     context = evaluation.policy_context(batch)
-    requires_amount = universe.info.requires_amount
     batch.policy_snapshot = context.base_policy().snapshot()
     items = {i.family_id: i for i in CollectionGenerationBatchItem.objects.select_related("family").filter(batch=batch)}
     seen = set()
@@ -188,7 +183,7 @@ def _rebuild(batch, actor, kind: str = "preview_refreshed") -> None:
         if prior is not None and prior.generation_status in FROZEN:
             continue
         ev = evaluation.evaluate(universe, family, context.for_family(family.id), prior)
-        state = evaluation.state_of(ev, prior, requires_amount)
+        state = evaluation.state_of(ev, prior)
         if prior is None:
             prior = CollectionGenerationBatchItem(batch=batch, school=batch.school, family=family)
             items[family.id] = prior
@@ -277,7 +272,6 @@ def set_selection(membership, batch_id, *, select=(), deselect=(), select_all_el
     _check_version(batch, expected_version)
     items = list(CollectionGenerationBatchItem.objects.select_related("family").filter(batch=batch))
     by_id = {str(i.id): i for i in items}
-    requires_amount = _requires_amount(batch)
     wanted = {str(x) for x in select}
     unwanted = {str(x) for x in deselect}
     unknown = (wanted | unwanted) - set(by_id)
@@ -295,7 +289,7 @@ def set_selection(membership, batch_id, *, select=(), deselect=(), select_all_el
         if select_all_eligible and item.eligibility_status == Eligibility.ELIGIBLE:
             item.selected = True
         if key in wanted:
-            allowed, why = evaluation.can_select(item.eligibility_status, override=item.eligibility_override, requires_amount=requires_amount)
+            allowed, why = evaluation.can_select(item.eligibility_status, override=item.eligibility_override)
             if not allowed:
                 refused.append(f"{item.family.display_name}: {why}")
             else:
@@ -404,7 +398,6 @@ def live_hash(batch) -> str:
     Families already generated count as they were. Nothing is written."""
     universe = evaluation.build_universe(batch)
     context = evaluation.policy_context(batch)
-    requires_amount = universe.info.requires_amount
     by_id = {f.id: f for f in universe.families}
     entries = []
     for item in CollectionGenerationBatchItem.objects.filter(batch=batch, selected=True).select_related("family"):
@@ -414,7 +407,7 @@ def live_hash(batch) -> str:
         family = by_id.get(item.family_id)
         if family is None:
             continue  # no longer active: it drops out, and so the hash changes
-        state = evaluation.state_of(evaluation.evaluate(universe, family, context.for_family(family.id), item), item, requires_amount)
+        state = evaluation.state_of(evaluation.evaluate(universe, family, context.for_family(family.id), item), item)
         if state["selected"]:
             probe = CollectionGenerationBatchItem(
                 batch=batch, family=family, school=batch.school, selected=True, override_reason=item.override_reason,
@@ -448,9 +441,8 @@ def _problems(batch, items) -> list[str]:
         problems.append("Select at least one family.")
     if (batch.policy_snapshot or {}).get("problems"):
         problems.extend(batch.policy_snapshot["problems"])
-    requires_amount = _requires_amount(batch)
     for item in chosen:
-        allowed, why = evaluation.can_select(item.eligibility_status, override=item.eligibility_override, requires_amount=requires_amount)
+        allowed, why = evaluation.can_select(item.eligibility_status, override=item.eligibility_override)
         if not allowed:
             problems.append(f"{item.family.display_name}: {why}")
         for issue in (item.policy_snapshot or {}).get("problems") or []:

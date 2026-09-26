@@ -278,5 +278,5 @@ class PaystackCapabilityTests(SimpleTestCase):
         c = PaystackConnector.info.capabilities
         self.assertTrue(c.supports_family_collection_accounts and c.supports_static_accounts and c.supports_webhooks and c.supports_transaction_requery)
         self.assertTrue(c.supports_account_deactivation and c.supports_account_closure)
-        self.assertFalse(c.supports_account_reactivation or c.requires_customer_kyc or c.supports_direct_debit_mandates)
+        self.assertFalse(c.supports_account_reactivation or c.requires_customer_kyc)
         self.assertEqual(PaystackConnector.info.webhook.mode, "dashboard")  # documented as set in the dashboard, not by API

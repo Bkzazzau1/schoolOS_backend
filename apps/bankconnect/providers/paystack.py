@@ -133,7 +133,6 @@ class PaystackConnector(CollectionConnector):
             supports_account_closure=True,
             supports_webhooks=True,
             supports_transaction_requery=True,
-            supports_direct_debit_mandates=False,
             requires_customer_kyc=False,
         ),
         onboarding="Create and verify your school's own account at Paystack first, then enter the secret key Paystack issued to your school.",

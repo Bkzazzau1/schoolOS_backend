@@ -22,38 +22,37 @@ ALL_DUTIES = (
 
 
 class ProvidersApiTests(BankTestCase):
-    def test_the_owner_sees_exactly_the_three_supported_providers_and_the_sandbox_only_because_it_is_on(self):
+    def test_the_owner_sees_exactly_paystack_and_monnify_and_the_sandbox_only_because_it_is_on(self):
         body = self.api_get("providers/").json()
         codes = [p["code"] for p in body["providers"]]
-        self.assertEqual(codes, ["paystack", "monnify", "remita", "sandbox"])
-        for gone in ("gtbank", "uba", "zenith", "access", "firstbank", "opay", "moniepoint", "open_banking"):
+        self.assertEqual(codes, ["paystack", "monnify", "sandbox"])
+        for gone in ("remita", "gtbank", "uba", "zenith", "access", "firstbank", "opay", "moniepoint", "open_banking"):
             self.assertNotIn(gone, codes)
         self.assertTrue(body["canManage"] and body["secureStorageReady"])
         self.assertIsNone(body["activeConnectionId"])
 
     @override_settings(BANKCONNECT_ENABLE_SANDBOX=False)
     def test_the_sandbox_is_not_offered_where_it_is_switched_off(self):
-        self.assertEqual([p["code"] for p in self.api_get("providers/").json()["providers"]], ["paystack", "monnify", "remita"])
+        self.assertEqual([p["code"] for p in self.api_get("providers/").json()["providers"]], ["paystack", "monnify"])
 
     def test_each_provider_asks_only_for_what_the_school_was_given_by_it_and_never_for_a_settlement_account(self):
         by_code = {p["code"]: p for p in self.api_get("providers/").json()["providers"]}
         fields = {code: [f["name"] for f in p["credentialFields"]] for code, p in by_code.items()}
         self.assertEqual(fields["paystack"], ["secret_key"])
         self.assertEqual(fields["monnify"], ["api_key", "secret_key", "contract_code"])
-        self.assertEqual(fields["remita"], ["merchant_id", "api_key", "service_type_id"])
         everything = json.dumps(by_code).lower()
         for banned in ("settlement", "account_number\"", "account_fingerprint", "is this your school"):
             self.assertNotIn(banned, everything)
         secret = {f["name"]: f["secret"] for p in by_code.values() for f in p["credentialFields"]}
         self.assertTrue(secret["secret_key"] and secret["api_key"])
-        self.assertFalse(secret["merchant_id"] or secret["contract_code"] or secret["service_type_id"])
+        self.assertFalse(secret["contract_code"])
 
     def test_capabilities_and_webhook_instructions_are_stated_per_provider(self):
         by_code = {p["code"]: p for p in self.api_get("providers/").json()["providers"]}
         self.assertTrue(by_code["monnify"]["capabilities"]["requiresCustomerKyc"])
-        self.assertFalse(by_code["remita"]["capabilities"]["supportsStaticAccounts"])
+        self.assertTrue(by_code["monnify"]["capabilities"]["supportsStaticAccounts"] and by_code["paystack"]["capabilities"]["supportsDynamicAccounts"])
         self.assertFalse(by_code["paystack"]["capabilities"]["supportsAccountReactivation"])
-        self.assertEqual(by_code["remita"]["webhook"]["verification"], "requery")
+        self.assertEqual(by_code["monnify"]["webhook"]["verification"], "hmac_sha512")
         self.assertEqual(by_code["paystack"]["webhook"]["verification"], "hmac_sha512")
         self.assertTrue(all(p["onboarding"] for p in by_code.values() if not p["isSandbox"]))
 
@@ -196,7 +195,7 @@ class ConnectApiTests(BankTestCase):
         self.assertEqual(CollectionProviderConnection.objects.filter(school=self.school).count(), 2)
 
     def test_the_database_itself_refuses_a_second_live_connection_to_a_real_provider(self):
-        for provider in ("paystack", "monnify", "remita"):
+        for provider in ("paystack", "monnify"):
             CollectionProviderConnection.objects.create(school=self.school, provider=provider, status=ConnectionStatus.CONNECTED)
             with self.assertRaises(IntegrityError), transaction.atomic():
                 CollectionProviderConnection.objects.create(school=self.school, provider=provider, status=ConnectionStatus.CONNECTED)
@@ -205,7 +204,7 @@ class ConnectApiTests(BankTestCase):
             CollectionProviderConnection.objects.create(school=self.school, provider=provider, status=ConnectionStatus.CONNECTED)
 
     def test_an_unsupported_or_unknown_provider_is_refused_and_nothing_is_stored(self):
-        for provider in ("gtbank", "uba", "opay", "open_banking", "nope", ""):
+        for provider in ("remita", "gtbank", "uba", "opay", "open_banking", "nope", ""):
             response = self.api_post("connections/", {"provider": provider, "credentials": {"secret_key": "x"}})
             self.assertEqual((response.status_code, response.json()["code"]), (400, "unknown_provider"), provider)
         self.assertEqual(CollectionProviderConnection.objects.count(), 0)
@@ -305,13 +304,6 @@ class PaystackAndMonnifyConnectApiTests(BankTestCase):
         for private in ("MK_TEST_UNIQUEKEY", "UNIQUE-MONNIFY-SECRET", "7059707855"):
             self.assertNotIn(private, shown)
         self.assertEqual(self.secret_of(self.row(connection))["contract_code"], "7059707855")
-
-    def test_remita_live_is_refused_until_the_operator_has_configured_its_address(self):
-        from .fake_transport import FakeTransport
-
-        self.with_provider(FakeTransport())
-        response = self.connect(provider="remita", environment="live", credentials={"merchant_id": "2547916", "api_key": "K", "service_type_id": "4430731"})
-        self.assertEqual((response.status_code, response.json()["code"]), (400, "live_not_configured"))
 
 
 class ReplaceCredentialsTests(BankTestCase):
@@ -607,14 +599,14 @@ class VaultTests(SimpleTestCase):
 
 class RegistryTests(SimpleTestCase):
     @override_settings(BANKCONNECT_ENABLE_SANDBOX=False)
-    def test_exactly_paystack_monnify_and_remita_can_be_connected_and_all_do_something_real(self):
+    def test_exactly_paystack_and_monnify_can_be_connected_and_both_do_something_real(self):
         providers = registry.all_providers()
-        self.assertEqual([p.code for p in providers], ["paystack", "monnify", "remita"])
+        self.assertEqual([p.code for p in providers], ["paystack", "monnify"])
         for info in providers:
             self.assertTrue(info.implemented, info.code)
             self.assertEqual(info.connection_type, "collection_provider")
             self.assertTrue(info.capabilities.supports_family_collection_accounts and info.capabilities.supports_webhooks, info.code)
-        for legacy in ("gtbank", "uba", "access", "zenith", "firstbank", "opay", "moniepoint", "open_banking", "legacy_bank"):
+        for legacy in ("remita", "gtbank", "uba", "access", "zenith", "firstbank", "opay", "moniepoint", "open_banking", "legacy_bank"):
             self.assertIsNone(registry.get_connector(legacy), legacy)
 
     @override_settings(BANKCONNECT_ENABLE_SANDBOX=False)
@@ -627,7 +619,7 @@ class RegistryTests(SimpleTestCase):
         self.assertTrue(connector.info.is_sandbox)
 
     def test_a_connector_only_does_what_it_declares(self):
-        connector = registry.get_connector("remita")
+        connector = registry.get_connector("monnify")  # Monnify closes an account; it does not deactivate one
         with self.assertRaises(NotSupported):
             connector.deactivate_collection_account({}, account_ref="x", environment="test", settings={})
 

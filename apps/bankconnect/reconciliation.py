@@ -22,7 +22,7 @@ from apps.core.money import format_money  # noqa: F401 - re-exported: other code
 from apps.notifications.services import notify_many
 
 from . import matching
-from .constants import SMART_PROVIDERS, Direction, ReconStatus
+from .constants import RETIRED_PROVIDERS, SMART_PROVIDERS, Direction, ReconStatus
 from .models import BankTransaction, ReconciliationDecision, TransactionAllocation
 from .permissions import collections_recipients
 
@@ -70,7 +70,7 @@ def _verdict_for(row: BankTransaction, directory: matching.Directory):
         # duplicate heuristics either - two transfers to a family account are two payments the provider reported.
         note = f"Paid into the collection account of {family.display_name} ({family.code}), so the family is known for certain."
         return matching.Verdict(ReconStatus.MATCHED, 100, [], [note], family=family), None
-    if row.provider in SMART_PROVIDERS or row.provider == "sandbox":
+    if row.provider in SMART_PROVIDERS or row.provider in RETIRED_PROVIDERS or row.provider == "sandbox":
         # A payment reported by a collection provider identifies its family by the account it was paid into, or not at all. An account
         # SchoolOS has no record of is never attached to a family by guessing from a narration or a sender's name: it is kept, unmatched,
         # for a person to look into.

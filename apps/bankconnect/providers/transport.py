@@ -30,7 +30,7 @@ class HttpResult:
     status: int
     #: The JSON body, or None when it was empty or not JSON.
     data: Any = None
-    #: The body as text, for a provider that wraps its JSON (Remita answers some calls as `jsonp ({...})`).
+    #: The body as text, for a reply that is not JSON.
     text: str = ""
 
     @property

@@ -24,6 +24,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.bankconnect.constants import RETIRED_PROVIDERS
 from apps.bankconnect.permissions import can_manage_providers
 
 from . import audit, ledger
@@ -118,6 +119,8 @@ def register(
     provider = " ".join(str(provider or "").split())
     if not provider:
         raise Refused("Say which provider gave this account.", "provider_required")
+    if provider.lower() in RETIRED_PROVIDERS:
+        raise Refused("Remita is not a Smart Money Collection provider, so a family's payment details cannot come from it.", "provider_not_supported")
     from .account_shapes import GENERIC
 
     account_number = GENERIC.clean_number(account_number)

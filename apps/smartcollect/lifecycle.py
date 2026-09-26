@@ -12,8 +12,8 @@ The school's policy decides (see `policy.SettlementAction`):
 Nothing is ever deleted: dormant, settled and closed accounts stay on record and still identify their family for any payment the provider
 confirms into them. If the family owes again while an account is dormant, settled or in its grace period, it is simply ACTIVE again.
 
-Retiring an account is a provider call (Paystack deactivates the dedicated account, Monnify deallocates the reserved account, Remita
-cancels the payment reference). It is queued with the change of state, in one transaction, and made later by a worker.
+Retiring an account is a provider call (Paystack deactivates the dedicated account, Monnify deallocates the reserved account). It is
+queued with the change of state, in one transaction, and made later by a worker.
 """
 
 import logging
@@ -150,7 +150,7 @@ def retire_now(account_id, *, connector, secret, args, reason: str) -> Outcome:
         provider_connections.record_failure(account.connection, "bad_credentials")
         return Outcome(FAILED, "bad_credentials")
     except ProviderRejected:
-        # The provider answered and would not cancel it (a Remita reference that was already paid, an account it no longer has).
+        # The provider answered and would not cancel it (an account it no longer has, or one it will not close).
         # It stays a closed account of ours, with that said, and still identifies its family for anything the provider confirms into it.
         note = "The provider did not confirm the cancellation (the account may already be used or closed). " + reason
     except NotSupported:

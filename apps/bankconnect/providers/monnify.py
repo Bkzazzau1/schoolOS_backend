@@ -165,7 +165,6 @@ class MonnifyConnector(CollectionConnector):
             supports_account_closure=True,
             supports_webhooks=True,
             supports_transaction_requery=True,
-            supports_direct_debit_mandates=True,
             requires_customer_kyc=True,
         ),
         onboarding="Create and verify your school's own Monnify merchant account first, then enter the API key, secret key and contract code Monnify issued to your school.",

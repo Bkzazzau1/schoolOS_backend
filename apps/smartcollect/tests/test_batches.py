@@ -402,20 +402,6 @@ class DetailsAndCapabilityTests(CollectTestCase):
             batch = self.new_batch()
             self.assertEqual(self.item(batch, family).eligibility_status, Eligibility.ELIGIBLE)
 
-    def test_a_provider_that_makes_an_account_for_an_amount_has_nothing_to_generate_for_a_family_owing_nothing(self):
-        from apps.bankconnect.providers import registry
-        from unittest import mock
-        from dataclasses import replace
-
-        family = self.make_family("Free", owes=0)
-        connector = registry.get_connector("sandbox")
-        with mock.patch.object(type(connector), "info", replace(connector.info, requires_amount=True)):
-            batch = self.new_batch()
-            item = self.item(batch, family)
-            self.assertEqual(item.eligibility_status, Eligibility.NOTHING_DUE)
-            with self.assertRaises(CollectionRefused):
-                batches.set_selection(self.maker, batch.id, select=[str(item.id)])
-
     def test_a_family_owing_nothing_can_still_be_given_a_reusable_account_if_the_school_wants_one(self):
         family = self.make_family("Free", owes=0)
         batch = self.new_batch()

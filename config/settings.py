@@ -191,10 +191,7 @@ PAYSTACK_CALLBACK_URL = env("PAYSTACK_CALLBACK_URL", default="")
 BANKCONNECT_SECRET_KEYS = env.list("BANKCONNECT_SECRET_KEYS", default=[])
 # The sandbox connector produces synthetic transactions: never on unless asked for.
 BANKCONNECT_ENABLE_SANDBOX = env.bool("BANKCONNECT_ENABLE_SANDBOX", default=DEBUG)
-# Smart Money Collection talks to the school's own provider account (Paystack, Monnify, Remita) over HTTPS only. Remita's published
-# documentation gives only its demo host, so its live address is not assumed: an operator sets it here, and a live Remita connection
-# is refused until then.
-COLLECTION_REMITA_LIVE_BASE_URL = env("COLLECTION_REMITA_LIVE_BASE_URL", default="")
+# Smart Money Collection talks to the school's own provider account (Paystack, Monnify) over HTTPS only.
 COLLECTION_ALLOW_HTTP = env.bool("COLLECTION_ALLOW_HTTP", default=False)
 # Smart Money Collection makes provider calls from a durable job queue, never inside a database transaction. A worker
 # (`manage.py run_collection_jobs --loop`) drains it. Where no worker runs (a small school on one server, local development) the server

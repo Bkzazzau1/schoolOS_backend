@@ -1,7 +1,7 @@
 """The life of a school's collection-provider connection: connect, test, replace credentials, disable, enable, disconnect and choose
 the active provider. Every change is audited, and none of them ever returns or logs a credential.
 
-The school onboards with Paystack, Monnify or Remita DIRECTLY and enters the credentials that provider issued to it. SchoolOS verifies
+The school onboards with Paystack or Monnify DIRECTLY and enters the credentials that provider issued to it. SchoolOS verifies
 them with the provider, seals them (see vault.py) and keeps only safe facts: the provider, the environment, the merchant's name and a
 masked identifier, the webhook's state and when it was last verified. It never asks for, or needs, the school's settlement bank account.
 
@@ -468,6 +468,7 @@ def activate(membership, connection_id) -> CollectionProviderConnection:
         current = CollectionProviderConnection.objects.select_for_update().filter(school=membership.school, is_active_provider=True).first()
         if connection.is_active_provider:
             return connection
+        _connector(connection.provider)  # only Paystack or Monnify (or the development sandbox) can be the active collection provider
         if current is not None:
             raise CollectionRejected(
                 f"{current.merchant_name or current.provider} is the active collection provider. Change it with a provider switch.", "use_switch"

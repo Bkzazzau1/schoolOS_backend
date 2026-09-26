@@ -1,6 +1,6 @@
 """The one interface every collection-provider connector implements, and the one shape their payments are translated into.
 
-Smart Money Collection works with the SCHOOL'S OWN account at a payment provider (Paystack, Monnify or Remita): the school
+Smart Money Collection works with the SCHOOL'S OWN account at a payment provider (Paystack or Monnify): the school
 onboards with the provider directly, receives its own credentials and enters them into SchoolOS. A connector uses those
 credentials to create the collection account a family pays into, to verify and read the provider's payment events, and to
 retire an account. The provider moves and settles the money; SchoolOS never receives or holds it.
@@ -74,7 +74,7 @@ ENV_LIVE, ENV_TEST = "live", "test"
 
 @dataclass(frozen=True)
 class CollectionCapabilities:
-    #: The provider can give a family its own collection account (or, for Remita, its own payment reference).
+    #: The provider can give a family its own collection account.
     supports_family_collection_accounts: bool = False
     #: An account that is reused across collections.
     supports_static_accounts: bool = False
@@ -86,9 +86,6 @@ class CollectionCapabilities:
     supports_webhooks: bool = False
     #: A payment can be looked up at the provider by its reference, to verify an event or recover after a timeout.
     supports_transaction_requery: bool = False
-    #: The provider offers direct-debit mandates. Not part of the family accounts model: an integration for it would sit
-    #: beside the receivables ledger and never inside it.
-    supports_direct_debit_mandates: bool = False
     #: The provider needs identity details of the person an account is made for (for example a BVN or NIN).
     requires_customer_kyc: bool = False
 
@@ -152,8 +149,6 @@ class ProviderInfo:
     #: "identity" (a BVN or NIN). Smart Money Collection shows a family that lacks one of them as "details missing" and never sends a
     #: request the provider would refuse.
     customer_requirements: tuple = ("email",)
-    #: The provider makes the account for an amount (Remita's invoice), so a family with nothing to collect has nothing to generate.
-    requires_amount: bool = False
 
     @property
     def is_sandbox(self) -> bool:
@@ -215,7 +210,7 @@ class ProvisionRequest:
     #: "static" or "dynamic".
     mode: str = "static"
     currency: str = "NGN"
-    #: The collection target, in minor units. Only an amount-bearing provider (Remita) uses it.
+    #: The collection target, in minor units. Only a dynamic account is made for an amount.
     amount_minor: int | None = None
     valid_until: date | None = None
     description: str = ""
@@ -226,7 +221,7 @@ class ProvisionRequest:
 
 @dataclass(frozen=True)
 class ProvisionedAccount:
-    #: What a payer uses: an account number, or (Remita) the payment reference.
+    #: The account number a payer transfers to.
     account_number: str = ""
     #: The provider's own id for the account, kept for life so it can be looked up, deactivated or closed.
     provider_account_ref: str = ""
