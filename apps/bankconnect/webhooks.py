@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from . import audit, connections, identifiers
+from . import audit, connections, identifiers, reconciliation
 from .constants import ConnectionStatus
 from .ingestion import CREATED, ingest
 from .models import BankConnection, BankWebhookEvent
@@ -89,4 +89,6 @@ def receive(provider: str, token: str, raw_body: bytes, headers: dict) -> Webhoo
             created += ingest(connection, item).outcome == CREATED
         event.outcome, event.processed_at = "processed", timezone.now()
         event.save(update_fields=["outcome", "processed_at"])
+    if created:
+        reconciliation.reconcile_quietly(connection.school)
     return WebhookResult("processed", created)

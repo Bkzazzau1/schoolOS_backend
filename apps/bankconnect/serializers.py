@@ -85,8 +85,53 @@ def serialize_transaction(t) -> dict:
         "reconciliationStatus": t.reconciliation_status,
         "confidence": t.reconciliation_confidence,
         "matchReasons": t.match_reasons,
+        "duplicateOf": str(t.duplicate_of_id) if t.duplicate_of_id else None,
+        "allocations": [serialize_allocation(a) for a in _active_allocations(t)],
         "receivedAt": _iso(t.created_at),
     }
+
+
+def _active_allocations(t):
+    prefetched = getattr(t, "active_allocations", None)
+    if prefetched is not None:
+        return prefetched
+    return t.allocations.filter(superseded=False).select_related("student")
+
+
+def serialize_allocation(a) -> dict:
+    return {
+        "id": str(a.id),
+        "studentId": str(a.student_id),
+        "studentName": a.student.full_name,
+        "studentCode": a.student.student_code,
+        "purpose": a.purpose,
+        "amountMinor": a.amount_minor,
+        "source": a.source,
+        "superseded": a.superseded,
+    }
+
+
+def serialize_decision(d) -> dict:
+    user = d.actor.user if d.actor_id else None
+    return {
+        "id": str(d.id),
+        "action": d.action,
+        "note": d.note,
+        "actorMembershipId": str(d.actor_id) if d.actor_id else None,
+        "actorRole": d.actor.role if d.actor_id else None,
+        "actorName": (user.get_full_name() or user.email) if user else "SchoolOS matching",
+        "before": d.before,
+        "after": d.after,
+        "at": _iso(d.at),
+    }
+
+
+def serialize_transaction_detail(t) -> dict:
+    """The payment with every allocation it has ever had and every decision made about it."""
+    body = serialize_transaction(t)
+    body["allocations"] = [serialize_allocation(a) for a in t.allocations.select_related("student")]
+    body["decisions"] = [serialize_decision(d) for d in t.decisions.select_related("actor__user")]
+    return body
 
 
 def serialize_audit_event(event) -> dict:

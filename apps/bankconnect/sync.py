@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from django.db import transaction
 
-from . import audit, connections
+from . import audit, connections, reconciliation
 from .constants import ConnectionStatus
 from .ingestion import CREATED, DUPLICATE, INVALID, ingest
 from .providers import registry
@@ -80,14 +80,16 @@ def sync_connection(connection, *, actor=None, max_pages: int = MAX_PAGES) -> Sy
         else:
             outcome.more = True
     except ConnectorError as error:
-        return _fail(connection, outcome, error.code, error.message)
+        _fail(connection, outcome, error.code, error.message)
     except VaultError:
-        return _fail(connection, outcome, "vault_error", "The stored credential could not be opened. Reconnect the account.")
-
-    connections.record_success(connection, synced=True)
-    if actor is not None:
-        audit.record(
-            connection.school, "synced", actor=actor, connection=connection,
-            fetched=outcome.fetched, created=outcome.created, duplicates=outcome.duplicates, invalid=outcome.invalid,
-        )
+        _fail(connection, outcome, "vault_error", "The stored credential could not be opened. Reconnect the account.")
+    else:
+        connections.record_success(connection, synced=True)
+        if actor is not None:
+            audit.record(
+                connection.school, "synced", actor=actor, connection=connection,
+                fetched=outcome.fetched, created=outcome.created, duplicates=outcome.duplicates, invalid=outcome.invalid,
+            )
+    # Whatever arrived - even before a failure - is matched to students now.
+    reconciliation.reconcile_quietly(connection.school)
     return outcome

@@ -1,13 +1,20 @@
+import itertools
 import json
 
 from cryptography.fernet import Fernet
 from django.test import override_settings
+from django.utils import timezone
 
 from apps.staff.tests.helpers import StaffTestCase
+from apps.students.models import GuardianLink, Student, StudentEnrollment
 from apps.sync.models import SyncRecord
 
+from .. import ingestion, reconciliation
 from ..models import BankAuditEvent, BankConnection
+from ..providers.base import NormalizedTransaction
 from ..vault import context_for, get_vault
+
+_numbers = itertools.count(1)
 
 KEY = Fernet.generate_key().decode()
 
@@ -87,3 +94,37 @@ class BankTestCase(StaffTestCase):
         if connection_json:
             events = events.filter(connection_id=connection_json["id"])
         return [e.kind for e in events.order_by("at", "id")]
+
+    # -- students and payments ---------------------------------------------------------------
+
+    def make_student(self, code, first, surname, *, guardian=None, phone="", admission=None, school=None,
+                     status="active", class_name=""):
+        school = school or self.school
+        student = Student.objects.create(
+            school=school, student_code=code, admission_number=admission or f"ADM/{next(_numbers):04d}",
+            first_name=first, surname=surname, status=status,
+        )
+        if guardian:
+            GuardianLink.objects.create(student=student, name=guardian, phone=phone, is_primary=True)
+        if class_name:
+            StudentEnrollment.objects.create(
+                school=school, student=student, academic_section="Primary", class_name=class_name, started_at=timezone.now()
+            )
+        return student
+
+    def add_guardian(self, student, name, phone=""):
+        return GuardianLink.objects.create(student=student, name=name, phone=phone)
+
+    def deposit(self, connection, *, reconcile=True, **over):
+        """A credit arriving on the connection, stored and (unless told not to) reconciled. Returns the row."""
+        fields = dict(
+            external_transaction_id=f"DEP-{next(_numbers)}", direction="credit", amount_minor=5_000_000,
+            transaction_date=timezone.now(),
+        )
+        fields.update(over)
+        result = ingestion.ingest(connection, NormalizedTransaction(**fields))
+        assert result.transaction is not None, "the deposit was refused as malformed"
+        if reconcile:
+            reconciliation.reconcile_pending(connection.school)
+        result.transaction.refresh_from_db()
+        return result.transaction

@@ -1,8 +1,3 @@
-from functools import wraps
-from uuid import UUID
-
-from django.db.models import Q
-from django.utils.dateparse import parse_date
 from django.utils.decorators import method_decorator
 from django.views.decorators.debug import sensitive_post_parameters
 from rest_framework import status
@@ -12,44 +7,18 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from . import connections, sync, webhooks
-from .constants import Direction, ReconStatus
-from .models import BankAuditEvent, BankTransaction
+from .http import bank_errors as _bank_errors
+from .http import body as _body
+from .models import BankAuditEvent
 from .permissions import acting_membership, can_manage_connections
 from .providers import registry
-from .serializers import serialize_audit_event, serialize_connection, serialize_provider, serialize_transaction
-from .vault import VaultNotConfigured, VaultError, get_vault
+from .serializers import serialize_audit_event, serialize_connection, serialize_provider
+from .vault import VaultError, get_vault
 
 #: Bodies that can carry a credential are kept out of Django's error reports and logs.
 _SENSITIVE = method_decorator(
     sensitive_post_parameters("credentials", "authorizationCode", "state"), name="dispatch"
 )
-
-
-def _bank_errors(view):
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        try:
-            return view(*args, **kwargs)
-        except connections.BankRejected as error:
-            return Response({"code": error.code, "message": error.message}, status=status.HTTP_400_BAD_REQUEST)
-        except VaultNotConfigured:
-            return Response(
-                {"code": "secure_storage_unavailable",
-                 "message": "Secure storage for bank credentials is not set up on this server, so no account can be connected yet."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        except VaultError:
-            return Response(
-                {"code": "credential_unreadable",
-                 "message": "The stored credential could not be opened. Reconnect the account."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-    return wrapped
-
-
-def _body(request) -> dict:
-    return request.data if isinstance(request.data, dict) else {}
 
 
 def _secure_storage_ready() -> bool:
@@ -208,63 +177,6 @@ class ConnectionSyncView(APIView):
                     "code": outcome.error_code, "message": outcome.error_message,
                 },
             }
-        )
-
-
-MAX_PAGE = 100
-
-
-def _is_uuid(value) -> bool:
-    try:
-        UUID(str(value))
-    except ValueError:
-        return False
-    return True
-
-
-def _bad_filter(name):
-    return Response({"code": "invalid_filter", "message": f"'{name}' is not valid."}, status=status.HTTP_400_BAD_REQUEST)
-
-
-class TransactionsView(APIView):
-    """This school's transactions, newest first, across every connected account."""
-
-    def get(self, request, school_id):
-        membership = acting_membership(request, school_id)
-        params = request.query_params
-        rows = BankTransaction.objects.filter(school=membership.school)
-        if params.get("connection"):
-            if not _is_uuid(params["connection"]):
-                return _bad_filter("connection")
-            rows = rows.filter(connection_id=params["connection"])
-        if params.get("status"):
-            if params["status"] not in ReconStatus.values:
-                return _bad_filter("status")
-            rows = rows.filter(reconciliation_status=params["status"])
-        if params.get("direction"):
-            if params["direction"] not in Direction.values:
-                return _bad_filter("direction")
-            rows = rows.filter(direction=params["direction"])
-        for name, lookup in (("from", "transaction_date__date__gte"), ("to", "transaction_date__date__lte")):
-            if params.get(name):
-                day = parse_date(params[name])
-                if day is None:
-                    return _bad_filter(name)
-                rows = rows.filter(**{lookup: day})
-        if params.get("q"):
-            term = params["q"].strip()[:60]
-            rows = rows.filter(
-                Q(sender_name__icontains=term) | Q(narration__icontains=term) | Q(transaction_reference__icontains=term)
-            )
-        try:
-            limit = min(max(int(params.get("limit", 50)), 1), MAX_PAGE)
-            offset = max(int(params.get("offset", 0)), 0)
-        except ValueError:
-            return _bad_filter("limit")
-        total = rows.count()
-        page = list(rows[offset : offset + limit])
-        return Response(
-            {"transactions": [serialize_transaction(t) for t in page], "total": total, "hasMore": offset + limit < total}
         )
 
 
