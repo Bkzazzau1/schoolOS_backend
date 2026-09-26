@@ -137,6 +137,10 @@ def decide(
         )
         if row is None:
             raise NotFound("That payment was not found.")
+        if row.connection_id is None:
+            raise BankRejected(
+                "This payment was made by direct debit, so it is already matched to its family. It is not reviewed here.", "not_a_collection_payment"
+            )
         if row.direction != Direction.CREDIT:
             raise BankRejected("Only money received can be reconciled.", "not_a_credit")
         if expected_status and expected_status != row.reconciliation_status:

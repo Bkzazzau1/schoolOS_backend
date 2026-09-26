@@ -25,7 +25,8 @@ def _payments(membership):
         queryset=TransactionAllocation.objects.filter(superseded=False).select_related("student", "receivable"),
         to_attr="active_allocations",
     )
-    return BankTransaction.objects.filter(school=membership.school).select_related("family").prefetch_related(active)
+    # Smart Money Collection's own payments: a direct debit (no provider connection) is read in Mandates & Direct Debit.
+    return BankTransaction.objects.filter(school=membership.school, connection__isnull=False).select_related("family").prefetch_related(active)
 
 
 def _filtered(rows, params):

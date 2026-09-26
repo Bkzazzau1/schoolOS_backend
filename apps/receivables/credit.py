@@ -60,12 +60,14 @@ def add(
         raise
 
 
-def outstanding_in_order(family: Family, *, today: date | None = None, prefer_student=None) -> list:
-    """`[(receivable, outstanding)]` for the family's charges that still owe something, in payment order."""
+def outstanding_in_order(family: Family, *, today: date | None = None, prefer_student=None, only=None) -> list:
+    """`[(receivable, outstanding)]` for the family's charges that still owe something, in payment order. `only` (a collection of
+    receivable ids) narrows it to those charges: a payment made for one term is put towards that term's charges."""
     today = today or periods.school_today()
     receivables = list(ledger.live_receivables(family))
     figures = ledger.positions(receivables)
-    owing = [r for r in receivables if figures[r.id].outstanding > 0]
+    wanted = None if only is None else {str(x) for x in only}
+    owing = [r for r in receivables if figures[r.id].outstanding > 0 and (wanted is None or str(r.id) in wanted)]
     return [(r, figures[r.id].outstanding) for r in policy.get_policy()(owing, today=today, prefer_student=prefer_student)]
 
 

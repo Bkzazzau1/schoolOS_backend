@@ -127,8 +127,9 @@ class BankTransaction(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="bank_transactions")
-    #: PROTECT: a connection with history is disconnected, never deleted.
-    connection = models.ForeignKey(CollectionProviderConnection, on_delete=models.PROTECT, related_name="transactions")
+    #: PROTECT: a connection with history is disconnected, never deleted. Empty ONLY for a direct-debit payment (Mandates & Direct Debit),
+    #: which arrives through a mandate and not through a collection provider connection: see the constraint below.
+    connection = models.ForeignKey(CollectionProviderConnection, null=True, blank=True, on_delete=models.PROTECT, related_name="transactions")
 
     #: A snapshot of where it landed, so it still reads correctly if the connection is renamed.
     provider = models.CharField(max_length=40)
@@ -186,6 +187,15 @@ class BankTransaction(models.Model):
                 name="unique_provider_session_per_school",
             ),
             models.CheckConstraint(condition=Q(amount_minor__gt=0), name="bank_transaction_amount_positive"),
+            # A payment with no collection provider connection is a confirmed direct debit, and always knows its family for certain.
+            models.CheckConstraint(
+                condition=Q(connection__isnull=False) | (Q(transaction_type="direct_debit") & Q(family__isnull=False)),
+                name="a_payment_without_a_connection_is_a_direct_debit",
+            ),
+            models.UniqueConstraint(
+                fields=["school", "provider", "external_transaction_id"], condition=Q(connection__isnull=True),
+                name="unique_direct_debit_payment_per_school",
+            ),
         ]
         indexes = [
             models.Index(fields=["school", "-transaction_date"]),

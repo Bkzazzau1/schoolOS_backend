@@ -77,7 +77,7 @@ def serialize_connection(connection) -> dict:
 def serialize_transaction(t) -> dict:
     return {
         "id": str(t.id),
-        "connectionId": str(t.connection_id),
+        "connectionId": str(t.connection_id) if t.connection_id else None,
         "provider": t.provider,
         "transactionReference": t.transaction_reference,
         "transactionType": t.transaction_type,

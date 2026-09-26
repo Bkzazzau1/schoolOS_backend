@@ -81,9 +81,10 @@ def _hold_as_credit(tx, family, amount, actor) -> None:
 @transaction.atomic
 def allocate(
     tx: BankTransaction, family: Family, *, amount_minor: int | None = None, prefer_student=None, source: str = "auto",
-    decision=None, actor=None, settle: bool = True, today: date | None = None,
+    decision=None, actor=None, settle: bool = True, today: date | None = None, only_receivables=None,
 ) -> Allocated:
-    """Put (some of) a payment towards a family's charges, in payment order, and hold any excess as credit."""
+    """Put (some of) a payment towards a family's charges, in payment order, and hold any excess as credit. `only_receivables` (ids)
+    limits it to those charges, for a payment that was made for them (a direct debit approved for one term)."""
     family = credit.lock_family(family)
     tx = BankTransaction.objects.select_for_update().get(pk=tx.pk)
     _check(tx, family)
@@ -97,7 +98,7 @@ def allocate(
         return result
     before = ledger.family_position(family, today=today)
     remaining = room
-    for receivable, outstanding in credit.outstanding_in_order(family, today=today, prefer_student=prefer_student):
+    for receivable, outstanding in credit.outstanding_in_order(family, today=today, prefer_student=prefer_student, only=only_receivables):
         if remaining <= 0:
             break
         take = min(remaining, outstanding)

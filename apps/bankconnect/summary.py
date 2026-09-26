@@ -72,7 +72,8 @@ def build(school, *, period: str = "term", include_sandbox: bool = False, recent
     if period == "term" and term is None:
         period = "all"  # no term is open, so "this term" is not a thing: say so by showing everything
 
-    every = BankTransaction.objects.filter(school=school, direction=Direction.CREDIT)
+    # Only what the collection providers reported: a direct-debit payment is counted in Mandates & Direct Debit.
+    every = BankTransaction.objects.filter(school=school, direction=Direction.CREDIT, connection__isnull=False)
     credits = every if include_sandbox else every.filter(is_sandbox=False)
     naira = credits.filter(currency=DEFAULT_CURRENCY)
     counted = naira.exclude(reconciliation_status__in=NOT_COLLECTED)
