@@ -62,6 +62,14 @@ def find_original(row: BankTransaction) -> BankTransaction | None:
 
 
 def _verdict_for(row: BankTransaction, directory: matching.Directory):
+    from apps.receivables import payments as receivable_payments
+
+    family = receivable_payments.identify_family(row)
+    if family is not None:
+        # Paid into a family's own account: the account IS the identity. No narration guessing, and none of the
+        # duplicate heuristics either - two transfers to a family account are two payments the provider reported.
+        note = f"Paid into the collection account of {family.display_name} ({family.code}), so the family is known for certain."
+        return matching.Verdict(ReconStatus.MATCHED, 100, [], [note], family=family), None
     verdict = matching.decide(
         directory.candidates(
             narration=row.narration, reference=row.transaction_reference,
@@ -90,6 +98,8 @@ def _apply(row: BankTransaction, verdict, original) -> BankTransaction | None:
         fresh.match_reasons = verdict.reasons()
         fresh.engine_version = matching.ENGINE_VERSION
         fresh.duplicate_of = original
+        if verdict.family is not None:
+            fresh.family = verdict.family
         fresh.save()
         matched = verdict.status == ReconStatus.MATCHED
         decision = ReconciliationDecision.objects.create(
@@ -97,12 +107,28 @@ def _apply(row: BankTransaction, verdict, original) -> BankTransaction | None:
             before={"status": ReconStatus.UNMATCHED},
             after={"status": str(verdict.status), "confidence": verdict.confidence, "engine": matching.ENGINE_VERSION},
         )
-        if matched:
+        if matched and verdict.family is None:
             TransactionAllocation.objects.create(
                 school=fresh.school, transaction=fresh, student_id=verdict.top.student_id,
                 purpose=fresh.connection.purpose, amount_minor=fresh.amount_minor, source="auto", decision=decision,
             )
+        if matched:
+            _settle(fresh, verdict, decision)
     return fresh
+
+
+def _settle(fresh: BankTransaction, verdict, decision) -> None:
+    """Turn a match into money against the family's charges. Does nothing for a school with no families."""
+    from apps.receivables import payments as receivable_payments
+
+    outcomes = receivable_payments.settle(fresh, decision=decision)
+    if verdict.family is not None and not sum(o.result.allocated_minor for o in outcomes):
+        # It came in through a family account, but the family owed nothing: it is held as credit, and a person
+        # should look, because money arriving on a settled account may be an advance, a refund or a mistake.
+        note = "The family owed nothing when this arrived, so it is held as family credit. Check whether it is an advance payment, a refund or a mistake."
+        fresh.reconciliation_status = ReconStatus.REQUIRES_REVIEW
+        fresh.match_reasons = [*fresh.match_reasons, {"kind": "note", "text": note}]
+        fresh.save(update_fields=["reconciliation_status", "match_reasons", "updated_at"])
 
 
 @dataclass
@@ -158,12 +184,19 @@ def _notify(school, summaries: dict) -> None:
             total = sum(t.amount_minor for t in summary.matched)
             if len(summary.matched) == 1:
                 t = summary.matched[0]
-                student = t.allocations.select_related("student").first().student
                 title = "Payment received"
-                message = (
-                    f"{format_money(t.amount_minor, t.currency)} from {t.sender_name or 'an unnamed sender'} was matched to "
-                    f"{student.full_name} ({student.student_code}) for {t.connection.get_purpose_display().lower()}."
-                )
+                who = t.sender_name or "an unnamed sender"
+                students = {a.student for a in t.allocations.select_related("student")}
+                if t.family_id:
+                    message = f"{format_money(t.amount_minor, t.currency)} from {who} was paid into {t.family.display_name}'s account and put towards their fees."
+                elif len(students) == 1:
+                    student = next(iter(students))
+                    message = (
+                        f"{format_money(t.amount_minor, t.currency)} from {who} was matched to "
+                        f"{student.full_name} ({student.student_code}) for {t.connection.get_purpose_display().lower()}."
+                    )
+                else:
+                    message = f"{format_money(t.amount_minor, t.currency)} from {who} was matched to students."
             else:
                 title = f"{len(summary.matched)} payments received"
                 message = f"{len(summary.matched)} payments totalling {format_money(total)} were matched to students."

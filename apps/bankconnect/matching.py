@@ -134,13 +134,19 @@ class Verdict:
     confidence: int
     candidates: list
     notes: list
+    #: Set when the payment was made into a family's own collection account: the family is then known for
+    #: certain, and no guess about a student was needed.
+    family: object = None
 
     @property
     def top(self) -> Candidate | None:
         return self.candidates[0] if self.candidates else None
 
     def reasons(self) -> list:
-        return [c.as_dict() for c in self.candidates] + [{"kind": "note", "text": n} for n in self.notes]
+        found = []
+        if self.family is not None:
+            found.append({"kind": "family", "familyId": str(self.family.id), "familyCode": self.family.code, "familyName": self.family.display_name})
+        return found + [c.as_dict() for c in self.candidates] + [{"kind": "note", "text": n} for n in self.notes]
 
 
 class Directory:

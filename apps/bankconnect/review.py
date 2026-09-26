@@ -14,6 +14,9 @@ from rest_framework.exceptions import NotFound
 
 from apps.students.models import Student
 
+from apps.receivables import payments as receivable_payments
+from apps.receivables.errors import Refused as ReceivablesRefused
+
 from .connections import BankRejected
 from .constants import Direction, Purpose, ReconStatus
 from .models import BankTransaction, ReconciliationDecision, TransactionAllocation
@@ -145,6 +148,13 @@ def decide(
             raise BankRejected("This payment was reversed or refunded. Reopen it before changing it.", "final")
 
         before = snapshot(row)
+        # Whatever this payment had been put towards in the school's fee ledger comes back out first, so the
+        # person's decision starts from the truth. If credit from it has already been used elsewhere, those
+        # uses are undone; if that cannot be done, the decision is refused and nothing changes.
+        try:
+            receivable_payments.release(row, actor=membership, reason=note or action)
+        except ReceivablesRefused as refused:
+            raise BankRejected(refused.message, refused.code)
         plan = _plan_allocations(row, action, student_id, purpose, allocations) if action in ("assign", "split") else []
         if plan:
             covered = sum(p["amountMinor"] for p in plan)
@@ -177,4 +187,10 @@ def decide(
         row.reconciliation_confidence = after["confidence"]
         row.duplicate_of = new_original
         row.save()
+        if new_status in (ReconStatus.MATCHED, ReconStatus.PARTIALLY_MATCHED):
+            # The person chose the student(s): put the money towards their family's charges, their student first.
+            try:
+                receivable_payments.settle(row, decision=decision, actor=membership)
+            except ReceivablesRefused as refused:
+                raise BankRejected(refused.message, refused.code)
     return row

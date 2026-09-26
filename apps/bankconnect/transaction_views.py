@@ -22,10 +22,10 @@ MAX_PAGE = 100
 def _payments(membership):
     active = Prefetch(
         "allocations",
-        queryset=TransactionAllocation.objects.filter(superseded=False).select_related("student"),
+        queryset=TransactionAllocation.objects.filter(superseded=False).select_related("student", "receivable"),
         to_attr="active_allocations",
     )
-    return BankTransaction.objects.filter(school=membership.school).prefetch_related(active)
+    return BankTransaction.objects.filter(school=membership.school).select_related("family").prefetch_related(active)
 
 
 def _filtered(rows, params):

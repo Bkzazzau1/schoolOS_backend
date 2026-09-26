@@ -117,10 +117,12 @@ class DecidingTests(ConcessionTestCase):
         self.ok(self.decide("declined", id="CNC-2026-051", decisionNote="Not eligible"))
         self.assertEqual(self.stored_request("CNC-2026-051")["status"], "declined")
 
-    def test_nobody_but_the_owner_decides(self):
+    def test_nobody_but_the_owner_or_someone_given_billing_authority_decides(self):
+        # Asking for concessions (finance.concessions) and other finance duties do not carry the power to decide.
         self.give_duty(self.members["administrator"])
+        self.give_duty(self.members["principal"], duty="finance.approvals")
         for who in (self.finance, self.members["principal"], self.members["administrator"], self.members["teacher"]):
-            self.rejected(self.decide("approved", who=who), "Only the owner can decide")
+            self.rejected(self.decide("approved", who=who), "can decide a concession")
         self.assertEqual(self.stored_request()["status"], "pendingApproval")
 
     def test_a_decision_is_final(self):

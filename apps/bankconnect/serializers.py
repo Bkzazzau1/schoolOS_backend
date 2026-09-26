@@ -86,6 +86,8 @@ def serialize_transaction(t) -> dict:
         "confidence": t.reconciliation_confidence,
         "matchReasons": t.match_reasons,
         "duplicateOf": str(t.duplicate_of_id) if t.duplicate_of_id else None,
+        "familyId": str(t.family_id) if t.family_id else None,
+        "receivingAccountRef": t.receiving_account_ref,
         "allocations": [serialize_allocation(a) for a in _active_allocations(t)],
         "receivedAt": _iso(t.created_at),
     }
@@ -110,7 +112,7 @@ def _active_allocations(t):
     prefetched = getattr(t, "active_allocations", None)
     if prefetched is not None:
         return prefetched
-    return t.allocations.filter(superseded=False).select_related("student")
+    return t.allocations.filter(superseded=False).select_related("student", "receivable")
 
 
 def serialize_allocation(a) -> dict:
@@ -123,6 +125,9 @@ def serialize_allocation(a) -> dict:
         "amountMinor": a.amount_minor,
         "source": a.source,
         "superseded": a.superseded,
+        "familyId": str(a.family_id) if a.family_id else None,
+        "receivableId": str(a.receivable_id) if a.receivable_id else None,
+        "itemName": a.receivable.item_name if a.receivable_id else "",
     }
 
 
@@ -144,7 +149,11 @@ def serialize_decision(d) -> dict:
 def serialize_transaction_detail(t) -> dict:
     """The payment with every allocation it has ever had and every decision made about it."""
     body = serialize_transaction(t)
-    body["allocations"] = [serialize_allocation(a) for a in t.allocations.select_related("student")]
+    from apps.receivables import credit
+
+    body["allocations"] = [serialize_allocation(a) for a in t.allocations.select_related("student", "receivable")]
+    #: Money from this payment held as family credit because the family owed less than was paid.
+    body["familyCreditMinor"] = credit.total_credit_from(t)
     body["decisions"] = [serialize_decision(d) for d in t.decisions.select_related("actor__user")]
     return body
 
