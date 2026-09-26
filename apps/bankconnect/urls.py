@@ -14,6 +14,7 @@ from .transaction_views import (
     DecideView,
     ReviewQueueView,
     StudentSearchView,
+    SummaryView,
     TransactionDetailView,
     TransactionsView,
 )
@@ -30,6 +31,7 @@ urlpatterns = [
     path(f"{_BASE}transactions/<uuid:transaction_id>/", TransactionDetailView.as_view()),
     path(f"{_BASE}transactions/<uuid:transaction_id>/decide/", DecideView.as_view()),
     path(f"{_BASE}review/", ReviewQueueView.as_view()),
+    path(f"{_BASE}summary/", SummaryView.as_view()),
     path(f"{_BASE}students/", StudentSearchView.as_view()),
     path("bank-webhooks/<slug:provider>/<str:token>/", BankWebhookView.as_view()),
     *[

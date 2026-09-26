@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 
 from apps.students.models import EnrollmentStatus, Student, StudentEnrollment
 
-from . import review
+from . import review, summary
 from .constants import NEEDS_A_PERSON, Direction, ReconStatus
 from .http import bad_filter, bank_errors, body, is_uuid
 from .models import BankTransaction, TransactionAllocation
@@ -155,3 +155,15 @@ class StudentSearchView(APIView):
                 ]
             }
         )
+
+
+class SummaryView(APIView):
+    """How much has come in, by day, week and term, by purpose and bank, and how much is reconciled."""
+
+    def get(self, request, school_id):
+        membership = acting_membership(request, school_id)
+        period = request.query_params.get("period", "term")
+        if period not in summary.PERIODS:
+            return bad_filter("period")
+        include_sandbox = request.query_params.get("includeSandbox") == "true"
+        return Response({"summary": summary.build(membership.school, period=period, include_sandbox=include_sandbox)})

@@ -91,6 +91,21 @@ def serialize_transaction(t) -> dict:
     }
 
 
+def serialize_transaction_brief(t) -> dict:
+    """Enough for a dashboard's recent-payments list, without the matching detail."""
+    return {
+        "id": str(t.id),
+        "senderName": t.sender_name,
+        "amountMinor": t.amount_minor,
+        "currency": t.currency,
+        "transactionDate": _iso(t.transaction_date),
+        "bankName": t.bank_name,
+        "maskedAccountNumber": t.masked_account_number,
+        "reconciliationStatus": t.reconciliation_status,
+        "isSandbox": t.is_sandbox,
+    }
+
+
 def _active_allocations(t):
     prefetched = getattr(t, "active_allocations", None)
     if prefetched is not None:
