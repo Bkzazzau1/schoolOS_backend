@@ -86,7 +86,7 @@ FINANCE = workspace(
         ("collections", "Smart Money Collection", "sensitive"),
         ("reminders", "Fee Reminders"),
         ("store", "School Store"),
-        ("mandates", "Payment Mandates"),
+        ("mandates", "Mandates & Direct Debit", "sensitive"),
         ("debt-aging", "Outstanding & Aging"),
         ("receipts", "Receipts"),
         ("accounts", "Student Accounts", "sensitive"),

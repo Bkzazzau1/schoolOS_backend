@@ -10,6 +10,7 @@ OWNER = workspace(
         ("finance", "Owner Finance", "sensitive"),
         ("finance-approvals", "Concession Approvals", "sensitive"),
         ("collections", "Smart Money Collection", "sensitive"),
+        ("mandates", "Mandates & Direct Debit", "sensitive"),
         ("enrollment", "Enrollment & Admissions"),
         ("alumni", "Alumni Management", "sensitive"),
         ("staff", "Staff & HR"),
