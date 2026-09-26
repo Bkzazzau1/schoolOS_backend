@@ -37,7 +37,8 @@ def identify_family(tx: BankTransaction) -> Family | None:
     if tx.family_id:
         return tx.family
     account = collection_accounts.find_by_receiving_reference(tx.school, tx.provider, tx.receiving_account_ref)
-    return account.family if account is not None else None
+    # An account left on a family that was merged into another still receives money: it is the merged family's.
+    return families.surviving(account.family) if account is not None else None
 
 
 def settle(tx: BankTransaction, *, decision=None, actor=None) -> list[Outcome]:

@@ -29,6 +29,8 @@ urlpatterns = [
     path(f"{_BASE}families/<uuid:family_id>/credit/refund/", fam.FamilyRefundView.as_view()),
     path(f"{_BASE}families/<uuid:family_id>/payments/", fam.FamilyPaymentsView.as_view()),
     path(f"{_BASE}families/<uuid:family_id>/collection-accounts/", fam.FamilyAccountsView.as_view()),
+    path(f"{_BASE}families/<uuid:family_id>/merge-preview/", fam.FamilyMergePreviewView.as_view()),
+    path(f"{_BASE}families/<uuid:family_id>/merge/", fam.FamilyMergeView.as_view()),
     path(f"{_BASE}families/<uuid:family_id>/collection-accounts/issue/", fam.FamilyAccountIssueView.as_view()),
     path(f"{_BASE}collection-accounts/providers/", fam.AccountProvidersView.as_view()),
     path(f"{_BASE}collection-accounts/issue-missing/", fam.IssueMissingAccountsView.as_view()),

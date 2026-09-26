@@ -19,7 +19,7 @@ class ReadOnlyAdmin(admin.ModelAdmin):
 
 @admin.register(Family)
 class FamilyAdmin(ReadOnlyAdmin):
-    list_display = ("code", "display_name", "school", "status", "created_at")
+    list_display = ("code", "display_name", "school", "status", "merged_into", "created_at")
     list_filter = ("status", "school")
     search_fields = ("code", "display_name")
 

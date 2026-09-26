@@ -42,6 +42,15 @@ def family_of(student: Student) -> Family | None:
     return membership.family if membership else None
 
 
+def surviving(family: Family) -> Family:
+    """The family that stands for this one: itself, or the family it was merged into (see `merging.py`)."""
+    seen = 0
+    while family.merged_into_id is not None and seen < 20:  # chains are flattened when made; the bound is only a guard
+        family = family.merged_into
+        seen += 1
+    return family
+
+
 def active_students(family: Family):
     return Student.objects.filter(family_memberships__family=family, family_memberships__is_active=True)
 

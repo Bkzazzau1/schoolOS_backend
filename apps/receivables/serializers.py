@@ -45,7 +45,10 @@ def account(a) -> dict:
 
 
 def family(f, *, detail: bool = False, accounts: bool = False) -> dict:
-    body = {"id": str(f.id), "code": f.code, "displayName": f.display_name, "status": f.status, "createdAt": _time(f.created_at)}
+    body = {
+        "id": str(f.id), "code": f.code, "displayName": f.display_name, "status": f.status, "createdAt": _time(f.created_at),
+        "mergedInto": str(f.merged_into_id) if f.merged_into_id else None, "mergedAt": _time(f.merged_at),
+    }
     if accounts:
         body["students"] = [student_brief(s) for s in families.active_students(f)]
         body["collectionAccounts"] = [account(a) for a in f.collection_accounts.exclude(status="closed")]

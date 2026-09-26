@@ -16,6 +16,7 @@ receiving identifier, nothing more.
 """
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from . import audit, issuers, ledger
@@ -48,7 +49,8 @@ def sync_state(family: Family, position=None, *, actor=None) -> list[tuple]:
     """Make the family's accounts agree with what it owes. Returns `[(account, before, after)]` for those that changed."""
     position = position or ledger.family_position(family)
     changes = []
-    for account in FamilyCollectionAccount.objects.select_for_update().filter(family=family):
+    # Includes an account left on a family that was merged into this one: it still receives this family's money.
+    for account in FamilyCollectionAccount.objects.select_for_update().filter(Q(family=family) | Q(family__merged_into=family)):
         if position.outstanding > 0 and account.status == AccountStatus.DORMANT:
             changes.append(_set(account, AccountStatus.ACTIVE, actor, "The family owes money again"))
         elif position.outstanding == 0 and account.status == AccountStatus.ACTIVE:

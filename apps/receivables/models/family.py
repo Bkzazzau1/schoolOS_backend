@@ -33,6 +33,10 @@ class Family(models.Model):
     #: Where this family came from when it was made by the bridge from older records (empty when a
     #: person made it). Lets the bridge be run again without making a second family for the same reference.
     origin = models.CharField(max_length=200, blank=True)
+    #: Set when two households were found to be one and this one was folded into the other (`merging.py`). A merged
+    #: family is INACTIVE and keeps its code and history; everything it owed, paid and held now belongs to `merged_into`.
+    merged_into = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="merged_families")
+    merged_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -42,6 +46,7 @@ class Family(models.Model):
         verbose_name_plural = "families"
         constraints = [
             models.UniqueConstraint(fields=["school", "code"], name="unique_family_code_per_school"),
+            models.CheckConstraint(condition=~Q(merged_into=models.F("id")), name="family_not_merged_into_itself"),
             models.UniqueConstraint(
                 fields=["school", "origin"], condition=~Q(origin=""), name="unique_family_origin_per_school"
             ),

@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from apps.bankconnect.models import BankTransaction, TransactionAllocation
 from apps.students.models import GuardianLink, Student
 
-from . import bridge, collection_accounts, credit, families, issuers, ledger, serializers, statements
+from . import bridge, collection_accounts, credit, families, issuers, ledger, merging, serializers, statements
 from .errors import Refused
 from .http import ReceivablesView, body, found, paging, uuid_arg
 from .models import Family, FamilyCollectionAccount, FamilyStatement, StudentReceivable
@@ -227,6 +227,27 @@ class FamilyAccountsView(ReceivablesView):
             provisioned=data.get("provisioned", True) is not False,
         )
         return Response({"account": serializers.account(account)}, status=201)
+
+
+class FamilyMergePreviewView(ReceivablesView):
+    """GET what merging this family into another (?into=<family>) would do, without doing it."""
+
+    def get(self, request, school_id, family_id):
+        membership = acting_membership(request, school_id)
+        source = _family(membership, family_id)
+        into = _family(membership, uuid_arg(request.query_params.get("into"), "family"))
+        return Response({"preview": merging.preview(source, into, actor=membership)})
+
+
+class FamilyMergeView(ReceivablesView):
+    """POST to fold this family into another: {intoFamilyId, reason}. Billing authority only; not reversible."""
+
+    def post(self, request, school_id, family_id):
+        membership = acting_membership(request, school_id, manage=True)
+        data = body(request)
+        source = _family(membership, family_id)
+        into = _family(membership, uuid_arg(data.get("intoFamilyId"), "family"))
+        return Response({"merge": merging.merge(source, into, actor=membership, reason=data.get("reason"))})
 
 
 class FamilyAccountIssueView(ReceivablesView):

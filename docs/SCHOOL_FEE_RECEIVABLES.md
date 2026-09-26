@@ -88,12 +88,31 @@ family account" is the default. They are **not identifiers.** So the migration a
 
 - groups students **only where they share exactly the same explicit reference** and none names a different one;
 - never joins by name, phone, case-folding or similarity; never moves a student already placed; never reopens a family a
-  person closed; never merges two families;
+  person closed; never merges two families (a person can, see *Merging two families*);
 - reports conflicts, students with no usable reference, and sibling hints for a person to look at;
 - with `--singletons`, gives each remaining student a family of their own (never merged), which a person can join later;
 - is safe to run again: it finds the family it made by its `origin` and extends it.
 
 The old fields stay for compatibility. New finance work uses the canonical Family.
+
+### Merging two families
+
+Two households sometimes turn out to be one (siblings entered under different surnames, a guardian who registered twice).
+`merging.merge(source, into, reason)` folds the source into the survivor so the school has one ledger and one place to pay:
+
+- **Moves**: the students; the payers (a guardian both had is listed once, and there is still exactly one primary); every
+  charge with its adjustments, payments and allocations; the credit ledger (so credit the source held pays what the merged
+  household owes, straight away); the payments recorded for it; and its statements (numbers kept).
+- **Accounts**: a payment account moves unless the survivor already has a live account with the same bank (a family holds one
+  per bank). That account stays on the old family, which now points at the survivor, and money paid into it is credited to the
+  survivor - **no number a family was given ever stops working**. The account follows what the merged household owes.
+- The old family is kept, `INACTIVE`, with its code and `merged_into`; it is never deleted. Merges stay one level deep
+  (merging A into B and then B into C makes A point at C). It is **not reversible**: undoing it would mean re-deciding which
+  moved payments belonged to whom.
+- One transaction; both families locked in a fixed order; the result is checked against the ledger's invariants before it is kept.
+- **Billing authority only** (the owner or a delegate), with a reason, audited. The finance office may preview
+  (`GET families/<id>/merge-preview/?into=<id>`: who and what moves, which accounts move or stay, anything that would refuse it).
+  `POST families/<id>/merge/ {intoFamilyId, reason}` does it.
 
 ## Fee schedules
 
@@ -254,7 +273,7 @@ behaves exactly as it always did.
 Under `/api/v1/schools/<school>/receivables/` (all school-scoped; another school's object looks like it does not exist;
 a refusal is a 400 with a stable `code` and words a person can act on):
 
-- **Families** (operator): `families/` (GET search, POST create), `families/<id>/`, `.../rename|add-student|remove-student|link-guardian|set-status/`, `.../receivables/`, `.../statement/` (GET, derived), `.../statements/` (GET, POST issue), `.../credit/`, `.../credit/refund/`, `.../payments/`, `.../collection-accounts/` (GET, POST register), `.../collection-accounts/issue/` (POST), `collection-accounts/providers/` (GET), `collection-accounts/issue-missing/` (POST), `statements/<id>/void/` (POST), `families/unassigned-students/`, `families/bridge/` (GET report, POST apply); `collection-accounts/<id>/suspend|reinstate|close|mark-provisioned/`.
+- **Families** (operator): `families/` (GET search, POST create), `families/<id>/`, `.../rename|add-student|remove-student|link-guardian|set-status/`, `.../receivables/`, `.../statement/` (GET, derived), `.../statements/` (GET, POST issue), `.../credit/`, `.../credit/refund/`, `.../payments/`, `.../collection-accounts/` (GET, POST register), `.../collection-accounts/issue/` (POST), `.../merge-preview/` (GET), `.../merge/` (POST, billing authority), `collection-accounts/providers/` (GET), `collection-accounts/issue-missing/` (POST), `statements/<id>/void/` (POST), `families/unassigned-students/`, `families/bridge/` (GET report, POST apply); `collection-accounts/<id>/suspend|reinstate|close|mark-provisioned/`.
 - **Fee schedules** (read: operator; change: billing authority): `fee-schedules/` (filter `?status=&session=&term=`; a POST with no `sessionId` is for the current period), `.../<id>/`, `.../preview/`, `.../rename|publish|refresh|retire|clone|void-charges/`, `.../items/`, `.../items/<item>/update|remove/`.
 - **Calendar and reports** (operator): `calendar/`, `reports/terms/`, `reports/position/` (see Sessions and terms).
 - **Charges and decisions**: `charges/` (filters incl. `?session=&term=`, and paging), `charges/<id>/`, `charges/<id>/adjust|void/` (billing authority), `adjustments/` (history), `adjustments/<id>/reverse/` (billing authority).
@@ -286,10 +305,12 @@ parent accounts hear of new fees, a payment received and fees settled. Test data
 
 ## Verification
 
-`manage.py test apps.receivables` (354 tests) covers: authority (every role, revoked/pending duties, other schools);
+`manage.py test apps.receivables` (424 tests) covers: authority (every role, revoked/pending duties, other schools);
 families and the bridge; fee schedules (every rejection, freezing, applicability, instalments, idempotent publishing);
 the academic calendar (current period defaults, closed periods never billed, students who joined after a term, due-date
 windows, reports and arrears by term, dashboards, statements by period; the clock is fixed in these tests);
+family payment accounts (shapes per bank, several banks per family, what a parent is shown, provider issuers, statement voiding); merging
+families (everything moves, the ledger adds up, old account numbers keep working, chains, authority);
 adjustments, reversals, voids and credit release; credit; allocation policy, reversals and corrections; collection account
 lifecycle; bank integration, including the real public webhook route into a family account (a repeated or forged
 delivery pays nothing twice); concession integration; statements; notifications; every API endpoint against a second
@@ -306,7 +327,8 @@ checked after each step**. Run once at larger scale (60 seeds x 40 steps) with n
   the account the bank gave a family by hand.
 - Currency is NGN only.
 - A student removed from a family leaves the charges already raised with the family that was billed; a family set inactive
-  raises no new charges but its existing ones stand. Merging two families is not built.
+  raises no new charges but its existing ones stand. Two families can be merged (see above); a merge is not reversible, and the
+  bridge never merges anything on its own.
 - A statement issued in error is voided (`POST statements/<id>/void/`, with a reason): it stays on record with who and why,
   its number is never reused, and what the family owes is untouched.
 - Migrations: `receivables` and `bankconnect` reference each other, so the order is `receivables 0002`, `bankconnect 0003`,
