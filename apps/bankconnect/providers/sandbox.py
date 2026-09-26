@@ -16,6 +16,8 @@ from django.utils.dateparse import parse_datetime
 
 from ..constants import ConnectionType
 from .base import (
+    METHOD_AUTHORIZATION,
+    METHOD_CREDENTIALS,
     STATUS_SANDBOX,
     AccountIdentity,
     AuthorizationStart,
@@ -81,6 +83,7 @@ class SandboxConnector(BankConnector):
             CredentialField("sandbox_key", "Sandbox key"),
             CredentialField("account_number", "Account number (10 digits)", secret=False),
         ),
+        connect_methods=(METHOD_CREDENTIALS, METHOD_AUTHORIZATION),
         production_status=STATUS_SANDBOX,
         description="Synthetic transactions for testing. Never counted as the school's money.",
     )

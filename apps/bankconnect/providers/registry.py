@@ -13,6 +13,7 @@ from django.conf import settings
 
 from ..constants import ConnectionType
 from .base import (
+    METHOD_AUTHORIZATION,
     STATUS_PENDING_DOCS,
     Capabilities,
     BankConnector,
@@ -38,7 +39,7 @@ class PendingConnector(BankConnector):
         return self.connect()
 
 
-def _pending(code: str, name: str, kind: str, icon: str, description: str) -> PendingConnector:
+def _pending(code: str, name: str, kind: str, icon: str, description: str, **more) -> PendingConnector:
     return PendingConnector(
         ProviderInfo(
             code=code,
@@ -48,6 +49,7 @@ def _pending(code: str, name: str, kind: str, icon: str, description: str) -> Pe
             capabilities=Capabilities(),
             production_status=STATUS_PENDING_DOCS,
             description=description,
+            **more,
         )
     )
 
@@ -67,6 +69,7 @@ _pending_connectors = [
         ConnectionType.OPEN_BANKING,
         "link",
         "Authorise SchoolOS through an approved open-banking provider. No internet-banking password is held.",
+        connect_methods=(METHOD_AUTHORIZATION,),
     ),
     _pending(
         "monnify",

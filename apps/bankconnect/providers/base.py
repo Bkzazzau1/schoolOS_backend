@@ -81,7 +81,9 @@ class ProviderInfo:
     connection_type: str
     capabilities: Capabilities
     credential_fields: tuple[CredentialField, ...] = ()
-    connect_method: str = METHOD_CREDENTIALS
+    #: The ways a person can connect it: credentials the bank issued, or approving access on the
+    #: bank's own page. A provider that authorises never asks for a password.
+    connect_methods: tuple[str, ...] = (METHOD_CREDENTIALS,)
     production_status: str = STATUS_PENDING_DOCS
     description: str = ""
 
