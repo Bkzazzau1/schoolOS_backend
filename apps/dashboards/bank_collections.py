@@ -10,3 +10,8 @@ from apps.bankconnect import summary as bank_summary
 
 def summary(school) -> dict:
     return bank_summary.build(school, recent=5)
+
+
+def outstanding_balances_missing(money: dict) -> list[str]:
+    """"Outstanding balances" is a figure the school's fee ledger gives once it has charges; before then it is not available."""
+    return [] if money.get("outstandingFeesAvailable") else ["outstanding balances"]

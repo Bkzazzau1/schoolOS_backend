@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 
@@ -7,7 +7,7 @@ from apps.schools.models import Membership, Role
 from apps.students.models import GuardianLink
 
 from .. import adjustments, allocation, collection_accounts, notifications, schedules
-from .base import ReceivablesTestCase
+from .base import ReceivablesTestCase, CLOCK
 
 N = 100
 User = get_user_model()
@@ -59,7 +59,7 @@ class PublishingTests(NotificationCase):
         orphan = self.make_student("Ola", "Alone")
         self.enroll(orphan, self.term.session.school.academic_classes.first(), self.session)
         schedule = schedules.create_schedule(self.school, session=self.session, name="Everyone", actor=self.owner)
-        schedules.add_item(schedule, actor=self.owner, code="ALL", name="Levy", amount_minor=1000 * N, due_date=date.today() + timedelta(days=9))
+        schedules.add_item(schedule, actor=self.owner, code="ALL", name="Levy", amount_minor=1000 * N, due_date=CLOCK + timedelta(days=9))
         schedules.publish(schedule, actor=self.owner)
         (note,) = self.told("fees_published", self.finance)
         self.assertIn("1 student(s) have no family yet and were not charged", note.message)
@@ -132,7 +132,7 @@ class AccountTests(NotificationCase):
         allocation.allocate(self.payment(300_000 * N), self.family)
         Notification.objects.all().delete()
         s = schedules.create_schedule(self.school, session=self.session, name="Next", actor=self.owner)
-        schedules.add_item(s, actor=self.owner, code="N", name="Next", amount_minor=10_000 * N, due_date=date.today() + timedelta(days=30), scope="student", student=self.ahmad)
+        schedules.add_item(s, actor=self.owner, code="N", name="Next", amount_minor=10_000 * N, due_date=CLOCK + timedelta(days=30), scope="student", student=self.ahmad)
         schedules.publish(s, actor=self.owner)
         for who in (self.owner, self.finance, self.delegate):
             self.assertEqual(len(self.told("collection_account_active", who)), 1, who.role)

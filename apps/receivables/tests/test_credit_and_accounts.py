@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -6,7 +6,7 @@ from django.db import IntegrityError, transaction
 from .. import adjustments, allocation, collection_accounts, credit, ledger, schedules
 from ..errors import Refused
 from ..models import AccountStatus, CreditKind, FamilyCollectionAccount, FamilyCreditEntry, FinanceAuditEvent
-from .base import ReceivablesTestCase
+from .base import ReceivablesTestCase, CLOCK
 
 N = 100
 
@@ -24,7 +24,7 @@ class CreditTestCase(ReceivablesTestCase):
 
     def new_fees(self, amount, days=45, code="NEXT"):
         s = schedules.create_schedule(self.school, session=self.session, name=f"More {code}", actor=self.owner)
-        schedules.add_item(s, actor=self.owner, code=code, name=code, amount_minor=amount, due_date=date.today() + timedelta(days=days), scope="student", student=self.ahmad)
+        schedules.add_item(s, actor=self.owner, code=code, name=code, amount_minor=amount, due_date=CLOCK + timedelta(days=days), scope="student", student=self.ahmad)
         schedules.publish(s, actor=self.owner)
         return s
 

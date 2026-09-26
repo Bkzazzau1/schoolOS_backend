@@ -1,11 +1,11 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.db import IntegrityError, transaction
 
 from .. import adjustments, allocation, collection_accounts, families, ledger, schedules, statements
 from ..errors import Refused
 from ..models import FamilyStatement, FinanceAuditEvent
-from .base import ReceivablesTestCase
+from .base import ReceivablesTestCase, CLOCK
 
 N = 100
 
@@ -42,7 +42,7 @@ class BuildTests(StatementTestCase):
         self.assertEqual(ledger.family_position(self.family).outstanding, 0)
 
     def test_the_period_narrows_the_lines_but_the_overall_position_is_always_given(self):
-        due = date.today() + timedelta(days=100)
+        due = CLOCK + timedelta(days=100)
         second = schedules.create_schedule(self.school, session=self.session, name="Elsewhere", actor=self.owner)
         schedules.add_item(second, actor=self.owner, code="X", name="Extra", amount_minor=5_000 * N, due_date=due, scope="student", student=self.ahmad)
         schedules.publish(second, actor=self.owner)
@@ -73,9 +73,9 @@ class BuildTests(StatementTestCase):
         self.assertEqual(statements.build(self.family)["collectionAccounts"], [])
 
     def test_overdue_is_what_is_owed_past_its_due_date(self):
-        s = statements.build(self.family, today=date.today() + timedelta(days=60))
+        s = statements.build(self.family, today=CLOCK + timedelta(days=60))
         self.assertEqual(s["position"]["overdueMinor"], 270_000 * N)
-        self.assertEqual(statements.build(self.family, today=date.today())["position"]["overdueMinor"], 0)
+        self.assertEqual(statements.build(self.family, today=CLOCK)["position"]["overdueMinor"], 0)
 
 
 class IssuingTests(StatementTestCase):

@@ -5,8 +5,8 @@ left out is said, so a demo can never look like the school's income. Money that 
 refunded, and a payment held as a possible duplicate until a person confirms it, is not counted as
 collected. Amounts are whole kobo, and only naira is totalled (anything else is counted separately).
 
-The expected fee amount is not known to the server yet (there is no fee ledger), so this says how
-much came in and how much of it is reconciled - never how much is still owed.
+How much is still owed comes from the school's fee ledger (apps/receivables), by session and term, and only
+once the school has raised charges; until then it says so instead of showing zero.
 """
 
 from datetime import timedelta
@@ -91,6 +91,9 @@ def build(school, *, period: str = "term", include_sandbox: bool = False, recent
     )
     by_purpose = window.order_by().values("connection__purpose").annotate(amount=Sum("amount_minor"), count=Count("id")).order_by("-amount")
 
+    from apps.receivables import reports  # imported here: receivables reads bank payments too
+
+    owed = reports.school_position(school, today=today)
     return {
         "generatedAt": now.isoformat(),
         "currency": DEFAULT_CURRENCY,
@@ -126,6 +129,7 @@ def build(school, *, period: str = "term", include_sandbox: bool = False, recent
         "sandboxIncluded": include_sandbox,
         "sandboxHidden": 0 if include_sandbox else every.filter(is_sandbox=True).count(),
         "otherCurrencyTransactions": credits.exclude(currency=DEFAULT_CURRENCY).count(),
-        # There is no server-side fee ledger yet, so what is still owed cannot be worked out.
-        "outstandingFeesAvailable": False,
+        # What the school is still owed, by session and term, from its fee ledger. Not available until charges exist.
+        "outstandingFeesAvailable": owed["available"],
+        "receivables": owed,
     }

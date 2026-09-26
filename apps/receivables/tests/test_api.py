@@ -1,5 +1,5 @@
 import json
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 
@@ -8,7 +8,7 @@ from apps.students.models import GuardianLink
 
 from .. import adjustments, allocation, collection_accounts, families
 from ..models import FamilyCollectionAccount, ReceivableAdjustment, StudentReceivable
-from .base import ReceivablesTestCase
+from .base import ReceivablesTestCase, CLOCK
 
 N = 100
 User = get_user_model()
@@ -154,7 +154,7 @@ class FeeScheduleApiTests(ApiTestCase):
         created = self.post("fee-schedules/", {"sessionId": str(self.session.id), "termId": str(self.term.id), "name": "First Term"}, who=self.authority)
         self.assertEqual(created.status_code, 201, created.json())
         sid = created.json()["schedule"]["id"]
-        due = (date.today() + timedelta(days=10)).isoformat()
+        due = (CLOCK + timedelta(days=10)).isoformat()
         item = self.post(f"fee-schedules/{sid}/items/", {"code": "TUI", "name": "Tuition", "category": "tuition", "amountMinor": 12_000_000, "dueDate": due, "scope": "student", "studentId": str(self.ahmad.id)}, who=self.authority)
         self.assertEqual(item.status_code, 201, item.json())
         iid = item.json()["item"]["id"]

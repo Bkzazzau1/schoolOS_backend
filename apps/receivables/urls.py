@@ -3,6 +3,7 @@ from django.urls import path
 from . import views_families as fam
 from . import views_fees as fees
 from . import views_parent as parent
+from . import views_reports as reports_views
 
 _BASE = "schools/<uuid:school_id>/receivables/"
 
@@ -54,6 +55,10 @@ urlpatterns = [
     ],
     path(f"{_BASE}adjustments/", fees.AdjustmentsView.as_view()),
     path(f"{_BASE}adjustments/<uuid:adjustment_id>/reverse/", fees.AdjustmentReverseView.as_view()),
+    # the calendar, and what is owed by session and term
+    path(f"{_BASE}calendar/", reports_views.CalendarView.as_view()),
+    path(f"{_BASE}reports/terms/", reports_views.TermReportView.as_view()),
+    path(f"{_BASE}reports/position/", reports_views.PositionView.as_view()),
     # payments
     path(f"{_BASE}payments/<uuid:transaction_id>/reallocate/", fees.ReallocateView.as_view()),
     # a parent's own view

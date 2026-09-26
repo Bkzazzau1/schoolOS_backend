@@ -15,7 +15,7 @@ from datetime import date
 
 from django.db import IntegrityError, transaction
 
-from . import audit, ledger, policy
+from . import audit, ledger, periods, policy
 from .errors import Refused
 from .models import CREDIT_OUT, CreditKind, Family, FamilyCreditEntry
 
@@ -62,7 +62,7 @@ def add(
 
 def outstanding_in_order(family: Family, *, today: date | None = None, prefer_student=None) -> list:
     """`[(receivable, outstanding)]` for the family's charges that still owe something, in payment order."""
-    today = today or date.today()
+    today = today or periods.school_today()
     receivables = list(ledger.live_receivables(family))
     figures = ledger.positions(receivables)
     owing = [r for r in receivables if figures[r.id].outstanding > 0]

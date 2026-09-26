@@ -7,14 +7,14 @@ held as credit) or not counted at all, never partly, never more than it was.
 """
 
 import random
-from datetime import date, timedelta
+from datetime import timedelta
 
 from apps.bankconnect.models import BankTransaction, TransactionAllocation
 
 from .. import adjustments, allocation, credit, ledger, schedules
 from ..errors import Refused
 from ..models import CreditKind, FamilyCreditEntry, ReceivableAdjustment, StudentReceivable
-from .base import ReceivablesTestCase
+from .base import ReceivablesTestCase, CLOCK
 
 N = 100
 SEEDS = (1, 7, 42, 2026, 31337)
@@ -86,7 +86,7 @@ class RandomLedgerTests(ReceivablesTestCase):
         self.fee_number += 1
         s = schedules.create_schedule(self.school, session=self.session, name=f"More {self.fee_number}", actor=self.owner)
         schedules.add_item(s, actor=self.owner, code=f"X{self.fee_number}", name="Extra", amount_minor=rng.randint(1, 90) * 1000 * N,
-                           due_date=date.today() + timedelta(days=rng.randint(-20, 90)), scope="student", student=rng.choice(self.students))
+                           due_date=CLOCK + timedelta(days=rng.randint(-20, 90)), scope="student", student=rng.choice(self.students))
         schedules.publish(s, actor=self.owner)
 
     # -- the checks ---------------------------------------------------------------------------

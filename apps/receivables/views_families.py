@@ -113,7 +113,7 @@ class FamilyReceivablesView(ReceivablesView):
     def get(self, request, school_id, family_id):
         membership = acting_membership(request, school_id)
         family = _family(membership, family_id)
-        rows = list(StudentReceivable.objects.filter(family=family).select_related("student").order_by("due_date", "created_at", "id"))
+        rows = list(StudentReceivable.objects.filter(family=family).select_related("student", "session", "term").order_by("due_date", "created_at", "id"))
         figures = ledger.positions(rows)
         return Response({"receivables": [serializers.receivable(r, figures[r.id]) for r in rows], "position": serializers.position(ledger.family_position(family))})
 

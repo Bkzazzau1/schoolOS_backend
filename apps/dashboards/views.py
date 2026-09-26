@@ -40,7 +40,7 @@ class OwnerDashboardView(APIView):
             "concessions": concessions.summary(school),
             "structure": structure.summary(school),
             "collections": money,
-            "notAvailableYet": NOT_AVAILABLE if money["available"] else [*NOT_AVAILABLE, FEE_COLLECTION],
+            "notAvailableYet": [*NOT_AVAILABLE, *([] if money["available"] else [FEE_COLLECTION])],
         })
 
 
@@ -56,5 +56,5 @@ class FinanceDashboardView(APIView):
             "monthlyPayroll": staff.summary(school)["monthlyPayroll"],
             "concessions": concessions.summary(school),
             "collections": money,
-            "notAvailableYet": [*([] if money["available"] else [FEE_COLLECTION]), "outstanding balances", "family accounts"],
+            "notAvailableYet": [*([] if money["available"] else [FEE_COLLECTION]), *bank_collections.outstanding_balances_missing(money), "family accounts"],
         })

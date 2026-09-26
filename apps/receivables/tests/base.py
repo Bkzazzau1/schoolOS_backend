@@ -1,5 +1,6 @@
 import itertools
-from datetime import date
+from datetime import date, datetime, time, timedelta
+from unittest import mock
 
 from django.utils import timezone
 
@@ -12,14 +13,32 @@ from apps.bankconnect import ingestion
 from apps.bankconnect.models import BankConnection
 from apps.bankconnect.providers.base import NormalizedTransaction
 
-from .. import families, ledger, schedules
+from .. import families, ledger, periods, schedules
 from ..constants import BILLING_AUTHORITY_DUTY
 
 _numbers = itertools.count(1)
 
+#: The day these tests are set on: inside `make_year`'s First Term, before its fees fall due. Fixed so that what
+#: is overdue, in arrears or current never depends on the day the suite happens to be run.
+CLOCK = date(2026, 9, 26)
+
 
 class ReceivablesTestCase(StaffTestCase):
     """A school with one person in every role, and a second, separate school."""
+
+    def setUp(self):
+        super().setUp()
+        self.today = CLOCK
+        #: When students in these tests were enrolled: before the year began, whatever day the suite is run.
+        self.started = timezone.make_aware(datetime.combine(date(2026, 8, 27), time(9, 0)))
+        clock = mock.patch.object(periods, "school_today", return_value=CLOCK)
+        clock.start()
+        self.addCleanup(clock.stop)
+
+    def set_today(self, day: date):
+        """Move the fee system's clock (for the whole test)."""
+        periods.school_today.return_value = day
+        self.today = day
 
     def give_duty(self, member, duty=BILLING_AUTHORITY_DUTY, status="active", school=None):
         SyncRecord.objects.update_or_create(
@@ -70,7 +89,7 @@ class ReceivablesTestCase(StaffTestCase):
     def enroll(self, student, academic_class, session, *, billable=True):
         enrollment = StudentEnrollment.objects.create(
             school=student.school, student=student, academic_section=academic_class.section, class_name=academic_class.name,
-            status="active", is_billable=billable, started_at=timezone.now(),
+            status="active", is_billable=billable, started_at=self.started,
         )
         # The academics app may already have placed them (it does when the class name matches); this makes it exact.
         EnrollmentAcademicContext.objects.update_or_create(
@@ -122,9 +141,7 @@ class ReceivablesTestCase(StaffTestCase):
 
     def publish_bello_fees(self, due=None):
         """Ahmad owes 120,000, Aisha 100,000, Maryam 80,000 (in kobo), all due on `due` (default: a month from now)."""
-        from datetime import date, timedelta
-
-        due = due or (date.today() + timedelta(days=20))
+        due = due or (self.today + timedelta(days=20))
         schedule = schedules.create_schedule(self.school, session=self.session, term=self.term, name="First Term", actor=self.owner)
         for code, student, amount in (("TUI-AHMAD", self.ahmad, 12_000_000), ("TUI-AISHA", self.aisha, 10_000_000), ("TUI-MARYAM", self.maryam, 8_000_000)):
             schedules.add_item(schedule, actor=self.owner, code=code, name="Tuition", category="tuition", amount_minor=amount, due_date=due, scope="student", student=student)

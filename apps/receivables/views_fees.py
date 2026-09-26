@@ -8,7 +8,7 @@ from apps.academics.models import AcademicClass, AcademicSession, AcademicTerm
 from apps.bankconnect.models import BankTransaction
 from apps.students.models import Student
 
-from . import adjustments, allocation, ledger, schedules, serializers
+from . import adjustments, allocation, ledger, periods, schedules, serializers
 from .errors import Refused
 from .http import ReceivablesView, body, found, paging, uuid_arg
 from .models import FeeItem, FeeSchedule, ReceivableAdjustment, StudentReceivable
@@ -40,11 +40,19 @@ class FeeSchedulesView(ReceivablesView):
         rows = FeeSchedule.objects.filter(school=membership.school)
         if request.query_params.get("status"):
             rows = rows.filter(status=request.query_params["status"])
+        for name, field in (("session", "session_id"), ("term", "term_id")):
+            if request.query_params.get(name):
+                rows = rows.filter(**{field: uuid_arg(request.query_params[name], name)})
         return Response({"schedules": [serializers.schedule(s) for s in rows[:200]]})
 
     def post(self, request, school_id):
         membership = acting_membership(request, school_id, manage=True)
         data = body(request)
+        if not data.get("sessionId"):
+            # No session named: it is for the school's current period - its active session and that session's active
+            # term (or, with `wholeSession`, the whole session).
+            schedule = schedules.create_for_current_period(membership.school, name=data.get("name"), actor=membership, whole_session=bool(data.get("wholeSession")))
+            return Response({"schedule": serializers.schedule(schedule, items=True)}, status=201)
         session = found(AcademicSession.objects.filter(school=membership.school, id=uuid_arg(data.get("sessionId"), "session")), "session")
         term = found(AcademicTerm.objects.filter(session=session, id=uuid_arg(data.get("termId"), "term")), "term") if data.get("termId") else None
         schedule = schedules.create_schedule(membership.school, session=session, term=term, name=data.get("name"), actor=membership)
@@ -62,13 +70,16 @@ class FeeSchedulePreviewView(ReceivablesView):
 
     def get(self, request, school_id, schedule_id):
         membership = acting_membership(request, school_id)
-        result = schedules.preview(_schedule(membership, schedule_id))
+        schedule = _schedule(membership, schedule_id)
+        result = schedules.preview(schedule)
         return Response({
             "preview": {
                 "items": result["items"], "totalMinor": result["totalMinor"],
                 "withoutFamily": [serializers.student_brief(s) for s in result["withoutFamily"]],
                 "unclassified": [serializers.student_brief(s) for s in result["unclassified"]],
-                "problems": schedules.problems(_schedule(membership, schedule_id)),
+                "joinedLater": [serializers.student_brief(s) for s in result["joinedLater"]],
+                "period": {"label": periods.label(schedule.session, schedule.term), "closed": periods.is_closed(schedule.session, schedule.term)},
+                "problems": schedules.problems(schedule),
             }
         })
 
@@ -122,12 +133,12 @@ class FeeItemActionView(ReceivablesView):
 
 
 class ReceivablesView(ReceivablesView):
-    """The school's charges. Filter by ?student=, ?family=, ?schedule=, ?status=."""
+    """The school's charges. Filter by ?student=, ?family=, ?schedule=, ?session=, ?term=, ?status=."""
 
     def get(self, request, school_id):
         membership = acting_membership(request, school_id)
-        rows = StudentReceivable.objects.filter(school=membership.school).select_related("student")
-        for name, field in (("student", "student_id"), ("family", "family_id"), ("schedule", "schedule_id")):
+        rows = StudentReceivable.objects.filter(school=membership.school).select_related("student", "session", "term")
+        for name, field in (("student", "student_id"), ("family", "family_id"), ("schedule", "schedule_id"), ("session", "session_id"), ("term", "term_id")):
             if request.query_params.get(name):
                 rows = rows.filter(**{field: uuid_arg(request.query_params[name], name)})
         if request.query_params.get("status"):
@@ -142,7 +153,7 @@ class ReceivablesView(ReceivablesView):
 class ReceivableDetailView(ReceivablesView):
     def get(self, request, school_id, receivable_id):
         membership = acting_membership(request, school_id)
-        r = found(StudentReceivable.objects.filter(school=membership.school, id=receivable_id).select_related("student"), "charge")
+        r = found(StudentReceivable.objects.filter(school=membership.school, id=receivable_id).select_related("student", "session", "term"), "charge")
         body_ = serializers.receivable(r, ledger.position(r))
         body_["adjustments"] = [serializers.adjustment(a) for a in r.adjustments.all()]
         body_["allocations"] = [serializers.allocation_row(a) for a in r.allocations.order_by("created_at", "id")]
@@ -154,7 +165,7 @@ class ReceivableActionView(ReceivablesView):
 
     def post(self, request, school_id, receivable_id):
         membership = acting_membership(request, school_id, manage=True)
-        r = found(StudentReceivable.objects.filter(school=membership.school, id=receivable_id).select_related("student"), "charge")
+        r = found(StudentReceivable.objects.filter(school=membership.school, id=receivable_id).select_related("student", "session", "term"), "charge")
         data = body(request)
         if self.action == "adjust":
             method = adjustments.adjust_charge if data.get("wholeCharge") else adjustments.adjust

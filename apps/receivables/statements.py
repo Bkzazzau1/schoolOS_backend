@@ -10,7 +10,7 @@ from datetime import date
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from . import audit, ledger
+from . import audit, ledger, periods, reports
 from .errors import Refused
 from .models import AccountStatus, Family, FamilyCollectionAccount, FamilyStatement, ReceivableStatus, StudentReceivable
 from .permissions import require_operator
@@ -22,6 +22,8 @@ def _line(receivable: StudentReceivable, pos: ledger.Position) -> dict:
     return {
         "id": str(receivable.id),
         "item": receivable.item_name,
+        "sessionName": receivable.session.name,
+        "termName": receivable.term.name if receivable.term_id else "",
         "category": receivable.item_category,
         "installment": receivable.installment_number,
         "installments": receivable.installment_count,
@@ -54,14 +56,15 @@ def collection_account_facts(family: Family) -> list[dict]:
 def build(family: Family, *, session=None, term=None, today: date | None = None) -> dict:
     """The statement, worked out now. With a `session` (and optionally a `term`) only those charges are listed;
     the family's overall position (everything it owes, and its credit) is always given as well."""
-    today = today or date.today()
-    receivables = StudentReceivable.objects.filter(family=family).select_related("student").exclude(status=ReceivableStatus.VOID)
+    today = today or periods.school_today()
+    receivables = StudentReceivable.objects.filter(family=family).select_related("student", "session", "term").exclude(status=ReceivableStatus.VOID)
     if session is not None:
         receivables = receivables.filter(session=session)
     if term is not None:
         receivables = receivables.filter(term=term)
     receivables = list(receivables.order_by("student__surname", "student__first_name", "due_date", "created_at", "id"))
     figures = ledger.positions(receivables)
+    by_period = reports.rollup(receivables, figures, today=today)
 
     students: dict = {}
     for r in receivables:
@@ -76,11 +79,12 @@ def build(family: Family, *, session=None, term=None, today: date | None = None)
         "family": {"id": str(family.id), "code": family.code, "name": family.display_name, "status": family.status},
         "period": {"sessionId": str(session.id) if session else None, "termId": str(term.id) if term else None},
         "students": ordered,
+        "byPeriod": by_period,
         "totals": _totals(everything),
         "position": {
             "grossMinor": overall.gross, "adjustmentsMinor": overall.adjustments, "netMinor": overall.net, "paidMinor": overall.paid,
-            "outstandingMinor": overall.outstanding, "overdueMinor": overall.overdue, "creditMinor": overall.credit,
-            "collectibleMinor": overall.collectible,
+            "outstandingMinor": overall.outstanding, "overdueMinor": overall.overdue, "arrearsMinor": overall.arrears,
+            "currentMinor": overall.current, "creditMinor": overall.credit, "collectibleMinor": overall.collectible,
         },
         "collectionAccounts": collection_account_facts(family),
         "asOf": today.isoformat(),

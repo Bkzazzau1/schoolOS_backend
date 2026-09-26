@@ -26,6 +26,7 @@ from django.db.models import Sum
 
 from apps.bankconnect.models import TransactionAllocation
 
+from . import periods
 from .models import (
     CREDIT_IN, CREDIT_OUT, CreditKind, Family, FamilyCreditEntry, ReceivableAdjustment, ReceivableStatus, StudentReceivable,
 )
@@ -57,10 +58,17 @@ class FamilyPosition:
     overdue: int
     credit: int
     charges: int
+    #: Part of `outstanding` that is owed for periods that have ended (closed, or past their end date).
+    arrears: int = 0
 
     @property
     def net(self) -> int:
         return self.gross - self.adjustments
+
+    @property
+    def current(self) -> int:
+        """Part of `outstanding` that is owed for the current and coming periods."""
+        return self.outstanding - self.arrears
 
     @property
     def collectible(self) -> int:
@@ -75,9 +83,21 @@ def _sum_by(rows, key):
     return totals
 
 
+#: How many charges are looked up at once. A big school has tens of thousands; an unbounded IN list can hit a
+#: database's limit on query parameters.
+CHUNK = 500
+
+
 def positions(receivables) -> dict:
-    """`{receivable id: Position}` for these charges, in a fixed number of queries."""
+    """`{receivable id: Position}` for these charges: three queries per `CHUNK` charges."""
     receivables = list(receivables)
+    found: dict = {}
+    for start in range(0, len(receivables), CHUNK):
+        found.update(_positions_of(receivables[start: start + CHUNK]))
+    return found
+
+
+def _positions_of(receivables: list) -> dict:
     ids = [r.id for r in receivables]
     if not ids:
         return {}
@@ -140,10 +160,10 @@ def credit_balance(family: Family) -> int:
 
 
 def family_position(family: Family, *, today: date | None = None) -> FamilyPosition:
-    today = today or date.today()
-    receivables = list(live_receivables(family))
+    today = today or periods.school_today()
+    receivables = list(live_receivables(family).select_related("session", "term"))
     figures = positions(receivables)
-    gross = adjustments = paid = outstanding = overdue = 0
+    gross = adjustments = paid = outstanding = overdue = arrears = 0
     for r in receivables:
         p = figures[r.id]
         gross += p.gross
@@ -152,7 +172,9 @@ def family_position(family: Family, *, today: date | None = None) -> FamilyPosit
         outstanding += p.outstanding
         if r.due_date < today:
             overdue += p.outstanding
-    return FamilyPosition(gross, adjustments, paid, outstanding, overdue, credit_balance(family), len(receivables))
+        if periods.is_past(r.session, r.term, today):
+            arrears += p.outstanding
+    return FamilyPosition(gross, adjustments, paid, outstanding, overdue, credit_balance(family), len(receivables), arrears)
 
 
 def verify_family(family: Family) -> list[str]:

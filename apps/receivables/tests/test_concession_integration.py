@@ -1,11 +1,11 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from apps.notifications.models import Notification
 from apps.sync.models import SyncRecord
 
 from .. import adjustments, ledger, schedules
 from ..models import FinanceAuditEvent, ReceivableAdjustment, StudentReceivable
-from .base import ReceivablesTestCase
+from .base import ReceivablesTestCase, CLOCK
 
 TYPE = "concession_request"
 N = 100
@@ -126,7 +126,7 @@ class ApprovalChangesTheChargeTests(ConcessionLedgerCase):
         self.assertEqual(ReceivableAdjustment.objects.get().kind, "discount")
 
     def test_a_request_for_a_charge_paid_in_instalments_is_spread_across_them(self):
-        due = date.today() + timedelta(days=5)
+        due = CLOCK + timedelta(days=5)
         schedule = schedules.create_schedule(self.school, session=self.session, name="Plans", actor=self.owner)
         plan = [{"basisPoints": 5000, "dueDate": due.isoformat()}, {"basisPoints": 5000, "dueDate": (due + timedelta(days=30)).isoformat()}]
         schedules.add_item(schedule, actor=self.owner, code="PLAN", name="Plan tuition", category="tuition", amount_minor=40_000 * N, plan=plan, scope="student", student=self.maryam)
@@ -165,7 +165,7 @@ class RefusalsTests(ConcessionLedgerCase):
 
         families.ensure_family_for_student(self.other_school, stranger)
         sched = schedules.create_schedule(self.other_school, session=other_session, name="Theirs", actor=self.other_owner)
-        schedules.add_item(sched, actor=self.other_owner, code="X", name="X", amount_minor=50_000 * N, due_date=date.today() + timedelta(days=5), scope="student", student=stranger)
+        schedules.add_item(sched, actor=self.other_owner, code="X", name="X", amount_minor=50_000 * N, due_date=CLOCK + timedelta(days=5), scope="student", student=stranger)
         schedules.publish(sched, actor=self.other_owner)
         foreign = StudentReceivable.objects.get(student=stranger)
         self.rejected(self.submit(receivableId=str(foreign.id)), "not found")

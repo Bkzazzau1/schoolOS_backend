@@ -5,6 +5,10 @@ their own school). A draft can be edited freely. PUBLISHING turns it into charge
 student per fee item (or per instalment) - and after that the schedule is frozen: a mistake is put right
 with adjustments, a void, or a new schedule, never by rewriting what families were told they owe.
 
+A schedule belongs to a canonical session and (usually) a term. A closed session or term can no longer be
+billed, a fee's due date must fall within its period, and a student is charged for a term only if they were
+enrolled by then (see `periods.py`).
+
 Publishing is idempotent. The database allows one receivable per item, student and instalment, so
 running it again (or a second time at once) creates nothing twice. It can safely be re-run later to
 charge a student who joined after publication or whose family was only just set up.
@@ -20,7 +24,7 @@ from django.utils import timezone
 
 from apps.academics.models import AcademicClass, AcademicSession, AcademicTerm
 
-from . import applicability, audit, plans
+from . import applicability, audit, periods, plans
 from .constants import DEFAULT_CURRENCY, MAX_AMOUNT_MINOR
 from .errors import Refused
 from .models import (
@@ -52,6 +56,24 @@ def _require_draft(schedule: FeeSchedule) -> None:
         )
 
 
+def _require_open_period(session, term) -> None:
+    if periods.is_closed(session, term):
+        raise Refused(
+            f"{periods.label(session, term)} is closed, so it can no longer be billed. Its existing charges can still be adjusted or voided.",
+            "period_closed",
+        )
+
+
+def create_for_current_period(school, *, name, actor, whole_session: bool = False) -> FeeSchedule:
+    """A draft for the school's current session and its active term (or, with `whole_session`, for the whole session)."""
+    session, term = periods.current_period(school)
+    if session is None:
+        raise Refused("The school has no active academic session. Choose a session for this schedule.", "no_active_session")
+    if term is None and not whole_session:
+        raise Refused("The active session has no active term. Choose a term, or make the schedule for the whole session.", "no_active_term")
+    return create_schedule(school, session=session, term=None if whole_session else term, name=name, actor=actor)
+
+
 def _dupe_name(school, session, term, name, exclude=None) -> bool:
     live = FeeSchedule.objects.filter(school=school, session=session, term=term, name=name).exclude(status=ScheduleStatus.RETIRED)
     return live.exclude(pk=exclude.pk).exists() if exclude else live.exists()
@@ -69,6 +91,7 @@ def create_schedule(school, *, session: AcademicSession, name, actor, term: Acad
         raise Refused("That term is not in the chosen session.", "term_not_in_session")
     if replaces is not None and replaces.school_id != school.id:
         raise Refused("That schedule is not at this school.", "schedule_not_found")
+    _require_open_period(session, term)
     name = _name(name, "schedule")
     if _dupe_name(school, session, term, name):
         raise Refused("A schedule with that name already exists for this session and term.", "schedule_exists")
@@ -128,6 +151,11 @@ def _clean_item(schedule: FeeSchedule, fields: dict, existing: FeeItem | None = 
     plan = plans.clean_plan(merged.get("plan"))
     if plan and min(plans.split(amount, [p["basisPoints"] for p in plan])) < 1:
         raise Refused("The amount is too small to split that way: an instalment would be nothing.", "invalid_plan")
+
+    for when in ([due] if due else []) + [date.fromisoformat(p["dueDate"]) for p in plan]:
+        message = periods.due_date_problem(when, schedule.session, schedule.term)
+        if message:
+            raise Refused(message, "due_date_outside_period")
 
     scope = merged["scope"]
     if scope not in FeeScope.values:
@@ -200,12 +228,21 @@ def remove_item(item: FeeItem, *, actor) -> None:
 def problems(schedule: FeeSchedule) -> list[str]:
     """Everything that stops this draft being published, in words."""
     found = []
+    if periods.is_closed(schedule.session, schedule.term):
+        found.append(f"{periods.label(schedule.session, schedule.term)} is closed and can no longer be billed.")
     items = list(schedule.items.all())
     if not items:
         found.append("Add at least one fee item.")
     for item in items:
         if not item.plan and item.due_date is None:
             found.append(f"'{item.name}' has no due date.")
+        # The term's own dates may have been changed since the item was added.
+        dates = ([item.due_date] if item.due_date else []) + [date.fromisoformat(p["dueDate"]) for p in item.plan]
+        for when in dates:
+            message = periods.due_date_problem(when, schedule.session, schedule.term)
+            if message:
+                found.append(f"'{item.name}': {message}")
+                break
         if item.scope == FeeScope.CLASS and not item.academic_class.is_active:
             found.append(f"'{item.name}' is aimed at a class that is no longer active.")
     return found
@@ -223,6 +260,8 @@ class PublishReport:
     without_family: list = field(default_factory=list)
     #: students who could not be placed in a class for the session, so no class or section fee reached them
     unclassified: list = field(default_factory=list)
+    #: students who entered after this schedule's term began: they owe nothing for it, and are not an error
+    joined_later: list = field(default_factory=list)
     #: charges a replacement schedule left alone because the schedule it replaces already charged that student for that item
     already_charged_by_replaced: int = 0
 
@@ -252,6 +291,7 @@ def _materialise(schedule: FeeSchedule, actor) -> PublishReport:
     ) if replaced else set()
     resolution = applicability.resolve(schedule)
     report.unclassified = resolution.unclassified
+    report.joined_later = resolution.joined_later
     family_of = {
         m.student_id: m.family
         for m in FamilyStudent.objects.select_related("family").filter(school=schedule.school, is_active=True)
@@ -300,6 +340,7 @@ def publish(schedule: FeeSchedule, *, actor) -> PublishReport:
     schedule = FeeSchedule.objects.select_for_update().get(pk=schedule.pk)
     if schedule.status != ScheduleStatus.DRAFT:
         raise Refused("This schedule has already been published.", "already_published")
+    _require_open_period(schedule.session, schedule.term)
     if schedule.replaces_id and schedule.replaces.status != ScheduleStatus.RETIRED:
         raise Refused("Retire the schedule this one replaces before publishing it, so nothing is charged twice.", "replaced_not_retired")
     found = problems(schedule)
@@ -329,6 +370,7 @@ def refresh(schedule: FeeSchedule, *, actor) -> PublishReport:
     schedule = FeeSchedule.objects.select_for_update().get(pk=schedule.pk)
     if schedule.status != ScheduleStatus.PUBLISHED:
         raise Refused("Only a published schedule can be refreshed.", "not_published")
+    _require_open_period(schedule.session, schedule.term)
     report = _materialise(schedule, actor)
     if report.created:
         audit.record(schedule.school, "fee_schedule_refreshed", actor=actor, obj=schedule, charges=report.created, families=len(report.families))
@@ -400,4 +442,5 @@ def preview(schedule: FeeSchedule) -> dict:
         "items": lines, "totalMinor": sum(line["totalMinor"] for line in lines),
         "withoutFamily": sorted(without.values(), key=lambda s: (s.surname, s.first_name, str(s.id))),
         "unclassified": resolution.unclassified,
+        "joinedLater": resolution.joined_later,
     }

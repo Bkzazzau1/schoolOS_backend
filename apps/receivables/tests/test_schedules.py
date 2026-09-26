@@ -357,7 +357,10 @@ class MaterialisationTests(ScheduleTestCase):
 
     def test_instalments_are_separate_charges_that_share_a_key_and_add_up(self):
         plan = [{"basisPoints": 5000, "dueDate": "2026-09-30"}, {"basisPoints": 3000, "dueDate": "2026-11-30"}, {"basisPoints": 2000, "dueDate": "2027-01-31"}]
-        self.publish(("TUITION", {"amount": 12_500_001, "due_date": None, "plan": plan}))
+        # The last instalment falls after First Term ends, so this is a schedule for the whole session.
+        schedule = schedules.create_schedule(self.school, session=self.session, term=None, name="Session 2026", actor=self.owner)
+        self.item(schedule, amount=12_500_001, due_date=None, plan=plan)
+        schedules.publish(schedule, actor=self.owner)
         rows = list(self.receivables(student=self.ahmad).order_by("installment_number"))
         self.assertEqual([r.installment_number for r in rows], [1, 2, 3])
         self.assertEqual([r.installment_count for r in rows], [3, 3, 3])

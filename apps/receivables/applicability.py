@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from apps.academics.models import EnrollmentAcademicContext
 from apps.students.models import EnrollmentStatus, Student, StudentStatus
 
+from . import periods
 from .models import FeeScope
 
 #: Students who can be charged. A student who has left is not billed new fees.
@@ -24,6 +25,8 @@ class Resolution:
     by_item: dict = field(default_factory=dict)
     #: billable students with no academic placement for the session: not charged, and reported
     unclassified: list = field(default_factory=list)
+    #: students who entered after the schedule's term began, so owe nothing for it (not an error: just not charged)
+    joined_later: list = field(default_factory=list)
 
 
 def _placements(schedule):
@@ -34,20 +37,26 @@ def _placements(schedule):
             enrollment__status=EnrollmentStatus.ACTIVE,
             enrollment__is_billable=True,
             enrollment__student__status__in=BILLABLE_STATUSES,
-        ).select_related("enrollment__student", "academic_class")
+        ).select_related("enrollment", "enrollment__student", "academic_class", "entry_term")
     )
 
 
 def resolve(schedule) -> Resolution:
-    placements = _placements(schedule)
-    placed_ids = {p.enrollment.student_id for p in placements}
+    everyone = _placements(schedule)
+    placed_ids = {p.enrollment.student_id for p in everyone}
+    # A fee for a TERM reaches only students who were enrolled by then: entering in Term 2 means owing nothing for Term 1.
+    later = [p for p in everyone if periods.joined_after(p, schedule.term)]
+    placements = [p for p in everyone if p not in later]
     unclassified = list(
         Student.objects.filter(
             school=schedule.school, status__in=BILLABLE_STATUSES,
             enrollments__status=EnrollmentStatus.ACTIVE, enrollments__is_billable=True,
         ).exclude(id__in=placed_ids).distinct().order_by("surname", "first_name", "id")
     )
-    result = Resolution(unclassified=unclassified)
+    result = Resolution(
+        unclassified=unclassified,
+        joined_later=sorted((p.enrollment.student for p in later), key=lambda s: (s.surname, s.first_name, str(s.id))),
+    )
     for item in schedule.items.select_related("academic_class", "student"):
         if item.scope == FeeScope.ALL:
             students = [p.enrollment.student for p in placements]

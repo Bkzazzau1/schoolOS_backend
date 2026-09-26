@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 
@@ -7,7 +7,7 @@ from apps.bankconnect.models import TransactionAllocation
 from .. import adjustments, allocation, ledger, schedules
 from ..errors import Refused
 from ..models import FinanceAuditEvent, ReceivableAdjustment, StudentReceivable
-from .base import ReceivablesTestCase
+from .base import ReceivablesTestCase, CLOCK
 
 N = 100
 
@@ -174,7 +174,7 @@ class InstalmentTests(ReceivablesTestCase):
     def setUp(self):
         super().setUp()
         self.bello_family()
-        due = date.today() + timedelta(days=5)
+        due = CLOCK + timedelta(days=5)
         schedule = schedules.create_schedule(self.school, session=self.session, term=self.term, name="Plan term", actor=self.owner)
         plan = [{"basisPoints": 5000, "dueDate": (due).isoformat()}, {"basisPoints": 3000, "dueDate": (due + timedelta(days=30)).isoformat()}, {"basisPoints": 2000, "dueDate": (due + timedelta(days=60)).isoformat()}]
         schedules.add_item(schedule, actor=self.owner, code="TUI", name="Tuition", category="tuition", amount_minor=12_000_001, plan=plan, scope="student", student=self.ahmad)

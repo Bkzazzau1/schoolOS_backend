@@ -5,7 +5,7 @@ from apps.notifications.models import Notification
 
 from .. import collection_accounts, credit, families, ledger
 from ..models import CreditKind, FamilyCreditEntry
-from .base import ReceivablesTestCase
+from .base import ReceivablesTestCase, CLOCK
 
 N = 100
 ACCOUNT = "8012345678"
@@ -171,10 +171,10 @@ class ReviewDecisionsTests(BankIntegrationCase):
 
     def test_a_person_can_assign_it_to_a_student_of_another_family_and_that_wins_over_the_account(self):
         from .. import schedules
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         s = schedules.create_schedule(self.school, session=self.session, name="Sani fees", actor=self.owner)
-        schedules.add_item(s, actor=self.owner, code="SANI", name="Tuition", category="tuition", amount_minor=50_000 * N, due_date=date.today() + timedelta(days=9), scope="student", student=self.other_student)
+        schedules.add_item(s, actor=self.owner, code="SANI", name="Tuition", category="tuition", amount_minor=50_000 * N, due_date=CLOCK + timedelta(days=9), scope="student", student=self.other_student)
         schedules.publish(s, actor=self.owner)
         self.decide("assign", student_id=str(self.other_student.id))
         self.assertEqual(ledger.family_position(self.family).outstanding, 300_000 * N)  # Bello are owed again

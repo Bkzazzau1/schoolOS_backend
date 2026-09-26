@@ -19,8 +19,9 @@ def _time(value):
 def position(pos: ledger.FamilyPosition) -> dict:
     return {
         "grossMinor": pos.gross, "adjustmentsMinor": pos.adjustments, "netMinor": pos.net, "paidMinor": pos.paid,
-        "outstandingMinor": pos.outstanding, "overdueMinor": pos.overdue, "creditMinor": pos.credit,
-        "collectibleMinor": pos.collectible, "charges": pos.charges, "currency": "NGN",
+        "outstandingMinor": pos.outstanding, "overdueMinor": pos.overdue, "arrearsMinor": pos.arrears,
+        "currentMinor": pos.current, "creditMinor": pos.credit, "collectibleMinor": pos.collectible,
+        "charges": pos.charges, "currency": "NGN",
     }
 
 
@@ -55,7 +56,8 @@ def receivable(r, pos: ledger.Position) -> dict:
     return {
         "id": str(r.id), "studentId": str(r.student_id), "studentName": r.student.full_name, "familyId": str(r.family_id),
         "scheduleId": str(r.schedule_id), "feeItemId": str(r.fee_item_id), "itemCode": r.item_code, "itemName": r.item_name,
-        "category": r.item_category, "sessionId": str(r.session_id), "termId": str(r.term_id) if r.term_id else None,
+        "category": r.item_category, "sessionId": str(r.session_id), "sessionName": r.session.name,
+        "termId": str(r.term_id) if r.term_id else None, "termName": r.term.name if r.term_id else "",
         "currency": r.currency, "grossMinor": pos.gross, "adjustmentsMinor": pos.adjustments, "netMinor": pos.net,
         "paidMinor": pos.paid, "outstandingMinor": pos.outstanding, "dueDate": r.due_date.isoformat(), "status": r.status,
         "installment": r.installment_number, "installments": r.installment_count, "chargeKey": str(r.charge_key),
@@ -108,6 +110,7 @@ def publish_report(report) -> dict:
         "created": report.created, "alreadyExisted": report.already_existed, "families": len(report.families),
         "withoutFamily": [student_brief(s) for s in report.without_family],
         "unclassified": [student_brief(s) for s in report.unclassified],
+        "joinedLater": [student_brief(s) for s in report.joined_later],
         "alreadyChargedByReplaced": report.already_charged_by_replaced, "complete": report.complete,
     }
 

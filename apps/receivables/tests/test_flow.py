@@ -1,8 +1,8 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from .. import adjustments, allocation, collection_accounts, ledger
 from ..models import FamilyCollectionAccount
-from .base import ReceivablesTestCase
+from .base import ReceivablesTestCase, CLOCK
 
 NAIRA = 100
 
@@ -46,7 +46,7 @@ class TheWholeFlowTests(ReceivablesTestCase):
         # Next term's fees are published: the credit is used, the rest is owed, and the SAME account is active again.
         from .. import schedules
 
-        due = date.today() + timedelta(days=60)
+        due = CLOCK + timedelta(days=60)
         second = schedules.create_schedule(self.school, session=self.session, name="Second Term", actor=self.owner)
         schedules.add_item(second, actor=self.owner, code="TUI2", name="Tuition", category="tuition", amount_minor=50_000 * NAIRA, due_date=due, scope="student", student=self.ahmad)
         schedules.publish(second, actor=self.owner)

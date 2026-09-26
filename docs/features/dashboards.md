@@ -35,7 +35,8 @@ another school is 403.
 
 `notAvailableYet` lists what the app's dashboards show but the server cannot know yet, because those records are not on
 the server: **students, attendance, academic results, fee collection, campus comparison** (finance: fee collection,
-outstanding balances, family accounts). The app must show these as unavailable, or keep using its own device data for
+outstanding balances, family accounts). Fee collection becomes real once a bank account is connected, and outstanding balances
+once the school has raised fees (`collections.receivables`, by session and term); family accounts stay until providers issue them. The app must show these as unavailable, or keep using its own device data for
 them, and must not invent figures. As each of those features is built, its figures are added to the same endpoints.
 
 ## What the app must change (no integration yet)

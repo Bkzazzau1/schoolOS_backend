@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.db import IntegrityError, transaction
 
@@ -7,7 +7,7 @@ from apps.bankconnect.models import ReconciliationDecision, TransactionAllocatio
 from .. import adjustments, allocation, ledger, policy, schedules
 from ..errors import Refused
 from ..models import CreditKind, FamilyCreditEntry, FinanceAuditEvent, StudentReceivable
-from .base import ReceivablesTestCase
+from .base import ReceivablesTestCase, CLOCK
 
 N = 100
 
@@ -75,7 +75,7 @@ class SettlingTests(PaymentTestCase):
         self.assertEqual(ledger.family_position(self.family).credit, 50_000 * N)
 
     def test_the_amounts_and_purposes_follow_the_fee_category(self):
-        due = date.today() + timedelta(days=10)
+        due = CLOCK + timedelta(days=10)
         second = schedules.create_schedule(self.school, session=self.session, name="Extras", actor=self.owner)
         for code, category in (("BUS", "transport"), ("BOOK", "books"), ("LEVY", "levy"), ("UNI", "uniform"), ("ICT", "ict")):
             schedules.add_item(second, actor=self.owner, code=code, name=code, category=category, amount_minor=1000, due_date=due, scope="student", student=self.ahmad)
@@ -141,7 +141,7 @@ class PolicyTests(PaymentTestCase):
     def make_dated_charges(self):
         """Three charges for one student on known dates: overdue, due soon, due later."""
         schedule = schedules.create_schedule(self.school, session=self.session, name="Dated", actor=self.owner)
-        today = date.today()
+        today = CLOCK
         for code, days in (("LATER", 90), ("OVERDUE", -10), ("SOON", 12)):
             schedules.add_item(schedule, actor=self.owner, code=code, name=code, amount_minor=1000, due_date=today + timedelta(days=days), scope="student", student=self.maryam)
         schedules.publish(schedule, actor=self.owner)
@@ -162,11 +162,11 @@ class PolicyTests(PaymentTestCase):
 
     def test_a_preferred_student_goes_first_but_the_rest_of_the_policy_is_unchanged(self):
         ordered = policy.default_policy(
-            list(StudentReceivable.objects.all()), today=date.today(), prefer_student=self.maryam,
+            list(StudentReceivable.objects.all()), today=CLOCK, prefer_student=self.maryam,
         )
         self.assertEqual(ordered[0].student_id, self.maryam.id)
-        plain = policy.default_policy(list(StudentReceivable.objects.all()), today=date.today())
-        self.assertEqual([r.id for r in plain], [r.id for r in policy.default_policy(list(reversed(plain)), today=date.today())])  # deterministic
+        plain = policy.default_policy(list(StudentReceivable.objects.all()), today=CLOCK)
+        self.assertEqual([r.id for r in plain], [r.id for r in policy.default_policy(list(reversed(plain)), today=CLOCK)])  # deterministic
 
     def test_the_policy_can_be_replaced_from_settings(self):
         from django.test import override_settings
@@ -201,7 +201,7 @@ class ReleasingAPaymentTests(PaymentTestCase):
 
     def test_if_the_credit_was_already_used_the_charges_it_paid_come_due_again(self):
         tx, _ = self.pay(400_000 * N)  # 100,000 credit
-        due = date.today() + timedelta(days=40)
+        due = CLOCK + timedelta(days=40)
         nxt = schedules.create_schedule(self.school, session=self.session, name="Next", actor=self.owner)
         schedules.add_item(nxt, actor=self.owner, code="NEXT", name="Next", amount_minor=100_000 * N, due_date=due, scope="student", student=self.ahmad)
         schedules.publish(nxt, actor=self.owner)  # the credit pays it automatically
@@ -307,7 +307,7 @@ class CorrectingAnAllocationTests(PaymentTestCase):
         session, term, primary, _ = self.make_year(self.other_school)
         self.enroll(student, primary, session)
         schedule = schedules.create_schedule(self.other_school, session=session, name="Theirs", actor=self.other_owner)
-        schedules.add_item(schedule, actor=self.other_owner, code="X", name="X", amount_minor=50_000 * N, due_date=date.today() + timedelta(days=5), scope="student", student=student)
+        schedules.add_item(schedule, actor=self.other_owner, code="X", name="X", amount_minor=50_000 * N, due_date=CLOCK + timedelta(days=5), scope="student", student=student)
         schedules.publish(schedule, actor=self.other_owner)
         return StudentReceivable.objects.get(student=student)
 

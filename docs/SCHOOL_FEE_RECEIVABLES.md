@@ -102,12 +102,59 @@ student per item (or instalment) for everyone it applies to.
 
 - **Applicability comes from the academics app** (`EnrollmentAcademicContext`), never from class names typed by a client.
   A billable student the academics records cannot place for the session is **reported and not charged**; so is a
-  student with no family. A later `refresh` charges them once fixed (and any student who joined after publication). It
+  student with no family. Which period a schedule is for, and who is charged for it, follows the calendar - see
+  *Sessions and terms*. A later `refresh` charges them once fixed (and any student who joined after publication). It
   only ever creates what is missing.
 - Corrections after publication are explicit: `retire` (with a reason; charges stay), `clone` (a new draft), `adjust`,
   `void`, `void-charges`. A schedule that **replaces** another cannot be published until the original is retired, and
   never charges a student again for an item the original already charged (that is an adjustment, not a second charge).
 - `preview` shows who would be charged and how much without charging anyone.
+
+## Sessions and terms
+
+The fee system follows the school's **canonical academic calendar** (`apps.academics`: `AcademicSession`, `AcademicTerm`,
+`EnrollmentAcademicContext`). It never asks a client for a period by name or date. All of it lives in one module,
+`apps/receivables/periods.py`, and its rules are:
+
+- **A schedule belongs to a session and, usually, one of its terms** (no term = the whole session). Posting a schedule with
+  no session names the school's **current period** - its active session and that session's active term (or the whole
+  session with `wholeSession: true`). With no active session the answer is a refusal, `no_active_session`, that says to
+  choose one; the same for `no_active_term`.
+- **A closed session or term is history and is never billed** (`period_closed`): it cannot be given a schedule, a draft
+  cannot be published into it and a published schedule cannot be refreshed for it. What was already charged stays a live debt
+  - it can still be paid, adjusted, voided and reallocated.
+- **A student owes nothing for a term that began before they were enrolled.** They are placed by the term they entered in
+  (`EnrollmentAcademicContext.entry_term`, which the academics app records at enrolment); where none was recorded, by the day
+  their enrolment started. A fee for a term reaches only students enrolled by then. Those left out are **listed, not
+  hidden**, as `joinedLater` in the preview and the publish report, and are not "unclassified", so the report still reads as
+  complete. A fee for the whole session is owed by everyone in it. A fee aimed at one named student is theirs whenever they
+  joined: that is how a late arrival is deliberately charged for a past term.
+- **A due date belongs to its period** (`due_date_outside_period`): not after the period ends, and not more than 45 days
+  before it begins (fees are asked for ahead of a term). Every instalment is held to the same window, on creating and on
+  changing an item, and `preview` reports it if a term's dates were moved afterwards. Instalments that run past a term go on a
+  schedule for the whole session.
+- **Arrears** are what is still owed for a period that has **ended** - its last day has gone, or the school has closed it.
+  What is owed for a period still running is `current`, whether or not it is overdue. Both are derived, on the family
+  position and on every report, and add up to `outstanding`.
+- **The clock** is read in one place (`periods.school_today()`, the school's calendar day in Africa/Lagos), so tests can fix it.
+
+### Reports by term
+
+Every figure is derived from the ledger, never stored (`apps/receivables/reports.py`), and grouped by the canonical session and
+term of each charge, in calendar order:
+
+- `GET calendar/` - the school's sessions and terms, which are current, and the due-date lead: what a schedule can be made for.
+- `GET reports/terms/` (optional `?session=`) - for each session/term: charges, gross, adjustments, net, paid, outstanding,
+  overdue, students, families, families still owing, and the **collection rate** (basis points of what was payable that has
+  been paid), with totals and arrears.
+- `GET reports/position/` - what the school is owed now: outstanding, overdue, arrears, current, credit held by families
+  (kept apart, never netted off), families owing, and the same by period. `available` is false until the school has raised any
+  charge, so a school with no ledger sees "not available", not zeros.
+- Every charge and statement line carries `sessionName` and `termName`; a family statement adds a `byPeriod` roll-up and
+  arrears/current in its position; `charges/` and `fee-schedules/` filter by `?session=` and `?term=`.
+- The same position is the `receivables` block of the collections summary, and so of the owner and finance dashboards.
+  `outstandingFeesAvailable` is true exactly when it is available, and "outstanding balances" leaves the finance dashboard's
+  `notAvailableYet` list then.
 
 ## Adjustments and concessions
 
@@ -179,8 +226,9 @@ Under `/api/v1/schools/<school>/receivables/` (all school-scoped; another school
 a refusal is a 400 with a stable `code` and words a person can act on):
 
 - **Families** (operator): `families/` (GET search, POST create), `families/<id>/`, `.../rename|add-student|remove-student|link-guardian|set-status/`, `.../receivables/`, `.../statement/` (GET, derived), `.../statements/` (GET, POST issue), `.../credit/`, `.../credit/refund/`, `.../payments/`, `.../collection-accounts/` (GET, POST register), `families/unassigned-students/`, `families/bridge/` (GET report, POST apply); `collection-accounts/<id>/suspend|reinstate|close|mark-provisioned/`.
-- **Fee schedules** (read: operator; change: billing authority): `fee-schedules/`, `.../<id>/`, `.../preview/`, `.../rename|publish|refresh|retire|clone|void-charges/`, `.../items/`, `.../items/<item>/update|remove/`.
-- **Charges and decisions**: `charges/` (filters and paging), `charges/<id>/`, `charges/<id>/adjust|void/` (billing authority), `adjustments/` (history), `adjustments/<id>/reverse/` (billing authority).
+- **Fee schedules** (read: operator; change: billing authority): `fee-schedules/` (filter `?status=&session=&term=`; a POST with no `sessionId` is for the current period), `.../<id>/`, `.../preview/`, `.../rename|publish|refresh|retire|clone|void-charges/`, `.../items/`, `.../items/<item>/update|remove/`.
+- **Calendar and reports** (operator): `calendar/`, `reports/terms/`, `reports/position/` (see Sessions and terms).
+- **Charges and decisions**: `charges/` (filters incl. `?session=&term=`, and paging), `charges/<id>/`, `charges/<id>/adjust|void/` (billing authority), `adjustments/` (history), `adjustments/<id>/reverse/` (billing authority).
 - **Payments**: `payments/<transaction>/reallocate/` (operator).
 - **Parents**: `me/families/`, `me/families/<id>/statement/`.
 
@@ -209,8 +257,10 @@ parent accounts hear of new fees, a payment received and fees settled. Test data
 
 ## Verification
 
-`manage.py test apps.receivables` (293 tests) covers: authority (every role, revoked/pending duties, other schools);
+`manage.py test apps.receivables` (354 tests) covers: authority (every role, revoked/pending duties, other schools);
 families and the bridge; fee schedules (every rejection, freezing, applicability, instalments, idempotent publishing);
+the academic calendar (current period defaults, closed periods never billed, students who joined after a term, due-date
+windows, reports and arrears by term, dashboards, statements by period; the clock is fixed in these tests);
 adjustments, reversals, voids and credit release; credit; allocation policy, reversals and corrections; collection account
 lifecycle; bank integration, including the real public webhook route into a family account (a repeated or forged
 delivery pays nothing twice); concession integration; statements; notifications; every API endpoint against a second
