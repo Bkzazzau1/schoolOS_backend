@@ -238,6 +238,13 @@ class DebitBatchApiTests(ApiCase):
         self.assertEqual((overview["debits"]["collectedMinor"], overview["debits"]["count"], overview["batches"]["waitingForApproval"]), (38_000_000, 2, 0))
         self.assertEqual({p["provider"] for p in overview["providers"]}, {"sandbox"})
 
+    def test_a_maker_who_holds_only_the_mandate_duty_can_choose_a_session_and_term(self):
+        body = self.get("periods/", who=self.maker).json()
+        (session,) = [s for s in body["sessions"] if s["id"] == str(self.session.id)]
+        self.assertEqual({t["name"] for t in session["terms"]}, {self.term1.name, self.term2.name})
+        self.assertIn("current", body)
+        self.assertEqual(self.get("periods/", who=self.members["teacher"]).status_code, 403)
+
     def test_only_a_maker_can_prepare_a_batch_and_a_rejection_needs_a_reason(self):
         for who in (self.checker, self.manager, self.members["teacher"]):
             self.assertEqual(self.post("debit-batches/", {"sessionId": str(self.session.id)}, who=who).status_code, 403)

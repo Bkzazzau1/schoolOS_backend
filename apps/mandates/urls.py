@@ -13,6 +13,7 @@ BATCH_ACTIONS = ("preview", "selection", "title", "submit", "approve", "reject",
 
 urlpatterns = [
     path(f"{_BASE}overview/", d.OverviewView.as_view()),
+    path(f"{_BASE}periods/", d.PeriodsView.as_view()),
     path(f"{_BASE}providers/", p.ProvidersView.as_view()),
     path(f"{_BASE}connections/", p.ConnectionsView.as_view()),
     path(f"{_BASE}connections/<uuid:connection_id>/audit/", p.ConnectionAuditView.as_view()),

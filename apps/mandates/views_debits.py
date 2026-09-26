@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.academics.models import AcademicSession, AcademicTerm
+from apps.receivables import periods as school_periods
 
 from . import debit_batches, execution, jobs, serializers
 from .constants import LIVE_MANDATE, BatchStatus, ConnectionStatus, DebitOutcome, InstructionStatus, MandateStatus
@@ -168,6 +169,25 @@ class ItemAmountView(APIView):
         d = body(request)
         batch = debit_batches.set_amount(membership, batch_id, item_id, amount_minor=d.get("amountMinor"), reason=d.get("reason") or "", expected_version=d.get("version"))
         return Response(_detail(batch, membership))
+
+
+class PeriodsView(APIView):
+    """GET the school's sessions and their terms (newest first) and which are current, for choosing what a batch is for."""
+
+    def get(self, request, school_id):
+        membership = acting_membership(request, school_id, need=NEED_VIEW)
+        current_session, current_term = school_periods.current_period(membership.school)
+        rows = AcademicSession.objects.filter(school=membership.school).prefetch_related("terms").order_by("-starts_on")
+        return Response({
+            "sessions": [
+                {
+                    "id": str(s.id), "name": s.name, "status": s.status,
+                    "terms": [{"id": str(t.id), "name": t.name, "sequence": t.sequence, "status": t.status} for t in sorted(s.terms.all(), key=lambda t: t.sequence)],
+                }
+                for s in rows
+            ],
+            "current": {"sessionId": str(current_session.id) if current_session else None, "termId": str(current_term.id) if current_term else None},
+        })
 
 
 # -- transactions and the overview ---------------------------------------------------------------------
