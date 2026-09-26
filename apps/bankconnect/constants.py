@@ -2,9 +2,46 @@
 
 from django.db import models
 
-#: A duty the owner can give a finance officer (through a job assignment) so they may connect,
-#: rotate and disconnect the school's bank accounts. Being in Finance is not enough by itself.
+#: Smart Money Collection duties. The owner always holds them and can give any of them to a trusted person
+#: through a job assignment; being in Finance is never enough by itself, and billing authority
+#: (`finance.billing_authority`) is a different responsibility that does NOT open the school's provider secrets.
+#:
+#: - provider manage: connect, replace, test and disable the school's own Paystack / Monnify / Remita credentials,
+#:   set up the webhook, choose the active provider and schedule or apply a provider switch;
+#: - policy manage: change the school's collection policy (defaults, session/term/family overrides);
+#: - prepare: the MAKER of a collection batch (build the preview, select families, resolve overrides, submit);
+#: - approve: the CHECKER of a collection batch (approve or reject; never for a batch they prepared).
+DUTY_PROVIDER_MANAGE = "finance.collection_provider_manage"
+DUTY_POLICY_MANAGE = "finance.collection_policy_manage"
+DUTY_PREPARE = "finance.collection_prepare"
+DUTY_APPROVE = "finance.collection_approve"
+SMART_COLLECTION_DUTIES = (DUTY_PROVIDER_MANAGE, DUTY_POLICY_MANAGE, DUTY_PREPARE, DUTY_APPROVE)
+#: The earlier duty for connecting the school's bank accounts. Kept so an assignment already made keeps working:
+#: it is honoured as provider-management authority and nothing more.
 DUTY_MANAGE_CONNECTIONS = "finance.bank_connections"
+
+#: The only providers Smart Money Collection offers. The SCHOOL onboards with the provider directly (KYC),
+#: receives its own credentials and enters them into SchoolOS; the provider moves and settles the money.
+PROVIDER_PAYSTACK = "paystack"
+PROVIDER_MONNIFY = "monnify"
+PROVIDER_REMITA = "remita"
+SMART_PROVIDERS = (PROVIDER_PAYSTACK, PROVIDER_MONNIFY, PROVIDER_REMITA)
+#: Development and tests only; never offered to a school in production.
+PROVIDER_SANDBOX = "sandbox"
+
+
+class Environment(models.TextChoices):
+    LIVE = "live", "Live"
+    TEST = "test", "Test"
+
+
+class WebhookStatus(models.TextChoices):
+    #: No callback address has been issued yet.
+    NOT_CONFIGURED = "not_configured", "Not set up"
+    #: The address exists, but no signed or verified event has reached it, so it is not known to work.
+    AWAITING_EVENT = "awaiting_event", "Waiting for the first event"
+    #: A verified event has arrived. Only then is the webhook called active.
+    ACTIVE = "active", "Active"
 
 
 class ConnectionType(models.TextChoices):

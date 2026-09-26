@@ -1,8 +1,6 @@
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from django.utils import timezone
-
 from apps.academics.models import AcademicLifecycleStatus, AcademicSession, AcademicTerm
 
 from .. import review, summary
@@ -20,13 +18,13 @@ def at(day, hour=10, minute=0):
 
 
 class SummaryTestCase(BankTestCase):
-    def real_connection(self, purpose="tuition", bank="GTBank", mask="****1111", label="", school=None, status=ConnectionStatus.CONNECTED):
-        """A real (not sandbox) account. It is made directly: the only connector that can be reached in
-        a test is the sandbox, and this is about how real money is counted."""
+    def real_connection(self, provider="paystack", label="", school=None, status=ConnectionStatus.CONNECTED, active=False, environment="live"):
+        """A real (not sandbox) provider connection. It is made directly: the only connector that can be reached in a test is the sandbox,
+        and this is about how real money is counted."""
         return BankConnection.objects.create(
-            school=school or self.school, provider="gtbank", connection_type=ConnectionType.DIRECT_BANK_API,
-            bank_name=bank, account_name="SCHOOL", account_mask=mask, purpose=purpose, label=label or f"{purpose} account",
-            status=status, is_sandbox=False,
+            school=school or self.school, provider=provider, connection_type=ConnectionType.COLLECTION_PROVIDER, environment=environment,
+            merchant_name=f"{provider} merchant", label=label or f"{provider} connection", status=status, is_sandbox=False,
+            is_active_provider=active and status == ConnectionStatus.CONNECTED,
         )
 
     def open_term(self):
@@ -48,10 +46,10 @@ class EmptySchoolTests(SummaryTestCase):
     def test_with_nothing_connected_it_says_so_instead_of_showing_zeros_as_facts(self):
         body = self.build()
         self.assertFalse(body["available"])
-        self.assertEqual(body["accounts"], {"connected": 0, "needAttention": 0, "lastSyncedAt": None})
+        self.assertEqual(body["providers"], {"connected": 0, "needAttention": 0, "active": None})
         self.assertEqual(body["today"], {"amountMinor": 0, "count": 0})
         self.assertIsNone(body["thisTerm"])
-        self.assertEqual((body["byBank"], body["byPurpose"], body["recent"]), ([], [], []))
+        self.assertEqual((body["byProvider"], body["recent"]), ([], []))
         self.assertFalse(body["outstandingFeesAvailable"])
         self.assertEqual(body["period"]["key"], "all")  # no open term to be "this term"
 
@@ -74,8 +72,7 @@ class PeriodTests(SummaryTestCase):
         for period, expected in (("today", 1_000_000), ("week", 3_000_000), ("term", 7_000_000), ("all", 15_000_000)):
             body = self.build(period=period)
             self.assertEqual((body["period"]["key"], body["selected"]["amountMinor"]), (period, expected), period)
-            self.assertEqual(sum(b["amountMinor"] for b in body["byBank"]), expected, period)
-            self.assertEqual(sum(p["amountMinor"] for p in body["byPurpose"]), expected, period)
+            self.assertEqual(sum(b["amountMinor"] for b in body["byProvider"]), expected, period)
 
     def test_the_period_says_what_it_covers(self):
         body = self.build(period="term")
@@ -137,7 +134,7 @@ class WhatCountsTests(SummaryTestCase):
 class ReconciliationTotalsTests(SummaryTestCase):
     def test_reconciled_and_unreconciled_add_up_to_what_was_collected(self):
         self.open_term()
-        account = self.real_connection()
+        account = self.legacy_connection("tuition")  # the student-matching engine serves payments from the earlier bank-account model
         aisha = self.make_student("BG-0042", "Aisha", "Bello")
         matched = self.deposit(account, transaction_date=at(23), narration="BG-0042", amount_minor=4_000_000)
         donation = self.deposit(account, transaction_date=at(23), narration="donation", sender_name="Church", amount_minor=1_000_000)
@@ -156,32 +153,34 @@ class ReconciliationTotalsTests(SummaryTestCase):
 
 
 class BreakdownTests(SummaryTestCase):
-    def test_by_purpose_and_bank_biggest_first(self):
+    def test_by_provider_biggest_first(self):
         self.open_term()
-        tuition = self.real_connection("tuition", "GTBank", "****1111", "Tuition Collection")
-        transport = self.real_connection("transport", "Zenith", "****2222", "Bus fees")
+        first = self.real_connection("paystack", "Fees by Paystack")
+        second = self.real_connection("monnify", "Fees by Monnify")
         for n, amount in enumerate((3_000_000, 2_000_000)):
-            self.deposit(tuition, transaction_date=at(23), amount_minor=amount, narration=f"t{n}", sender_name=f"T{n}")
-        self.deposit(transport, transaction_date=at(23), amount_minor=9_000_000, narration="bus", sender_name="B")
+            self.deposit(first, transaction_date=at(23), amount_minor=amount, narration=f"t{n}", sender_name=f"T{n}")
+        self.deposit(second, transaction_date=at(23), amount_minor=9_000_000, narration="bus", sender_name="B")
         body = self.build()
-        self.assertEqual([(b["label"], b["accountMask"], b["amountMinor"], b["count"]) for b in body["byBank"]],
-                         [("Bus fees", "****2222", 9_000_000, 1), ("Tuition Collection", "****1111", 5_000_000, 2)])
-        self.assertEqual([(p["purpose"], p["amountMinor"]) for p in body["byPurpose"]], [("transport", 9_000_000), ("tuition", 5_000_000)])
+        self.assertEqual(
+            [(b["provider"], b["label"], b["environment"], b["amountMinor"], b["count"]) for b in body["byProvider"]],
+            [("monnify", "Fees by Monnify", "live", 9_000_000, 1), ("paystack", "Fees by Paystack", "live", 5_000_000, 2)],
+        )
 
 
 class AccountsTests(SummaryTestCase):
-    def test_how_many_are_connected_which_need_attention_and_when_last_synced(self):
-        good = self.real_connection(mask="****1111")
-        self.real_connection(mask="****2222", status=ConnectionStatus.NEEDS_REAUTH)
-        self.real_connection(mask="****3333", status=ConnectionStatus.ERROR)
-        self.real_connection(mask="****4444", status=ConnectionStatus.DISABLED)
-        self.real_connection(mask="****5555", status=ConnectionStatus.REVOKED)
-        stamp = timezone.now()
-        BankConnection.objects.filter(id=good.id).update(last_synced_at=stamp)
+    def test_how_many_providers_are_connected_which_need_attention_and_which_is_active(self):
+        good = self.real_connection("paystack", active=True)
+        self.real_connection("monnify", status=ConnectionStatus.NEEDS_REAUTH)
+        self.real_connection("remita", status=ConnectionStatus.ERROR)
+        self.real_connection("legacy_one", status=ConnectionStatus.DISABLED)
+        self.real_connection("legacy_two", status=ConnectionStatus.REVOKED)
         body = self.build()
         self.assertTrue(body["available"])
-        self.assertEqual((body["accounts"]["connected"], body["accounts"]["needAttention"]), (1, 2))
-        self.assertEqual(body["accounts"]["lastSyncedAt"], stamp.isoformat())
+        self.assertEqual((body["providers"]["connected"], body["providers"]["needAttention"]), (1, 2))
+        self.assertEqual(
+            body["providers"]["active"],
+            {"connectionId": str(good.id), "provider": "paystack", "environment": "live", "merchantName": "paystack merchant"},
+        )
 
 
 class SandboxTests(SummaryTestCase):
@@ -218,8 +217,8 @@ class RecentTests(SummaryTestCase):
             self.deposit(account, transaction_date=at(n, 10), amount_minor=n * 100_000, narration=f"n{n}", sender_name=f"S{n}")
         recent = self.build(recent=3)["recent"]
         self.assertEqual([r["amountMinor"] for r in recent], [700_000, 600_000, 500_000])
-        self.assertEqual(set(recent[0]), {"id", "senderName", "amountMinor", "currency", "transactionDate", "bankName",
-                                          "maskedAccountNumber", "reconciliationStatus", "isSandbox"})
+        self.assertEqual(set(recent[0]), {"id", "senderName", "amountMinor", "currency", "transactionDate", "provider",
+                                          "reconciliationStatus", "isSandbox"})
 
 
 class SummaryApiTests(SummaryTestCase):
@@ -273,7 +272,7 @@ class DashboardTests(SummaryTestCase):
         self.deposit(account, amount_minor=3_000_000)
         on_dashboard = self.dashboard("owner").json()["collections"]
         on_screen = self.api_get("summary/").json()["summary"]
-        for key in ("today", "thisWeek", "reconciliation", "byBank", "accounts", "available"):
+        for key in ("today", "thisWeek", "reconciliation", "byProvider", "providers", "available"):
             self.assertEqual(on_dashboard[key], on_screen[key], key)
 
     def test_another_schools_dashboard_shows_none_of_it(self):

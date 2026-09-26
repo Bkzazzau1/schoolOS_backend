@@ -28,7 +28,7 @@ class BankTestCase(StaffTestCase):
     """A school with one person in every role, a second separate school, a working vault and the
     sandbox switched on."""
 
-    def give_duty(self, member, duty="finance.bank_connections", status="active"):
+    def give_duty(self, member, duty="finance.collection_provider_manage", status="active"):
         SyncRecord.objects.update_or_create(
             school=self.school, entity_type="owner_job_assignment", entity_id=f"JOB-{member.id}",
             defaults={"payload": {"registeredStaffId": f"S-{member.id}", "duties": [duty], "status": status,
@@ -50,29 +50,36 @@ class BankTestCase(StaffTestCase):
 
     # -- making connections ------------------------------------------------------------------
 
-    def connect(self, who=None, purpose="tuition", label="Tuition Collection", account=ACCOUNT, key=SANDBOX_KEY,
-                school=None):
+    def connect(self, who=None, label="School sandbox", key=SANDBOX_KEY, school=None, provider="sandbox", environment="test", credentials=None):
+        """Connect a provider with the SCHOOL'S OWN credentials. (The sandbox stands in for Paystack / Monnify / Remita.)"""
         return self.api_post(
             "connections/",
-            {"provider": "sandbox", "purpose": purpose, "label": label,
-             "credentials": {"sandbox_key": key, "account_number": account}},
+            {"provider": provider, "environment": environment, "label": label, "credentials": credentials or {"sandbox_key": key}},
             who=who, school=school,
         )
 
     def connected(self, who=None, school=None, **kw):
-        """A confirmed connection. Returns (its JSON, the webhook path shown once)."""
+        """A connected provider. Returns (its JSON, the webhook path an authorised person is shown)."""
         created = self.connect(who=who, school=school, **kw)
         self.assertEqual(created.status_code, 201, created.json())
-        confirmed = self.api_post(f"connections/{created.json()['connection']['id']}/confirm/", who=who, school=school)
-        self.assertEqual(confirmed.status_code, 200, confirmed.json())
-        body = confirmed.json()
-        return body["connection"], body.get("webhook", {}).get("path")
+        connection = created.json()["connection"]
+        setup = self.api_get(f"connections/{connection['id']}/webhook/", who=who, school=school)
+        return connection, setup.json()["webhook"]["path"] if setup.status_code == 200 else None
+
+    def legacy_connection(self, purpose="tuition", school=None, mask="****1111", bank="GTBank", sandbox=False):
+        """A connection made by the earlier bank-account model (no provider of Smart Money Collection). The fuzzy student-matching engine and
+        the review queue still serve such payments, and these tests exercise that engine; a Smart Money Collection payment is matched by the
+        account it was paid into, never by guessing."""
+        return BankConnection.objects.create(
+            school=school or self.school, provider="legacy_bank", connection_type="direct_bank_api", bank_name=bank, account_name="SCHOOL",
+            account_mask=mask, purpose=purpose, label=f"{purpose} account", status="connected", is_sandbox=sandbox,
+        )
 
     def row(self, connection_json) -> BankConnection:
         return BankConnection.objects.get(id=connection_json["id"])
 
     def reseal(self, connection: BankConnection, secret: dict):
-        """Put a different credential in the vault, as if the bank had changed something."""
+        """Put a different credential in the vault, as if the provider had changed something."""
         connection.sealed_credentials = get_vault().seal(context_for(connection), secret)
         connection.save(update_fields=["sealed_credentials"])
 
@@ -82,9 +89,10 @@ class BankTestCase(StaffTestCase):
     # -- what must never leak ----------------------------------------------------------------
 
     def assert_no_secrets(self, *things):
-        secrets_ = [SANDBOX_KEY, ACCOUNT]
+        secrets_ = [SANDBOX_KEY]
         for connection in BankConnection.objects.exclude(sealed_credentials=b""):
-            secrets_.append(self.secret_of(connection).get("webhook_secret", "not-a-secret"))
+            opened = self.secret_of(connection)
+            secrets_ += [opened.get("webhook_secret", "not-a-secret"), opened.get("webhook_token", "not-a-secret")]
         text = " ".join(t if isinstance(t, str) else json.dumps(t, default=str) for t in things)
         for secret in secrets_:
             self.assertNotIn(secret, text)

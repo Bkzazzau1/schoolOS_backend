@@ -1,5 +1,5 @@
 from apps.bankconnect import reconciliation, review
-from apps.bankconnect.connections import BankRejected
+from apps.bankconnect.provider_connections import BankRejected
 from apps.bankconnect.models import BankTransaction, ReconciliationDecision, TransactionAllocation
 from apps.notifications.models import Notification
 
@@ -57,10 +57,11 @@ class PaymentsIntoAFamilyAccountTests(BankIntegrationCase):
         self.account.refresh_from_db()
         self.assertEqual(self.account.status, "dormant")
 
-    def test_money_arriving_on_a_settled_account_is_held_as_credit_and_flagged_for_a_person(self):
+    def test_money_arriving_on_a_settled_account_is_held_as_credit_without_being_sent_to_review_for_that_alone(self):
         self.into_account(300_000 * N)
         tx = self.into_account(40_000 * N)
-        self.assertEqual(tx.reconciliation_status, "requires_review")
+        # The provider confirmed the payment, so it goes through the normal pipeline; an advance is not a reason for review by itself.
+        self.assertEqual(tx.reconciliation_status, "matched")
         self.assertIn("held as family credit", tx.match_reasons[-1]["text"])
         self.assertEqual(ledger.family_position(self.family).credit, 40_000 * N)
         self.assertFalse(self.active(tx))
@@ -79,10 +80,13 @@ class PaymentsIntoAFamilyAccountTests(BankIntegrationCase):
         self.assertEqual(sum(a.amount_minor for a in self.active(tx)), 100_000 * N)
         self.assertEqual(ReconciliationDecision.objects.filter(transaction=tx).count(), 1)
 
-    def test_a_closed_account_identifies_no_one_and_the_payment_falls_back_to_the_ordinary_matching(self):
+    def test_a_closed_account_still_identifies_its_family_because_the_provider_confirmed_the_money(self):
         collection_accounts.close(self.account, actor=self.owner, reason="Retired")
         tx = self.into_account(10_000 * N, sender="Nobody", narration="hello")
-        self.assertEqual((tx.reconciliation_status, tx.family), ("unmatched", None))
+        # SchoolOS makes no rule of its own about money paid into a closed account: the provider says it arrived, so it is that family's.
+        self.assertEqual((tx.reconciliation_status, tx.family), ("matched", self.family))
+        self.assertEqual(ledger.family_position(self.family).paid, 10_000 * N)
+        self.assertLedgerHolds()
 
     def test_another_schools_payment_with_the_same_reference_never_reaches_this_family(self):
         other_family, _ = families.ensure_family_for_student(self.other_school, self.make_student("Zed", "Other", school=self.other_school, guardian="Zed Sr"))

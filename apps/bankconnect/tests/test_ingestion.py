@@ -31,8 +31,8 @@ class IngestTests(BankTestCase):
         self.assertEqual(result.outcome, CREATED)
         row = result.transaction
         self.assertEqual(
-            (row.school, row.connection, row.provider, row.bank_name, row.masked_account_number, row.is_sandbox),
-            (self.school, self.connection, "sandbox", "Sandbox Bank", "****6789", True),
+            (row.school, row.connection, row.provider, row.is_sandbox),
+            (self.school, self.connection, "sandbox", True),
         )
         self.assertEqual(
             (row.direction, row.amount_minor, row.currency, row.sender_name, row.sender_bank, row.narration),

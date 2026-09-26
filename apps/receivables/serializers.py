@@ -5,7 +5,7 @@ Money is always whole minor units (`...Minor`, kobo) - the canonical value - tog
 nothing here does any arithmetic on it.
 """
 
-from . import families, issuers, ledger
+from . import account_shapes, families, ledger
 
 
 def _iso(value):
@@ -37,10 +37,14 @@ def account(a) -> dict:
     """A collection account as the school's staff may see it: never `provider_meta`, never a credential."""
     return {
         "id": str(a.id), "familyId": str(a.family_id), "provider": a.provider, "bankName": a.bank_name,
-        "accountNumber": a.account_number, "numberLabel": issuers.shape_for(a.provider).number_label, "accountName": a.account_name,
+        "accountNumber": a.account_number, "numberLabel": account_shapes.label_for(a.provider), "accountName": a.account_name,
         "details": a.public_details, "connectionId": str(a.connection_id) if a.connection_id else None, "isTest": bool(a.provider_meta.get("test")),
-        "currency": a.currency, "status": a.status, "activatedAt": _time(a.activated_at), "dormantAt": _time(a.dormant_at),
-        "statusChangedAt": _time(a.status_changed_at),
+        "currency": a.currency, "status": a.status, "origin": a.origin, "mode": a.account_mode,
+        "scopeSessionId": str(a.scope_session_id) if a.scope_session_id else None, "scopeTermId": str(a.scope_term_id) if a.scope_term_id else None,
+        "validFrom": a.valid_from.isoformat() if a.valid_from else None, "validUntil": a.valid_until.isoformat() if a.valid_until else None,
+        "collectionTargetMinor": a.collection_target_minor,
+        "activatedAt": _time(a.activated_at), "dormantAt": _time(a.dormant_at), "settledAt": _time(a.settled_at),
+        "closedAt": _time(a.closed_at), "closeReason": a.close_reason, "statusChangedAt": _time(a.status_changed_at),
     }
 
 

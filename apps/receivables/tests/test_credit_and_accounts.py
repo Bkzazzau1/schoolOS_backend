@@ -253,11 +253,17 @@ class RegisteringAccountsTests(CreditTestCase):
         fields.update(over)
         return collection_accounts.register(self.family, **fields)
 
-    def test_only_those_who_work_the_ledger_may(self):
-        for role in ("teacher", "parent", "student", "principal"):
-            with self.assertRaises(Refused, msg=role):
+    def test_recording_by_hand_is_restricted_to_those_who_manage_the_schools_providers(self):
+        # Not the Finance Office, and not billing authority: recording an account by hand is a restricted, legacy act.
+        for role in ("teacher", "parent", "student", "principal", "accountant"):
+            with self.assertRaises(Refused, msg=role) as raised:
                 self.register(actor=self.members[role])
-        self.assertEqual(self.register(actor=self.members["accountant"]).status, AccountStatus.ACTIVE)
+            self.assertEqual(raised.exception.code, "not_provider_manager", role)
+        self.give_duty(self.members["principal"], "finance.billing_authority")
+        with self.assertRaises(Refused):
+            self.register(actor=self.members["principal"])  # billing authority does not open the school's provider side
+        account = self.register()
+        self.assertEqual((account.status, account.origin), (AccountStatus.ACTIVE, "legacy_manual"))
 
     def test_a_provider_and_an_identifier_are_required(self):
         with self.assertRaises(Refused) as raised:
@@ -267,10 +273,10 @@ class RegisteringAccountsTests(CreditTestCase):
             self.register(account_number="", external_account_ref="")
         self.assertEqual(raised.exception.code, "identifier_required")
 
-    def test_a_family_has_one_live_account_per_provider_and_a_number_is_used_once(self):
+    def test_a_family_has_one_live_account_per_school_and_a_number_is_used_once_per_provider(self):
         self.register()
         with self.assertRaises(Refused) as raised:
-            self.register(account_number="1111111111")
+            self.register(provider="paystack", account_number="1111111111")  # another provider does not give the family a second account
         self.assertEqual(raised.exception.code, "account_exists")
         from .. import families
 
@@ -296,7 +302,9 @@ class RegisteringAccountsTests(CreditTestCase):
         self.assertIsNone(find(self.school, "monnify", ""))
         self.assertIsNone(find(self.school, "monnify", "0000000000"))
         collection_accounts.close(account, actor=self.owner, reason="Retired")
-        self.assertIsNone(find(self.school, "monnify", "8012345678"))  # a closed account identifies no one
+        # A closed account still identifies its family: a number belongs to one family for good, and a payment the provider confirmed
+        # into it is that family's whatever state SchoolOS holds the account in.
+        self.assertEqual(find(self.school, "monnify", "8012345678"), account)
 
     def test_the_database_holds_the_line_on_a_shared_number(self):
         self.register()
@@ -304,4 +312,6 @@ class RegisteringAccountsTests(CreditTestCase):
 
         other, _ = families.ensure_family_for_student(self.school, self.make_student("Yusuf", "Sani", guardian="Ada"))
         with self.assertRaises(IntegrityError), transaction.atomic():
-            FamilyCollectionAccount.objects.create(school=self.school, family=other, provider="monnify", account_number="8012345678")
+            FamilyCollectionAccount.objects.create(
+                school=self.school, family=other, provider="monnify", account_number="8012345678", origin="legacy_manual"
+            )

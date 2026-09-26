@@ -22,7 +22,7 @@ from apps.core.money import format_money  # noqa: F401 - re-exported: other code
 from apps.notifications.services import notify_many
 
 from . import matching
-from .constants import Direction, ReconStatus
+from .constants import SMART_PROVIDERS, Direction, ReconStatus
 from .models import BankTransaction, ReconciliationDecision, TransactionAllocation
 from .permissions import collections_recipients
 
@@ -70,6 +70,15 @@ def _verdict_for(row: BankTransaction, directory: matching.Directory):
         # duplicate heuristics either - two transfers to a family account are two payments the provider reported.
         note = f"Paid into the collection account of {family.display_name} ({family.code}), so the family is known for certain."
         return matching.Verdict(ReconStatus.MATCHED, 100, [], [note], family=family), None
+    if row.provider in SMART_PROVIDERS or row.provider == "sandbox":
+        # A payment reported by a collection provider identifies its family by the account it was paid into, or not at all. An account
+        # SchoolOS has no record of is never attached to a family by guessing from a narration or a sender's name: it is kept, unmatched,
+        # for a person to look into.
+        note = (
+            "The provider says this was paid into an account SchoolOS has no family for. It is kept and left for a person; "
+            "it is not matched by guessing from the narration or the sender."
+        )
+        return matching.Verdict(ReconStatus.UNMATCHED, 0, [], [note]), None
     verdict = matching.decide(
         directory.candidates(
             narration=row.narration, reference=row.transaction_reference,
@@ -123,12 +132,12 @@ def _settle(fresh: BankTransaction, verdict, decision) -> None:
 
     outcomes = receivable_payments.settle(fresh, decision=decision)
     if verdict.family is not None and not sum(o.result.allocated_minor for o in outcomes):
-        # It came in through a family account, but the family owed nothing: it is held as credit, and a person
-        # should look, because money arriving on a settled account may be an advance, a refund or a mistake.
-        note = "The family owed nothing when this arrived, so it is held as family credit. Check whether it is an advance payment, a refund or a mistake."
-        fresh.reconciliation_status = ReconStatus.REQUIRES_REVIEW
+        # It came in through a family account, but the family owed nothing. The provider confirmed the money, so it is real: it goes through
+        # the normal pipeline and is held as family credit (an advance). SchoolOS makes no rule of its own about a payment into a settled,
+        # dormant or closed account, and does not send it to review for that reason alone; the note only says what happened.
+        note = "The family owed nothing when this arrived, so it is held as family credit (an advance payment)."
         fresh.match_reasons = [*fresh.match_reasons, {"kind": "note", "text": note}]
-        fresh.save(update_fields=["reconciliation_status", "match_reasons", "updated_at"])
+        fresh.save(update_fields=["match_reasons", "updated_at"])
 
 
 @dataclass

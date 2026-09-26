@@ -17,7 +17,7 @@ from apps.students.models import Student
 from apps.receivables import payments as receivable_payments
 from apps.receivables.errors import Refused as ReceivablesRefused
 
-from .connections import BankRejected
+from .provider_connections import BankRejected
 from .constants import Direction, Purpose, ReconStatus
 from .models import BankTransaction, ReconciliationDecision, TransactionAllocation
 

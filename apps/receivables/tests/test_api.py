@@ -310,24 +310,25 @@ class CollectionAccountApiTests(ApiTestCase):
         self.with_fees()
 
     def test_register_then_suspend_reinstate_and_close(self):
-        made = self.post(f"families/{self.family.id}/collection-accounts/", {"provider": "monnify", "accountNumber": "8012345678", "accountName": "BRIGHTGATE / BELLO", "bankName": "Wema"}, who=self.finance)
-        self.assertEqual((made.status_code, made.json()["account"]["status"]), (201, "active"))
+        made = self.post(f"families/{self.family.id}/collection-accounts/legacy/", {"provider": "monnify", "accountNumber": "8012345678", "accountName": "BRIGHTGATE / BELLO", "bankName": "Wema"})
+        self.assertEqual((made.status_code, made.json()["account"]["status"], made.json()["account"]["origin"]), (201, "active", "legacy_manual"))
         aid = made.json()["account"]["id"]
         self.assertEqual(self.post(f"collection-accounts/{aid}/suspend/", {"reason": "Provider flagged it"}, who=self.finance).json()["account"]["status"], "suspended")
         self.assertEqual(self.post(f"collection-accounts/{aid}/reinstate/", who=self.finance).json()["account"]["status"], "active")
         self.assertEqual(self.post(f"collection-accounts/{aid}/close/", {"reason": "Moved provider"}, who=self.finance).json()["account"]["status"], "closed")
         self.assertEqual(self.post(f"collection-accounts/{aid}/close/", {"reason": "Again"}, who=self.finance).json()["code"], "already_closed")
 
-    def test_only_those_who_work_the_ledger_and_only_their_own_school(self):
+    def test_recording_by_hand_is_for_provider_managers_only_and_only_their_own_school(self):
         data = {"provider": "monnify", "accountNumber": "8012345678"}
-        self.assertEqual(self.post(f"families/{self.family.id}/collection-accounts/", data, who=self.members["teacher"]).status_code, 403)
-        made = self.post(f"families/{self.family.id}/collection-accounts/", data).json()["account"]
+        for who in (self.members["teacher"], self.finance):
+            self.assertEqual(self.post(f"families/{self.family.id}/collection-accounts/legacy/", data, who=who).status_code, 403, who.role)
+        made = self.post(f"families/{self.family.id}/collection-accounts/legacy/", data).json()["account"]
         self.assertEqual(self.post(f"collection-accounts/{made['id']}/suspend/", {"reason": "x"}, who=self.other_owner, school=self.other_school).status_code, 404)
         stranger_connection = self.bank_connection(self.other_school)
-        self.assertEqual(self.post(f"families/{self.family.id}/collection-accounts/", {"provider": "paystack", "accountNumber": "1", "connectionId": str(stranger_connection.id)}).status_code, 404)
+        self.assertEqual(self.post(f"families/{self.family.id}/collection-accounts/legacy/", {"provider": "paystack", "accountNumber": "12345", "connectionId": str(stranger_connection.id)}).status_code, 404)
 
     def test_the_status_follows_what_the_family_owes_as_seen_through_the_api(self):
-        made = self.post(f"families/{self.family.id}/collection-accounts/", {"provider": "monnify", "accountNumber": "8012345678"}).json()["account"]
+        made = self.post(f"families/{self.family.id}/collection-accounts/legacy/", {"provider": "monnify", "accountNumber": "8012345678"}).json()["account"]
         allocation.allocate(self.payment(300_000 * N), self.family)
         listed = self.get(f"families/{self.family.id}/collection-accounts/").json()["accounts"]
         self.assertEqual((listed[0]["id"], listed[0]["status"]), (made["id"], "dormant"))

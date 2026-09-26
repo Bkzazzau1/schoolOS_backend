@@ -1,8 +1,8 @@
-"""What the app is allowed to see. Every field is listed by name: a column added to a model later is
-not exposed until someone decides it should be. Nothing here can carry a credential."""
+"""What the app is allowed to see. Every field is listed by name: a column added to a model later is not exposed until someone decides
+it should be. Nothing here can carry a credential."""
 
 from .providers import registry
-from .providers.base import Capabilities
+from .providers.base import CollectionCapabilities
 
 
 def _camel(name: str) -> str:
@@ -10,7 +10,7 @@ def _camel(name: str) -> str:
     return head + "".join(part.title() for part in rest)
 
 
-def _capabilities(capabilities: Capabilities) -> dict:
+def _capabilities(capabilities: CollectionCapabilities) -> dict:
     return {_camel(name): value for name, value in capabilities.as_dict().items()}
 
 
@@ -23,40 +23,50 @@ def serialize_provider(info) -> dict:
         "code": info.code,
         "displayName": info.display_name,
         "icon": info.icon,
-        "connectionType": info.connection_type,
-        "connectMethods": list(info.connect_methods),
+        "environments": list(info.environments),
         "credentialFields": [
-            {"name": f.name, "label": f.label, "secret": f.secret, "required": f.required}
-            for f in info.credential_fields
+            {"name": f.name, "label": f.label, "secret": f.secret, "required": f.required, "help": f.help} for f in info.credential_fields
+        ],
+        "settingFields": [
+            {"name": f.name, "label": f.label, "choices": list(f.choices), "default": f.default, "required": f.required} for f in info.setting_fields
         ],
         "capabilities": _capabilities(info.capabilities),
+        "onboarding": info.onboarding,
+        "webhook": {
+            "mode": info.webhook.mode, "where": info.webhook.where, "verification": info.webhook.verification,
+            "events": list(info.webhook.events), "note": info.webhook.note,
+        },
         "productionStatus": info.production_status,
         "available": info.implemented,
         "isSandbox": info.is_sandbox,
         "description": info.description,
+        "accountLabel": info.account_label,
+        "payerNote": info.payer_note,
     }
 
 
 def serialize_connection(connection) -> dict:
+    """A provider connection as the app may see it: which provider, which environment, who the merchant is, whether it is the active
+    provider and whether its webhook is known to work. Never a credential, never a settlement account."""
     connector = registry.get_connector(connection.provider)
     info = connector.info if connector else None
     return {
         "id": str(connection.id),
         "provider": connection.provider,
         "providerName": info.display_name if info else connection.provider,
-        "connectionType": connection.connection_type,
+        "environment": connection.environment,
         "isSandbox": connection.is_sandbox,
-        "bankName": connection.bank_name,
-        "accountName": connection.account_name,
-        "accountMask": connection.account_mask,
-        "purpose": connection.purpose,
+        "merchantName": connection.merchant_name,
+        "merchantReference": connection.merchant_reference,
         "label": connection.label,
         "status": connection.status,
-        "lastSyncedAt": _iso(connection.last_synced_at),
+        "isActiveProvider": connection.is_active_provider,
+        "webhookStatus": connection.webhook_status,
+        "webhookConfirmedAt": _iso(connection.webhook_confirmed_at),
+        "lastVerifiedAt": _iso(connection.last_verified_at),
         "lastErrorCode": connection.last_error_code,
-        "tokenExpiresAt": _iso(connection.token_expires_at),
-        "webhookConfigured": bool(connection.webhook_token_hash),
-        "capabilities": _capabilities(info.capabilities if info else Capabilities()),
+        "settings": connection.provider_settings or {},
+        "capabilities": _capabilities(info.capabilities if info else CollectionCapabilities()),
         "createdAt": _iso(connection.created_at),
         "disconnectedAt": _iso(connection.disconnected_at),
     }
@@ -67,9 +77,6 @@ def serialize_transaction(t) -> dict:
         "id": str(t.id),
         "connectionId": str(t.connection_id),
         "provider": t.provider,
-        "bankName": t.bank_name,
-        "bankAccountName": t.bank_account_name,
-        "maskedAccountNumber": t.masked_account_number,
         "transactionReference": t.transaction_reference,
         "transactionType": t.transaction_type,
         "direction": t.direction,
@@ -80,7 +87,6 @@ def serialize_transaction(t) -> dict:
         "senderBank": t.sender_bank,
         "narration": t.narration,
         "transactionDate": _iso(t.transaction_date),
-        "balanceAfterMinor": t.balance_after_minor,
         "isSandbox": t.is_sandbox,
         "reconciliationStatus": t.reconciliation_status,
         "confidence": t.reconciliation_confidence,
@@ -101,8 +107,7 @@ def serialize_transaction_brief(t) -> dict:
         "amountMinor": t.amount_minor,
         "currency": t.currency,
         "transactionDate": _iso(t.transaction_date),
-        "bankName": t.bank_name,
-        "maskedAccountNumber": t.masked_account_number,
+        "provider": t.provider,
         "reconciliationStatus": t.reconciliation_status,
         "isSandbox": t.is_sandbox,
     }

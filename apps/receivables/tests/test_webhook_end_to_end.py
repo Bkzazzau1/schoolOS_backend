@@ -1,7 +1,7 @@
 from cryptography.fernet import Fernet
 from django.test import override_settings
 
-from apps.bankconnect import sandbox_tools, sync
+from apps.bankconnect import sandbox_tools
 from apps.bankconnect.identifiers import hash_token
 from apps.bankconnect.models import BankConnection, BankTransaction, BankWebhookEvent, TransactionAllocation
 from apps.bankconnect.providers.sandbox import SIGNATURE_HEADER, SandboxConnector
@@ -25,14 +25,14 @@ class FromTheProvidersCallbackToTheLedgerTests(ReceivablesTestCase):
         self.bello_family()
         self.publish_bello_fees()
         self.connection = BankConnection.objects.create(
-            school=self.school, provider="sandbox", connection_type="sandbox", bank_name="Sandbox Bank", account_name="SCHOOL",
-            account_mask="****6789", purpose="tuition", status="connected", is_sandbox=True, webhook_token_hash=hash_token(TOKEN),
+            school=self.school, provider="sandbox", connection_type="sandbox", environment="test", merchant_name="Sandbox school",
+            status="connected", is_sandbox=True, webhook_token_hash=hash_token(TOKEN),
         )
         self.connection.sealed_credentials = get_vault().seal(
-            context_for(self.connection), {"sandbox_key": "sandbox-x", "account_number": "0123456789", "webhook_secret": SECRET}
+            context_for(self.connection), {"sandbox_key": "sandbox-x", "webhook_secret": SECRET, "webhook_token": TOKEN}
         )
         self.connection.save()
-        collection_accounts.register(self.family, provider="sandbox", account_number=ACCOUNT, actor=self.owner)
+        collection_accounts.register(self.family, provider="sandbox", account_number=ACCOUNT, connection=self.connection, actor=self.owner)
         self.client.force_authenticate(None)  # a provider has no sign-in
 
     def deliver(self, **payload):
@@ -74,13 +74,12 @@ class FromTheProvidersCallbackToTheLedgerTests(ReceivablesTestCase):
         self.assertEqual(BankTransaction.objects.count(), 1)
         self.assertEqual(ledger.family_position(self.family).outstanding, 180_000 * N)
 
-    def test_the_same_payment_seen_by_a_sync_afterwards_is_not_paid_twice(self):
+    def test_the_same_payment_delivered_again_later_is_not_paid_twice(self):
         self.deliver(external_transaction_id="W1", amount_minor=120_000 * N, receiving_account_reference=ACCOUNT)
         rows_before = self.allocation_rows()
         self.assertGreater(rows_before, 0)
-        sandbox_tools.add_feed_item(self.connection, external_transaction_id="W1", amount_minor=120_000 * N, receiving_account_reference=ACCOUNT)
-        outcome = sync.sync_connection(self.connection)
-        self.assertEqual((outcome.created, outcome.duplicates), (0, 1))
+        again, _ = self.deliver(external_transaction_id="W1", amount_minor=120_000 * N, receiving_account_reference=ACCOUNT, narration="retried by the provider")
+        self.assertEqual(again.status_code, 200)
         self.assertEqual(ledger.family_position(self.family).outstanding, 180_000 * N)
         self.assertEqual(self.allocation_rows(), rows_before)  # not one more row
 

@@ -16,12 +16,43 @@ class AccountStatus(models.TextChoices):
     PROVISIONING = "provisioning", "Being set up"
     #: The family owes money, so payments to this account are expected.
     ACTIVE = "active", "Active"
+    #: What this account collects for is settled. The school's policy decides what happens next (close, rest, wait, or a person acts).
+    SETTLED = "settled", "Settled"
+    #: Settled, and waiting out the school's grace period before the policy's next step.
+    GRACE = "grace", "In grace period"
     #: The family owes nothing right now. The account is kept (not closed or deleted) and wakes up again
     #: when new fees are published.
     DORMANT = "dormant", "Dormant"
     #: Stopped by a person, or by a provider problem. Only a person brings it back.
     SUSPENDED = "suspended", "Suspended"
+    #: Being retired at the provider (the provider call is in flight or waiting to be retried).
+    CLOSING = "closing", "Closing"
     CLOSED = "closed", "Closed"
+    #: The provider could not make the account. It never received anything and can be replaced.
+    FAILED = "failed", "Failed"
+
+
+#: An account that still counts: a family has at most ONE of these per school. A closed or failed account is history.
+LIVE_STATUSES = (
+    AccountStatus.PROVISIONING, AccountStatus.ACTIVE, AccountStatus.SETTLED, AccountStatus.GRACE,
+    AccountStatus.DORMANT, AccountStatus.SUSPENDED, AccountStatus.CLOSING,
+)
+#: Statuses that end an account's life.
+ENDED_STATUSES = (AccountStatus.CLOSED, AccountStatus.FAILED)
+
+
+class AccountOrigin(models.TextChoices):
+    #: Made by the school's active collection provider through Smart Money Collection.
+    PROVIDER = "provider", "Provider-generated"
+    #: Recorded by hand, before Smart Money Collection or by an owner-level administrative act. Never the normal journey.
+    LEGACY_MANUAL = "legacy_manual", "Recorded by hand (legacy)"
+
+
+class AccountMode(models.TextChoices):
+    #: A reusable account: kept for the scope the school's policy says (a term, a session, until a date, indefinitely...).
+    STATIC = "static", "Static"
+    #: Made for one collection scope and its amount, then retired according to policy.
+    DYNAMIC = "dynamic", "Dynamic"
 
 
 class FamilyCollectionAccount(models.Model):
@@ -37,8 +68,22 @@ class FamilyCollectionAccount(models.Model):
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="+")
     family = models.ForeignKey(Family, on_delete=models.PROTECT, related_name="collection_accounts")
     provider = models.CharField(max_length=40)
-    #: The school's connection under which the provider reports this account's payments, if any.
-    connection = models.ForeignKey("bankconnect.BankConnection", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    #: The school's provider connection this account was made under, and under which its payments arrive. Always set for an account
+    #: made by Smart Money Collection; empty only for an account recorded by hand (legacy).
+    connection = models.ForeignKey("bankconnect.CollectionProviderConnection", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    origin = models.CharField(max_length=14, choices=AccountOrigin.choices, default=AccountOrigin.PROVIDER)
+    account_mode = models.CharField(max_length=8, choices=AccountMode.choices, default=AccountMode.STATIC)
+    #: What the account collects for. Empty scope means it is not tied to one session or term.
+    scope_session = models.ForeignKey(AcademicSession, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    scope_term = models.ForeignKey(AcademicTerm, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    valid_from = models.DateField(null=True, blank=True)
+    #: The last day a static account is reused for (empty: no end date - see the policy's reuse scope).
+    valid_until = models.DateField(null=True, blank=True)
+    #: What the account was made to collect, in minor units, when it was made (the family's collection target). A record of what
+    #: was decided then; it is never how much the family owes (the ledger says that).
+    collection_target_minor = models.BigIntegerField(null=True, blank=True)
+    #: The same on every retry of one account's generation: what stops a retry, a double click or a worker race making a second account.
+    idempotency_key = models.CharField(max_length=80, blank=True)
     #: The provider's own id for the account. Kept for life so the same account can be reused.
     external_account_ref = models.CharField(max_length=120, blank=True)
     #: What a payer types or transfers to, and what `BankTransaction.receiving_account_ref` carries.
@@ -49,6 +94,9 @@ class FamilyCollectionAccount(models.Model):
     status = models.CharField(max_length=14, choices=AccountStatus.choices, default=AccountStatus.PROVISIONING)
     activated_at = models.DateTimeField(null=True, blank=True)
     dormant_at = models.DateTimeField(null=True, blank=True)
+    settled_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    close_reason = models.CharField(max_length=200, blank=True)
     status_changed_at = models.DateTimeField(null=True, blank=True)
     #: Extra facts a payer is shown with the number - what this provider needs them to know, as
     #: `[{"label", "value"}]` (a payment reference, a sort code). Public: the family sees exactly this.
@@ -63,13 +111,27 @@ class FamilyCollectionAccount(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["school", "provider", "account_number"], condition=~Q(account_number=""), name="one_family_account_per_number"),
             models.UniqueConstraint(fields=["school", "provider", "external_account_ref"], condition=~Q(external_account_ref=""), name="one_family_account_per_provider_ref"),
-            models.UniqueConstraint(fields=["family", "provider"], condition=~Q(status="closed"), name="one_live_account_per_family_and_provider"),
+            # At most ONE live collection account per family per school, whatever the provider: the accounting identity is the family.
+            models.UniqueConstraint(
+                fields=["school", "family"], condition=~Q(status__in=["closed", "failed"]), name="one_live_collection_account_per_family_per_school",
+            ),
+            models.UniqueConstraint(
+                fields=["school", "idempotency_key"], condition=~Q(idempotency_key=""), name="one_collection_account_per_generation_key",
+            ),
+            # An account made through Smart Money Collection always belongs to one of the school's provider connections.
+            models.CheckConstraint(condition=Q(origin="legacy_manual") | Q(connection__isnull=False), name="provider_account_has_a_connection"),
         ]
         indexes = [models.Index(fields=["school", "family", "status"])]
 
     def save(self, *args, **kwargs):
         if self.family.school_id != self.school_id:
             raise ValidationError("A collection account and its family must belong to the same school.")
+        if self.connection_id and self.connection.school_id != self.school_id:
+            raise ValidationError("A collection account and its provider connection must belong to the same school.")
+        if self.scope_term_id and self.scope_session_id and self.scope_term.session_id != self.scope_session_id:
+            raise ValidationError("A collection account's term must be in its session.")
+        if self.origin == AccountOrigin.PROVIDER and not self.connection_id:
+            raise ValidationError("A provider-generated collection account belongs to a provider connection.")
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):

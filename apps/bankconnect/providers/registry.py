@@ -1,101 +1,34 @@
-"""Every provider SchoolOS knows about, in one place: names, type, capabilities, what it needs to
-connect. UI code and business rules ask here instead of naming banks themselves.
+"""Every collection provider SchoolOS supports, in one place: names, what each can do, what it needs to connect. UI code and
+business rules ask here instead of naming providers themselves.
+
+Smart Money Collection supports exactly three providers - Paystack, Monnify and Remita - each connected with the SCHOOL'S OWN
+credentials. Conventional banks (GTBank, UBA, Access, ...) and open banking are not collection providers and are not listed. The
+sandbox stands in for a provider in development and tests, and is never offered where it is switched off.
 
 Adding a provider is one connector class and one entry below - nothing else in SchoolOS changes.
-
-No real bank or provider API is implemented. The banks are listed so the screen can show them, but
-every one is `pending_verified_documentation` with no capabilities and no endpoints: a connector is
-written only against the provider's own published documentation, never guessed. The sandbox is the
-only connector that does anything.
 """
 
 from django.conf import settings
 
-from ..constants import ConnectionType
-from .base import (
-    METHOD_AUTHORIZATION,
-    STATUS_PENDING_DOCS,
-    Capabilities,
-    BankConnector,
-    ConnectorError,
-    ProviderInfo,
-)
+from ..constants import SMART_PROVIDERS
+from .base import CollectionConnector, ProviderInfo
+from .monnify import MonnifyConnector
+from .paystack import PaystackConnector
+from .remita import RemitaConnector
 from .sandbox import SandboxConnector
 
-
-class PendingConnector(BankConnector):
-    """A provider that is listed but not yet connectable: awaiting its verified documentation."""
-
-    def __init__(self, info: ProviderInfo):
-        self.info = info
-
-    def connect(self, *, credentials=None, authorization_code=None):
-        raise ConnectorError(
-            "pending_documentation",
-            f"{self.info.display_name} cannot be connected yet: SchoolOS has not been given its verified API documentation.",
-        )
-
-    def begin_authorization(self, *, redirect_uri, state):
-        return self.connect()
-
-
-def _pending(code: str, name: str, kind: str, icon: str, description: str, **more) -> PendingConnector:
-    return PendingConnector(
-        ProviderInfo(
-            code=code,
-            display_name=name,
-            icon=icon,
-            connection_type=kind,
-            capabilities=Capabilities(),
-            production_status=STATUS_PENDING_DOCS,
-            description=description,
-            **more,
-        )
-    )
-
-
-_DIRECT = ConnectionType.DIRECT_BANK_API
-_pending_connectors = [
-    _pending("gtbank", "GTBank", _DIRECT, "bank", "Corporate API credentials issued by the bank."),
-    _pending("uba", "UBA", _DIRECT, "bank", "Corporate API credentials issued by the bank."),
-    _pending("zenith", "Zenith Bank", _DIRECT, "bank", "Corporate API credentials issued by the bank."),
-    _pending("access", "Access Bank", _DIRECT, "bank", "Corporate API credentials issued by the bank."),
-    _pending("firstbank", "FirstBank", _DIRECT, "bank", "Corporate API credentials issued by the bank."),
-    _pending("moniepoint", "Moniepoint Business", _DIRECT, "bank", "Business account API access."),
-    _pending("opay", "OPay Business", _DIRECT, "bank", "Business account API access."),
-    _pending(
-        "open_banking",
-        "Other bank (open banking)",
-        ConnectionType.OPEN_BANKING,
-        "link",
-        "Authorise SchoolOS through an approved open-banking provider. No internet-banking password is held.",
-        connect_methods=(METHOD_AUTHORIZATION,),
-    ),
-    _pending(
-        "monnify",
-        "Monnify",
-        ConnectionType.COLLECTION_PROVIDER,
-        "payments",
-        "Collections processed through Monnify. This is not access to the school's underlying bank account.",
-    ),
-    _pending(
-        "paystack",
-        "Paystack",
-        ConnectionType.COLLECTION_PROVIDER,
-        "payments",
-        "Collections processed through the school's own Paystack account (not SchoolOS's, which is only for what schools pay SchoolOS). This is not access to its bank account.",
-    ),
-]
-
-_REGISTRY: dict[str, BankConnector] = {c.info.code: c for c in _pending_connectors}
+_REGISTRY: dict[str, CollectionConnector] = {c.info.code: c for c in (PaystackConnector(), MonnifyConnector(), RemitaConnector())}
 _REGISTRY["sandbox"] = SandboxConnector()
+
+assert tuple(code for code in _REGISTRY if code != "sandbox") == tuple(SMART_PROVIDERS)
 
 
 def sandbox_enabled() -> bool:
     return bool(getattr(settings, "BANKCONNECT_ENABLE_SANDBOX", False))
 
 
-def get_connector(code: str) -> BankConnector | None:
+def get_connector(code: str) -> CollectionConnector | None:
+    """The connector for a provider code, or None for anything that is not a supported provider (a legacy bank code, or the sandbox where it is off)."""
     connector = _REGISTRY.get(code)
     if connector is None or (connector.info.is_sandbox and not sandbox_enabled()):
         return None
@@ -103,5 +36,5 @@ def get_connector(code: str) -> BankConnector | None:
 
 
 def all_providers() -> list[ProviderInfo]:
-    """What the connect screen lists. The sandbox appears only where it is switched on."""
+    """What a school may connect. The sandbox appears only where it is switched on."""
     return [c.info for c in _REGISTRY.values() if not c.info.is_sandbox or sandbox_enabled()]

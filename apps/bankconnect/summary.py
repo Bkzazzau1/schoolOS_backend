@@ -11,13 +11,13 @@ once the school has raised charges; until then it says so instead of showing zer
 
 from datetime import timedelta
 
-from django.db.models import Count, Max, Sum
+from django.db.models import Count, Sum
 from django.utils import timezone
 
 from apps.academics.models import AcademicLifecycleStatus, AcademicTerm
 
 from .constants import DEFAULT_CURRENCY, NEEDS_A_PERSON, ConnectionStatus, Direction, ReconStatus
-from .models import BankConnection, BankTransaction, TransactionAllocation
+from .models import BankTransaction, CollectionProviderConnection, TransactionAllocation
 from .serializers import serialize_transaction_brief
 
 #: Not counted as collected: the money went back, or a person has yet to say it is a real second payment.
@@ -78,18 +78,17 @@ def build(school, *, period: str = "term", include_sandbox: bool = False, recent
     counted = naira.exclude(reconciliation_status__in=NOT_COLLECTED)
     window = _period_rows(counted, period, today, week_start, term)
 
-    connections = BankConnection.objects.filter(school=school)
+    connections = CollectionProviderConnection.objects.filter(school=school)
     if not include_sandbox:
         connections = connections.filter(is_sandbox=False)
     live = connections.filter(status=ConnectionStatus.CONNECTED)
     attention = connections.filter(status__in=(ConnectionStatus.NEEDS_REAUTH, ConnectionStatus.ERROR))
-    last_synced = live.aggregate(latest=Max("last_synced_at"))["latest"]
+    active = live.filter(is_active_provider=True).first()
 
-    by_bank = (
-        window.order_by().values("connection_id", "bank_name", "masked_account_number", "connection__label", "connection__purpose")
+    by_provider = (
+        window.order_by().values("connection_id", "provider", "connection__merchant_name", "connection__label", "connection__environment")
         .annotate(amount=Sum("amount_minor"), count=Count("id")).order_by("-amount")
     )
-    by_purpose = window.order_by().values("connection__purpose").annotate(amount=Sum("amount_minor"), count=Count("id")).order_by("-amount")
 
     from apps.receivables import reports  # imported here: receivables reads bank payments too
 
@@ -104,25 +103,24 @@ def build(school, *, period: str = "term", include_sandbox: bool = False, recent
             "to": term.ends_on if period == "term" and term else (today if period != "all" else None),
         },
         "available": live.exists(),
-        "accounts": {
+        "providers": {
             "connected": live.count(),
             "needAttention": attention.count(),
-            "lastSyncedAt": last_synced.isoformat() if last_synced else None,
+            "active": (
+                {"connectionId": str(active.id), "provider": active.provider, "environment": active.environment, "merchantName": active.merchant_name}
+                if active else None
+            ),
         },
         "today": _total(_period_rows(counted, "today", today, week_start, term)),
         "thisWeek": _total(_period_rows(counted, "week", today, week_start, term)),
         "thisTerm": _total(_period_rows(counted, "term", today, week_start, term)) if term else None,
         "selected": _total(window),
-        "byPurpose": [
-            {"purpose": r["connection__purpose"], "amountMinor": r["amount"], "count": r["count"]} for r in by_purpose
-        ],
-        "byBank": [
+        "byProvider": [
             {
-                "connectionId": str(r["connection_id"]), "bankName": r["bank_name"], "accountMask": r["masked_account_number"],
-                "label": r["connection__label"], "purpose": r["connection__purpose"],
-                "amountMinor": r["amount"], "count": r["count"],
+                "connectionId": str(r["connection_id"]), "provider": r["provider"], "merchantName": r["connection__merchant_name"],
+                "label": r["connection__label"], "environment": r["connection__environment"], "amountMinor": r["amount"], "count": r["count"],
             }
-            for r in by_bank
+            for r in by_provider
         ],
         "reconciliation": _reconciliation(counted, credits),
         "recent": [serialize_transaction_brief(t) for t in credits.order_by("-transaction_date", "-created_at")[:recent]],

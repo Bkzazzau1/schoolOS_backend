@@ -7,7 +7,7 @@ from uuid import UUID
 from rest_framework import status
 from rest_framework.response import Response
 
-from .connections import BankRejected
+from .provider_connections import BankRejected
 from .vault import VaultError, VaultNotConfigured
 
 
@@ -24,13 +24,13 @@ def bank_errors(view):
         except VaultNotConfigured:
             return Response(
                 {"code": "secure_storage_unavailable",
-                 "message": "Secure storage for bank credentials is not set up on this server, so no account can be connected yet."},
+                 "message": "Secure storage for provider credentials is not set up on this server, so no provider can be connected yet."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except VaultError:
             return Response(
                 {"code": "credential_unreadable",
-                 "message": "The stored credential could not be opened. Reconnect the account."},
+                 "message": "The stored credential could not be opened. Replace the provider's credentials."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 

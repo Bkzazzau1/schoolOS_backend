@@ -10,7 +10,7 @@ from datetime import date
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from . import audit, issuers, ledger, periods, reports
+from . import account_shapes, audit, ledger, periods, reports
 from .errors import Refused
 from .models import AccountStatus, Family, FamilyCollectionAccount, FamilyStatement, ReceivableStatus, StatementStatus, StudentReceivable
 from .permissions import require_operator
@@ -57,12 +57,11 @@ def collection_account_facts(family: Family) -> list[dict]:
     is listed with its status but without its number."""
     rows = []
     for a in FamilyCollectionAccount.objects.filter(family=family).exclude(status=AccountStatus.CLOSED):
-        shape = issuers.shape_for(a.provider)
         payable = a.status in _PAYABLE
         rows.append({
             "id": str(a.id), "provider": a.provider, "bankName": a.bank_name, "accountName": a.account_name, "status": a.status,
-            "accountNumber": a.account_number if payable else "", "numberLabel": shape.number_label,
-            "details": a.public_details if payable else [], "note": shape.payer_note, "canPay": payable,
+            "accountNumber": a.account_number if payable else "", "numberLabel": account_shapes.label_for(a.provider),
+            "details": a.public_details if payable else [], "note": account_shapes.note_for(a.provider), "canPay": payable,
             "isTest": bool(a.provider_meta.get("test")),
         })
     order = {AccountStatus.ACTIVE: 0, AccountStatus.DORMANT: 1}

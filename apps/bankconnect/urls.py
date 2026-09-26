@@ -1,15 +1,5 @@
 from django.urls import path
 
-from .views import (
-    ACTIONS,
-    AuthorizationStartView,
-    BankWebhookView,
-    ConnectionActionView,
-    ConnectionAuditView,
-    ConnectionsView,
-    ConnectionSyncView,
-    ProvidersView,
-)
 from .transaction_views import (
     DecideView,
     ReviewQueueView,
@@ -18,15 +8,23 @@ from .transaction_views import (
     TransactionDetailView,
     TransactionsView,
 )
+from .views import (
+    ACTIONS,
+    BankWebhookView,
+    ConnectionActionView,
+    ConnectionAuditView,
+    ConnectionsView,
+    ConnectionWebhookView,
+    ProvidersView,
+)
 
 _BASE = "schools/<uuid:school_id>/collections/"
 
 urlpatterns = [
     path(f"{_BASE}providers/", ProvidersView.as_view()),
     path(f"{_BASE}connections/", ConnectionsView.as_view()),
-    path(f"{_BASE}connections/authorize/", AuthorizationStartView.as_view()),
     path(f"{_BASE}connections/<uuid:connection_id>/audit/", ConnectionAuditView.as_view()),
-    path(f"{_BASE}connections/<uuid:connection_id>/sync/", ConnectionSyncView.as_view()),
+    path(f"{_BASE}connections/<uuid:connection_id>/webhook/", ConnectionWebhookView.as_view()),
     path(f"{_BASE}transactions/", TransactionsView.as_view()),
     path(f"{_BASE}transactions/<uuid:transaction_id>/", TransactionDetailView.as_view()),
     path(f"{_BASE}transactions/<uuid:transaction_id>/decide/", DecideView.as_view()),

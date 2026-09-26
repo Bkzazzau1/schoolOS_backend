@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.notifications.models import Notification
 
-from .. import matching, reconciliation, sandbox_tools, sync
+from .. import matching, reconciliation, sandbox_tools
 from ..models import BankTransaction, ReconciliationDecision, TransactionAllocation
 from .base import BankTestCase
 
@@ -13,7 +13,7 @@ from .base import BankTestCase
 class EngineTestCase(BankTestCase):
     def setUp(self):
         super().setUp()
-        self.connection = self.row(self.connected(purpose="tuition")[0])
+        self.connection = self.legacy_connection("tuition")
 
     def signals(self, row):
         return [s["signal"] for c in row.match_reasons if c["kind"] == "candidate" for s in c["signals"]]
@@ -205,7 +205,7 @@ class EngineRunTests(EngineTestCase):
         self.assertEqual((older.reconciliation_status, newer.reconciliation_status, newer.duplicate_of), ("matched", "duplicate", older))
 
     def test_it_only_ever_touches_its_own_school(self):
-        other = self.row(self.connected(who=self.other_owner, school=self.other_school)[0])
+        other = self.legacy_connection(school=self.other_school)
         theirs = self.deposit(other, reconcile=False, narration="BG-0042")
         self.make_student("BG-0042", "Aisha", "Bello")
         reconciliation.reconcile_pending(self.school)
@@ -228,37 +228,35 @@ class EngineRunTests(EngineTestCase):
             reconciliation.reconcile_pending(self.school)
         self.assertEqual(built.call_count, 1)
 
-    def test_a_failing_engine_never_breaks_the_sync_and_the_next_run_catches_up(self):
+    def test_a_failing_engine_never_breaks_a_webhook_and_the_next_run_catches_up(self):
         self.make_student("BG-0042", "Aisha", "Bello")
-        sandbox_tools.add_feed_item(self.connection, external_transaction_id="A", narration="BG-0042")
+        made, _ = self.connected()
+        provider = self.row(made)
         with mock.patch.object(reconciliation, "reconcile_pending", side_effect=RuntimeError("engine bug")):
             with self.assertLogs("apps.bankconnect.reconciliation", "ERROR"):
-                outcome = sync.sync_connection(self.connection)
-        self.assertEqual((outcome.ok, outcome.created), (True, 1))
+                result = sandbox_tools.deliver(provider, external_transaction_id="A", narration="BG-0042")
+        self.assertEqual((result.outcome, result.created), ("processed", 1))
         self.assertEqual(BankTransaction.objects.get().engine_version, "")
         reconciliation.reconcile_pending(self.school)
-        self.assertEqual(BankTransaction.objects.get().reconciliation_status, "matched")
+        # A provider payment names the account it was paid into and nothing else; with no family behind that account it is kept, not guessed.
+        self.assertEqual(BankTransaction.objects.get().reconciliation_status, "unmatched")
 
 
 class EndToEndTests(EngineTestCase):
-    def test_a_synced_payment_is_matched_to_the_student(self):
+    def test_a_payment_from_a_collection_provider_is_never_matched_by_guessing(self):
+        self.make_student("BG-0042", "Aisha", "Bello")
+        made, _ = self.connected()
+        sandbox_tools.deliver(self.row(made), external_transaction_id="A", narration="BG-0042 tuition", sender_name="Aisha Bello")
+        row = BankTransaction.objects.get()
+        self.assertEqual(row.reconciliation_status, "unmatched")
+        self.assertFalse(TransactionAllocation.objects.exists())
+        self.assertIn("no family", " ".join(r.get("text", "") for r in row.match_reasons))
+
+    def test_a_legacy_bank_payment_is_still_matched_to_the_student_it_names(self):
         aisha = self.make_student("BG-0042", "Aisha", "Bello")
-        sandbox_tools.add_feed_item(self.connection, external_transaction_id="A", narration="BG-0042 tuition", amount_minor=7_500_000)
-        sync.sync_connection(self.connection)
+        self.deposit(self.connection, external_transaction_id="A", narration="BG-0042 tuition", amount_minor=7_500_000)
         row = BankTransaction.objects.get()
         self.assertEqual(row.reconciliation_status, "matched")
-        self.assertEqual(TransactionAllocation.objects.get().student, aisha)
-
-    def test_a_webhook_payment_is_matched_too(self):
-        aisha = self.make_student("BG-0042", "Aisha", "Bello")
-        made, hook = self.connected(account="0123456780")
-        connection = self.row(made)
-        body, headers = sandbox_tools.signed_webhook(connection, external_transaction_id="W1", narration="BG-0042")
-        self.client.force_authenticate(None)
-        response = self.client.post(
-            f"/api/v1/{hook}", data=body, content_type="application/json", HTTP_X_SANDBOX_SIGNATURE=headers["x-sandbox-signature"]
-        )
-        self.assertEqual(response.status_code, 200)
         self.assertEqual(TransactionAllocation.objects.get().student, aisha)
 
 
@@ -277,7 +275,7 @@ class NotificationTests(EngineTestCase):
         self.deposit(self.connection, narration="BG-0042", sender_name="Musa Bello", amount_minor=5_000_000)
         self.assertEqual(self.told("bank_payment_received"), {"proprietor", "accountant", "staff"})
         note = Notification.objects.filter(kind="bank_payment_received", recipient=self.finance).get()
-        self.assertEqual(note.title, "[Sandbox test data] Payment received")
+        self.assertEqual(note.title, "Payment received")
         self.assertIn("₦50,000 from Musa Bello was matched to Aisha Bello (BG-0042) for tuition.", note.message)
         self.assertEqual(Notification.objects.filter(recipient=self.members["teacher"]).count(), 0)
         self.assertEqual(Notification.objects.filter(recipient=self.members["principal"]).count(), 0)
@@ -293,7 +291,7 @@ class NotificationTests(EngineTestCase):
         self.deposit(self.connection, reconcile=False, narration="mystery")
         reconciliation.reconcile_pending(self.school)
         received = Notification.objects.get(kind="bank_payment_received", recipient=self.finance)
-        self.assertEqual(received.title, "[Sandbox test data] 3 payments received")
+        self.assertEqual(received.title, "3 payments received")
         self.assertIn("₦30,000", received.message)
         self.assertEqual(received.data["count"], 3)
         review = Notification.objects.get(kind="bank_payment_review", recipient=self.finance)
@@ -316,3 +314,13 @@ class NotificationTests(EngineTestCase):
         self.assertEqual(reconciliation.format_money(5_000_000), "₦50,000")
         self.assertEqual(reconciliation.format_money(150_050), "₦1,500.50")
         self.assertEqual(reconciliation.format_money(100, "USD"), "USD 1")
+
+
+class SandboxLabellingTests(EngineTestCase):
+    def test_a_test_payment_is_labelled_so_in_what_the_finance_people_are_told(self):
+        self.make_student("BG-0042", "Aisha", "Bello")
+        test_data = self.legacy_connection("tuition", mask="****7777", sandbox=True)
+        self.deposit(test_data, narration="BG-0042 tuition")
+        titles = set(Notification.objects.filter(kind="bank_payment_received").values_list("title", flat=True))
+        self.assertTrue(titles)
+        self.assertTrue(all(t.startswith("[Sandbox test data]") for t in titles), titles)

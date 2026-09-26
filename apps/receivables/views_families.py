@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from apps.bankconnect.models import BankTransaction, TransactionAllocation
 from apps.students.models import GuardianLink, Student
 
-from . import bridge, collection_accounts, credit, families, issuers, ledger, merging, serializers, statements
+from . import bridge, collection_accounts, credit, families, ledger, merging, serializers, statements
 from .errors import Refused
 from .http import ReceivablesView, body, found, paging, uuid_arg
 from .models import Family, FamilyCollectionAccount, FamilyStatement, StudentReceivable
@@ -26,12 +26,12 @@ def _student(membership, student_id) -> Student:
 
 
 def _connection(membership, data):
-    """The school's own bank connection a request names, or a refusal."""
+    """The school's own provider connection a request names, or a refusal."""
     from apps.bankconnect.models import BankConnection
 
     if not data.get("connectionId"):
-        raise Refused("Choose which of the school's bank accounts this is for.", "connection_required")
-    return found(BankConnection.objects.filter(school=membership.school, id=uuid_arg(data["connectionId"], "connection")), "bank connection")
+        raise Refused("Choose which of the school's provider connections this is for.", "connection_required")
+    return found(BankConnection.objects.filter(school=membership.school, id=uuid_arg(data["connectionId"], "connection")), "provider connection")
 
 
 class FamiliesView(ReceivablesView):
@@ -213,15 +213,23 @@ class FamilyPaymentsView(ReceivablesView):
 
 
 class FamilyAccountsView(ReceivablesView):
-    """GET a family's collection accounts; POST to record the account a provider has given it."""
+    """GET a family's collection accounts, live and historical (a closed account stays on record)."""
 
     def get(self, request, school_id, family_id):
         membership = acting_membership(request, school_id)
         family = _family(membership, family_id)
         return Response({"accounts": [serializers.account(a) for a in family.collection_accounts.all()]})
 
+
+class FamilyLegacyAccountView(ReceivablesView):
+    """LEGACY and RESTRICTED: POST to record by hand an account made outside Smart Money Collection. It is not the normal journey (the school's
+    active provider makes a family's account) and needs the authority to manage the school's providers."""
+
     def post(self, request, school_id, family_id):
-        membership = acting_membership(request, school_id)
+        from apps.bankconnect.permissions import NEED_PROVIDER
+        from apps.bankconnect.permissions import acting_membership as provider_membership
+
+        membership = provider_membership(request, school_id, need=NEED_PROVIDER)
         family, data = _family(membership, family_id), body(request)
         connection = _connection(membership, data) if data.get("connectionId") else None
         account = collection_accounts.register(
@@ -252,32 +260,6 @@ class FamilyMergeView(ReceivablesView):
         source = _family(membership, family_id)
         into = _family(membership, uuid_arg(data.get("intoFamilyId"), "family"))
         return Response({"merge": merging.merge(source, into, actor=membership, reason=data.get("reason"))})
-
-
-class FamilyAccountIssueView(ReceivablesView):
-    """POST to have the school's provider issue this family its account, under one of the school's connections."""
-
-    def post(self, request, school_id, family_id):
-        membership = acting_membership(request, school_id)
-        family, data = _family(membership, family_id), body(request)
-        account = collection_accounts.issue(family, connection=_connection(membership, data), actor=membership)
-        return Response({"account": serializers.account(account)}, status=201)
-
-
-class IssueMissingAccountsView(ReceivablesView):
-    """POST to give every active family without one an account under a connection."""
-
-    def post(self, request, school_id):
-        membership = acting_membership(request, school_id)
-        return Response(collection_accounts.issue_missing(_connection(membership, body(request)), actor=membership))
-
-
-class AccountProvidersView(ReceivablesView):
-    """GET the providers a family account can come from, with what each one's account looks like."""
-
-    def get(self, request, school_id):
-        acting_membership(request, school_id)
-        return Response({"providers": issuers.describe()})
 
 
 class StatementVoidView(ReceivablesView):

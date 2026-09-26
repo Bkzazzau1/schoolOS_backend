@@ -31,7 +31,7 @@ from . import audit, ledger, lifecycle
 from .errors import Refused
 from .families import active_students
 from .models import (
-    AccountStatus, Family, FamilyCollectionAccount, FamilyCreditEntry, FamilyGuardian, FamilyStatement, FamilyStatus, FamilyStudent,
+    LIVE_STATUSES, Family, FamilyCollectionAccount, FamilyCreditEntry, FamilyGuardian, FamilyStatement, FamilyStatus, FamilyStudent,
     StudentReceivable,
 )
 from .permissions import require_billing_authority, require_operator
@@ -57,8 +57,8 @@ def _problems(source: Family, into: Family) -> list[tuple[str, str]]:
     return found
 
 
-def _live_providers(family: Family) -> set:
-    return set(FamilyCollectionAccount.objects.filter(family=family).exclude(status=AccountStatus.CLOSED).values_list("provider", flat=True))
+def _has_live_account(family: Family) -> bool:
+    return FamilyCollectionAccount.objects.filter(family=family, status__in=LIVE_STATUSES).exists()
 
 
 def _brief(family: Family) -> dict:
@@ -75,8 +75,8 @@ def preview(source: Family, into: Family, *, actor) -> dict:
     require_operator(actor, source.school)
     if into.school_id != source.school_id:
         raise Refused("That family was not found.", "family_not_found")
-    keep = _live_providers(into)
-    accounts = list(FamilyCollectionAccount.objects.filter(family=source).exclude(status=AccountStatus.CLOSED))
+    keep = _has_live_account(into)
+    accounts = list(FamilyCollectionAccount.objects.filter(family=source, status__in=LIVE_STATUSES))
     theirs = {g.guardian_id for g in FamilyGuardian.objects.filter(family=into)}
     return {
         "problems": [{"code": code, "message": message} for code, message in _problems(source, into)],
@@ -89,8 +89,8 @@ def preview(source: Family, into: Family, *, actor) -> dict:
             "statements": FamilyStatement.objects.filter(family=source).count(),
             "payers": FamilyGuardian.objects.filter(family=source, is_active=True).exclude(guardian_id__in=theirs).count(),
         },
-        "accountsMoved": [{"provider": a.provider, "bankName": a.bank_name} for a in accounts if a.provider not in keep],
-        "accountsKeptAsIs": [{"provider": a.provider, "bankName": a.bank_name} for a in accounts if a.provider in keep],
+        "accountsMoved": [{"provider": a.provider, "bankName": a.bank_name} for a in accounts if not keep],
+        "accountsKeptAsIs": [{"provider": a.provider, "bankName": a.bank_name} for a in accounts if keep],
         "irreversible": True,
     }
 
@@ -124,14 +124,17 @@ def _move_payers(source: Family, into: Family) -> int:
 
 
 def _move_accounts(source: Family, into: Family) -> tuple[int, int]:
-    """Move the source's accounts, except a live one where the target already has a live account with that bank."""
-    keep = _live_providers(into)
+    """Move the source's accounts. A family has at most one live account per school, so a live account moves only if the target has none;
+    otherwise it stays on the old family (which now points at the survivor) and still credits the survivor. Closed and failed accounts are
+    history and always move with it."""
+    keep = _has_live_account(into)
     moved = left = 0
     for account in FamilyCollectionAccount.objects.select_for_update().filter(family=source).order_by("created_at", "id"):
-        if account.status != AccountStatus.CLOSED and account.provider in keep:
+        if account.status in LIVE_STATUSES and keep:
             left += 1
             continue
         FamilyCollectionAccount.objects.filter(pk=account.pk).update(family=into)
+        keep = keep or account.status in LIVE_STATUSES
         moved += 1
     return moved, left
 

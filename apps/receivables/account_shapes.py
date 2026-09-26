@@ -55,6 +55,25 @@ class AccountShape:
 GENERIC = AccountShape()
 
 
+def _connector(provider: str):
+    from apps.bankconnect.providers import registry  # imported here: the providers package reaches back into receivables
+
+    return registry.get_connector(str(provider or ""))
+
+
+def label_for(provider: str) -> str:
+    """What a provider calls the number a payer uses ("Account number"; Remita's is a payment reference). A provider SchoolOS does not
+    know gets the plain word."""
+    connector = _connector(provider)
+    return connector.info.account_label if connector else GENERIC.number_label
+
+
+def note_for(provider: str) -> str:
+    """One line telling a payer how to pay this provider's account."""
+    connector = _connector(provider)
+    return connector.info.payer_note if connector else ""
+
+
 def clean_details(details) -> list[dict]:
     """The extra facts shown to a payer with an account, as `[{"label", "value"}]`. Anything else is refused."""
     if details in (None, "", []):

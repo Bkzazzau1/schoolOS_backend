@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.bankconnect.models import BankConnection
+from apps.bankconnect.models import CollectionProviderConnection
 from apps.bankconnect.vault import VaultError, get_vault
 
 
@@ -21,7 +21,7 @@ class Command(BaseCommand):
             raise CommandError(str(error))
 
         resealed = unreadable = 0
-        for connection in BankConnection.objects.exclude(sealed_credentials=b"").iterator():
+        for connection in CollectionProviderConnection.objects.exclude(sealed_credentials=b"").iterator():
             try:
                 blob = vault.reseal(bytes(connection.sealed_credentials))
             except VaultError:

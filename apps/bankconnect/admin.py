@@ -1,17 +1,18 @@
 from django.contrib import admin
 
-from .models import BankAuditEvent, BankConnection, BankTransaction
+from .models import BankAuditEvent, BankTransaction, CollectionProviderConnection
 
 
-@admin.register(BankConnection)
-class BankConnectionAdmin(admin.ModelAdmin):
-    """Read-only, and without the sealed credential: nobody should read or edit it here."""
+@admin.register(CollectionProviderConnection)
+class CollectionProviderConnectionAdmin(admin.ModelAdmin):
+    """Read-only, and without the sealed credential: nobody - not a SchoolOS operator either - should read or edit a school's provider
+    secret here."""
 
-    list_display = ("school", "provider", "account_mask", "purpose", "status", "is_sandbox", "last_synced_at")
-    list_filter = ("provider", "status", "is_sandbox")
+    list_display = ("school", "provider", "environment", "status", "is_active_provider", "webhook_status", "last_verified_at")
+    list_filter = ("provider", "status", "environment", "is_active_provider")
     exclude = ("sealed_credentials", "webhook_token_hash", "account_fingerprint")
     readonly_fields = [
-        f.name for f in BankConnection._meta.fields if f.name not in ("sealed_credentials", "webhook_token_hash", "account_fingerprint")
+        f.name for f in CollectionProviderConnection._meta.fields if f.name not in ("sealed_credentials", "webhook_token_hash", "account_fingerprint")
     ]
 
     def has_add_permission(self, request):

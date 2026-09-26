@@ -9,7 +9,7 @@ from .base import BankTestCase
 class ReviewTestCase(BankTestCase):
     def setUp(self):
         super().setUp()
-        self.connection = self.row(self.connected(purpose="tuition")[0])
+        self.connection = self.legacy_connection("tuition")
         self.aisha = self.make_student("BG-0042", "Aisha", "Bello", guardian="Musa Bello", phone="0803 123 4567", class_name="Primary 3")
         self.bilal = self.make_student("BG-0043", "Bilal", "Bello", guardian="Musa Bello", phone="0803 123 4567")
 
@@ -55,8 +55,12 @@ class ReviewQueueTests(ReviewTestCase):
         self.deposit(self.connection, narration="mystery", sender_name="Nobody")
         self.assertEqual(self.api_get("review/?status=unmatched").json()["total"], 1)
         self.assertEqual(self.api_get("review/?status=matched").json()["total"], 0)  # not a queue status
-        self.assertEqual(self.api_get("review/?sandbox=exclude").json()["total"], 0)
+        self.assertEqual(self.api_get("review/?sandbox=exclude").json()["total"], 2)  # none of these is test data
         self.assertEqual(self.api_get("review/?status=bogus").status_code, 400)
+        test_data = self.legacy_connection("tuition", mask="****7777", sandbox=True)
+        self.deposit(test_data, narration="mystery test", sender_name="Nobody Test")
+        self.assertEqual(self.api_get("review/?sandbox=exclude").json()["total"], 2)
+        self.assertEqual(self.api_get("review/").json()["total"], 3)
 
     def test_once_decided_a_payment_leaves_the_queue(self):
         row = self.unclear()
@@ -199,7 +203,7 @@ class OtherDecisionTests(ReviewTestCase):
             self.assertEqual(self.decide(two, action="duplicate", duplicateOf=target, note="x").json()["code"], code, target)
 
     def test_a_payment_from_another_school_cannot_be_named_as_the_original(self):
-        other = self.row(self.connected(who=self.other_owner, school=self.other_school)[0])
+        other = self.legacy_connection(school=self.other_school)
         theirs = self.deposit(other, narration="mystery")
         row = self.unclear()
         self.assertEqual(self.decide(row, action="duplicate", duplicateOf=str(theirs.id), note="x").json()["code"], "unknown_payment")
@@ -285,7 +289,7 @@ class AuditAndSafetyTests(ReviewTestCase):
         self.decided(row, action="investigate", note="Checking")
         body = self.api_get(f"transactions/{row.id}/").json()["transaction"]
         self.assertEqual([d["action"] for d in body["decisions"]], ["engine_review", "investigate"])
-        self.assertEqual(body["maskedAccountNumber"], "****6789")
+        self.assertEqual(body["provider"], "legacy_bank")
         self.assert_no_secrets(body)
 
 

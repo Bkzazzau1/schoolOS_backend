@@ -17,6 +17,8 @@ DUTIES = frozenset(
         "finance.approvals", "finance.accounts", "finance.reconciliation",
         "finance.expenses", "finance.payroll", "finance.store", "finance.reports",
         "finance.bad_debt_classification", "finance.bank_connections", "finance.billing_authority",
+        "finance.collection_provider_manage", "finance.collection_policy_manage",
+        "finance.collection_prepare", "finance.collection_approve",
         "administration.admissions", "administration.students",
         "administration.staff", "administration.attendance",
         "administration.communications", "academics.teaching",

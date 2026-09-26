@@ -11,7 +11,7 @@ from apps.students.models import GuardianLink
 from .. import adjustments, allocation, collection_accounts, families, ledger, merging, schedules, statements
 from ..errors import Refused
 from ..models import (
-    AccountStatus, FamilyCreditEntry, FamilyGuardian, FamilyStatement, FinanceAuditEvent, StudentReceivable,
+    AccountStatus, FamilyCollectionAccount, FamilyCreditEntry, FamilyGuardian, FamilyStatement, FinanceAuditEvent, StudentReceivable,
 )
 from . import test_api
 from .base import ReceivablesTestCase
@@ -157,27 +157,29 @@ class PayersTests(MergeTestCase):
 class AccountsTests(MergeTestCase):
     def setUp(self):
         super().setUp()
+        # A family has one live account per school, so each family has one; the Sani family also has two closed accounts on record.
         self.bello_gt = collection_accounts.register(self.bello, provider="gtbank", account_number="0000000001", actor=self.owner)
+        old_uba = collection_accounts.register(self.sani, provider="uba", bank_name="UBA", account_number="0000000003", actor=self.owner)
+        collection_accounts.close(old_uba, actor=self.owner, reason="Replaced")
+        old_opay = collection_accounts.register(self.sani, provider="opay", account_number="0000000004", actor=self.owner)
+        collection_accounts.close(old_opay, actor=self.owner, reason="Replaced")
         self.sani_gt = collection_accounts.register(self.sani, provider="gtbank", account_number="0000000002", actor=self.owner)
-        self.sani_uba = collection_accounts.register(self.sani, provider="uba", bank_name="UBA", account_number="0000000003", actor=self.owner)
-        old = collection_accounts.register(self.sani, provider="opay", account_number="0000000004", actor=self.owner)
-        collection_accounts.close(old, actor=self.owner, reason="Replaced")
-        self.sani_opay = old
+        self.sani_uba, self.sani_opay = old_uba, old_opay
 
     def reconcile(self, tx):
         reconciliation.reconcile_pending(self.school)
         return BankTransaction.objects.get(pk=tx.pk)
 
-    def test_an_account_the_survivor_has_no_bank_match_for_moves_over_with_its_details(self):
+    def test_closed_accounts_move_over_as_history_and_the_survivors_own_account_is_the_one_shown(self):
         self.merge()
         self.refresh(self.sani_uba, self.sani_opay, self.sani_gt, self.bello_gt)
-        self.assertEqual((self.sani_uba.family, self.sani_opay.family), (self.bello, self.bello))  # incl. the closed one, as history
-        self.assertEqual({f["provider"] for f in statements.collection_account_facts(self.bello)}, {"gtbank", "uba"})
+        self.assertEqual((self.sani_uba.family, self.sani_opay.family), (self.bello, self.bello))  # closed, kept as the household's history
+        self.assertEqual([f["accountNumber"] for f in statements.collection_account_facts(self.bello)], ["0000000001"])
 
-    def test_a_second_account_with_the_same_bank_stays_where_it_is_and_still_works(self):
+    def test_a_live_account_stays_where_it_is_when_the_survivor_already_has_one_and_still_works(self):
         self.merge()
         self.refresh(self.sani_gt)
-        self.assertEqual(self.sani_gt.family, self.sani)  # one live account per family per bank: it is left in place
+        self.assertEqual(self.sani_gt.family, self.sani)  # one live account per family per school: it is left in place
         tx = self.reconcile(self.payment(50_000 * N, receiving_account="0000000002"))
         self.assertEqual((tx.reconciliation_status, tx.family), ("matched", self.bello))  # a number a family was given never stops working
         self.assertEqual(self.position(self.bello).paid, 50_000 * N)
@@ -192,9 +194,16 @@ class AccountsTests(MergeTestCase):
         self.refresh(self.sani_gt)
         self.assertEqual(self.sani_gt.status, AccountStatus.ACTIVE)  # the merged household owes again
 
+    def test_a_live_account_moves_when_the_survivor_has_none(self):
+        self.bello_gt = FamilyCollectionAccount.objects.get(family=self.bello, status="active")
+        collection_accounts.close(self.bello_gt, actor=self.owner, reason="Retired")
+        self.merge()
+        self.refresh(self.sani_gt)
+        self.assertEqual(self.sani_gt.family, self.bello)
+
     def test_the_preview_says_which_accounts_move_and_which_stay(self):
         preview = merging.preview(self.sani, self.bello, actor=self.members["accountant"])
-        self.assertEqual({a["provider"] for a in preview["accountsMoved"]}, {"uba"})
+        self.assertEqual(preview["accountsMoved"], [])
         self.assertEqual({a["provider"] for a in preview["accountsKeptAsIs"]}, {"gtbank"})
 
 
