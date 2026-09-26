@@ -319,7 +319,7 @@ checked after each step**. Run once at larger scale (60 seeds x 40 steps) with n
 
 ## Assumptions and what is deliberately not here
 
-- **Direct-debit mandates** (Remita, Lendsqr) are not implemented. The ledger answers what a mandate integration will ask:
+- **Direct-debit mandates** (Remita, Lendsqr) are `apps/mandates` (see MANDATES_DIRECT_DEBIT.md); a confirmed debit is settled into this ledger by the ordinary allocation. The ledger answers what a mandate integration asks:
   who owes (`family_position`), how much, what is due (`outstanding`, `overdue`), what has been paid, what credit exists,
   and whether anything is collectible (`collectible`).
 - **No real provider adapter issues family accounts yet.** The framework, the per-bank account shapes and the sandbox issuer

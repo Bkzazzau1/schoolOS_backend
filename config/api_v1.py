@@ -25,4 +25,5 @@ urlpatterns = [
     path("", include("apps.bankconnect.urls")),
     path("", include("apps.receivables.urls")),
     path("", include("apps.smartcollect.urls")),
+    path("", include("apps.mandates.urls")),
 ]

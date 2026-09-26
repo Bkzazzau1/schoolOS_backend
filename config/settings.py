@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     "apps.bankconnect",
     "apps.receivables",
     "apps.smartcollect",
+    "apps.mandates",
     "apps.staff",
     "apps.invitations",
     "apps.alumni",
@@ -198,6 +199,28 @@ COLLECTION_ALLOW_HTTP = env.bool("COLLECTION_ALLOW_HTTP", default=False)
 # drains a bounded slice itself when a batch is started and while its progress is being watched.
 SMART_COLLECTION_INLINE_JOBS = env.bool("SMART_COLLECTION_INLINE_JOBS", default=True)
 SMART_COLLECTION_INLINE_SECONDS = env.int("SMART_COLLECTION_INLINE_SECONDS", default=8)
+
+# Mandates & Direct Debit (apps.mandates) is a separate payment path: Remita and Lendsqr, connected with the school's own credentials.
+# The sandbox mandate provider is synthetic and never on unless asked for.
+MANDATES_ENABLE_SANDBOX = env.bool("MANDATES_ENABLE_SANDBOX", default=DEBUG)
+# Lendsqr's Developer APIs say a live account needs the organisation to be licensed as a lender (or otherwise legally entitled) and to have
+# passed Lendsqr's KYC. SchoolOS never claims a school is eligible: a LIVE Lendsqr connection is refused until an operator has confirmed
+# the provider, commercial and compliance position and switched this on. Test mode is unaffected.
+MANDATES_LENDSQR_LIVE_ENABLED = env.bool("MANDATES_LENDSQR_LIVE_ENABLED", default=False)
+# Lendsqr publishes how long a payer has to activate a mandate (currently 168 hours) and how long NIBSS takes to make it debit-ready
+# (currently "up to 2 hours"). These are Lendsqr's rules, kept here (not in SchoolOS's business code) so a change at Lendsqr is a setting.
+# The provider's own answer is used whenever it gives one.
+MANDATES_LENDSQR_ACTIVATION_WINDOW_HOURS = env.int("MANDATES_LENDSQR_ACTIVATION_WINDOW_HOURS", default=168)
+MANDATES_LENDSQR_DEBIT_SETUP_MINUTES = env.int("MANDATES_LENDSQR_DEBIT_SETUP_MINUTES", default=120)
+# Remita publishes only its demo host for Direct Debit. The live host is not in that documentation, so it is never assumed: an operator
+# sets it here (and Remita requires a UAT before go-live), and a live Remita connection is refused until then.
+MANDATES_REMITA_LIVE_BASE_URL = env("MANDATES_REMITA_LIVE_BASE_URL", default="")
+# Where the payer prints Remita's mandate form (its own documented address on the demo host): unset for live, the form link is then not offered.
+MANDATES_REMITA_LIVE_FORM_BASE_URL = env("MANDATES_REMITA_LIVE_FORM_BASE_URL", default="")
+# Debit instructions are sent from a durable job queue, never inside a database transaction. A worker (`manage.py run_mandate_jobs --loop`)
+# drains it; where none runs, the server drains a bounded slice itself after a batch is started and while its progress is watched.
+MANDATES_INLINE_JOBS = env.bool("MANDATES_INLINE_JOBS", default=True)
+MANDATES_INLINE_SECONDS = env.int("MANDATES_INLINE_SECONDS", default=8)
 
 PLATFORM_DOMAIN = env("PLATFORM_DOMAIN", default="")
 ANDROID_APP_PACKAGE = env("ANDROID_APP_PACKAGE", default="")

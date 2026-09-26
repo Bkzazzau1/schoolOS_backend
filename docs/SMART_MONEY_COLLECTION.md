@@ -177,7 +177,7 @@ date". No response carries a credential or an identity number.
 
 Remita is **not** a Smart Money Collection provider. An earlier version treated a Remita payment reference (an RRR invoice) as though
 it were a family's collection account; that was removed by a product decision, and no RRR is a hidden third mechanism. Remita is
-reserved for a separate **Mandates / Direct Debit** feature, which is **not started**:
+reserved for the separate **Mandates & Direct Debit** feature (Remita and Lendsqr), described in [MANDATES_DIRECT_DEBIT.md](MANDATES_DIRECT_DEBIT.md):
 
 ```
 School -> own Remita relationship -> mandate integration -> payer authorises a mandate
@@ -199,13 +199,12 @@ What that means in the code, and what is enforced by the **server** rather than 
 * Removed with it, because they existed only for Remita: the "make the account for an amount" provider trait (`requires_amount`), the
   `COLLECTION_REMITA_LIVE_BASE_URL` setting, the `Ok` / `Not Ok` webhook acknowledgement, and the direct-debit capability flag (mandates
   are a different domain, not a capability of a family-account provider).
-* The old RRR adapter was written against Remita's invoice API, which is not the direct-debit API, so none of it is carried into
-  mandates: a mandate integration is designed afresh, from Remita's official direct-debit documentation, with its own connection
-  (never `is_active_provider`, never in the "one active collection provider" rule), its own duties (for example
-  `finance.mandate_manage`, `finance.mandate_prepare`, `finance.mandate_approve`, given separately from the four collection duties),
-  audit, idempotency, maker/checker and duplicate protection. Receivables stay the accounting truth: a debit is tied to the canonical
-  receivable position and the school's policy, never to a client-supplied amount, and no mandate table keeps a second school-fee balance.
-  The adapter remains in git history (the commit before this one) for reference only.
+* The old RRR adapter was written against Remita's invoice API, which is not the direct-debit API, so none of it is carried into mandates. Mandates &
+  Direct Debit (`apps/mandates`, see [MANDATES_DIRECT_DEBIT.md](MANDATES_DIRECT_DEBIT.md)) is designed and written afresh, from Remita's official Direct Debit
+  documentation and Lendsqr's, with its own connections (never `is_active_provider`, never in the "one active collection provider" rule), its own duties
+  (`finance.mandate_provider_manage`, `finance.mandate_manage`, `finance.mandate_prepare`, `finance.mandate_approve`, separate from the four collection
+  duties), audit, idempotency, maker/checker and duplicate protection. Receivables stay the accounting truth: a debit is tied to the canonical receivable
+  position, never to a client-supplied amount, and no mandate table keeps a second school-fee balance. The old adapter remains in git history for reference only.
 
 Data already made under the earlier design is handled explicitly and deletes nothing (`bankconnect 0005`, `smartcollect 0002`; run them
 over a copy first if a school ever used Remita):

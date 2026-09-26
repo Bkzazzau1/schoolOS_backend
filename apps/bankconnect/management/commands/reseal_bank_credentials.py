@@ -49,8 +49,27 @@ class Command(BaseCommand):
                 identity.sealed = blob
                 identity.save(update_fields=["sealed", "updated_at"])
 
+        # Mandates & Direct Debit seals its providers' credentials and the payers' bank accounts with the same vault, and they rotate with it.
+        from apps.mandates.models import DirectDebitMandate, MandateProviderConnection
+
+        for label, rows, field in (
+            ("mandate provider connection", MandateProviderConnection.objects.exclude(sealed_credentials=b""), "sealed_credentials"),
+            ("mandate bank details", DirectDebitMandate.objects.exclude(sealed_account_details=b""), "sealed_account_details"),
+        ):
+            for row in rows.iterator():
+                try:
+                    blob = vault.reseal(bytes(getattr(row, field)))
+                except VaultError:
+                    unreadable += 1
+                    self.stderr.write(f"{label} {row.id}: could not be opened with any configured key")
+                    continue
+                resealed += 1
+                if not options["dry_run"]:
+                    setattr(row, field, blob)
+                    row.save(update_fields=[field, "updated_at"])
+
         verb = "would be re-encrypted" if options["dry_run"] else "re-encrypted"
-        self.stdout.write(self.style.SUCCESS(f"Sealed credentials and identity numbers: {resealed} {verb}, {unreadable} unreadable."))
+        self.stdout.write(self.style.SUCCESS(f"Sealed credentials, identity numbers and mandate bank details: {resealed} {verb}, {unreadable} unreadable."))
         if unreadable:
             raise CommandError(
                 f"{unreadable} credential(s) could not be opened. Do NOT remove the old key until they are dealt with."
