@@ -127,3 +127,31 @@ class PrincipalTeacherNoteTests(ModuleTestCase):
         # Clearing the note (empty text) is a real, supported action, not a validation error.
         self.ok(self.push(PRINCIPAL_TEACHER_NOTES.entity_type, "teacher-1", {"teacherId": "teacher-1", "text": ""}, operation="update", who=principal))
         self.assertEqual(self.stored_of(PRINCIPAL_TEACHER_NOTES, "teacher-1")["text"], "")
+
+
+class PrincipalIncidentTests(ModuleTestCase):
+    """A Principal's incident case and its audit trail: not even the owner reads either."""
+
+    def test_a_principal_can_update_a_case_and_add_audit_events_and_no_one_else_ever_reads_them(self):
+        from ..specs import INCIDENT_AUDIT, INCIDENT_CASE
+
+        principal = self.members["principal"]
+        case = {"id": "case-1", "title": "Corridor incident", "category": "behaviour", "severity": "medium", "status": "investigating", "context": "JSS 2A"}
+        self.ok(self.send(INCIDENT_CASE, principal, "case-1", payload=case))
+        note = {"id": "audit-1", "incidentId": "case-1", "action": "case_note", "actorMembershipId": str(principal.id)}
+        self.ok(self.send(INCIDENT_AUDIT, principal, "audit-1", payload=note))
+
+        for role in EVERYONE - {"principal"}:
+            self.assertNotIn(("principal_recorded_incident_case", "case-1"), self.pulled(self.members[role]), role)
+            self.assertNotIn(("principal_recorded_incident_audit", "audit-1"), self.pulled(self.members[role]), role)
+        self.assertIn(("principal_recorded_incident_case", "case-1"), self.pulled(principal))
+        self.assertIn(("principal_recorded_incident_audit", "audit-1"), self.pulled(principal))
+
+    def test_a_case_and_its_audit_trail_are_never_deleted(self):
+        from ..specs import INCIDENT_AUDIT, INCIDENT_CASE
+
+        principal = self.members["principal"]
+        self.ok(self.send(INCIDENT_CASE, principal, "case-2"))
+        self.rejected(self.push(INCIDENT_CASE.entity_type, "case-2", operation="delete", who=principal), "cannot be deleted")
+        self.ok(self.send(INCIDENT_AUDIT, principal, "audit-2"))
+        self.rejected(self.push(INCIDENT_AUDIT.entity_type, "audit-2", operation="delete", who=principal), "cannot be deleted")

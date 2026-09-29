@@ -5,8 +5,8 @@ handler on this end to receive them, so they sat pending forever. Most are Admin
 (the app's own permissionsFor() never lets any other role act on them), so each spec keeps that shape
 exactly rather than widening it to the broader MANAGERS tier used elsewhere. Reads go to school
 leadership (Proprietor, Principal, Administrator) for oversight, since none of these are yet read by
-any other role's screen - PRINCIPAL_TEACHER_NOTES and PUBLIC_WEBSITE are the two exceptions, explained
-next to each.
+any other role's screen - PRINCIPAL_TEACHER_NOTES, PUBLIC_WEBSITE and the Principal's own incident
+records are the exceptions, explained next to each.
 
 Reuses the same generic Spec/SchoolLifeHandler engine schoollife's modules use - the engine has no
 schoollife-specific logic in it, so there is nothing to duplicate.
@@ -107,6 +107,28 @@ PUBLIC_WEBSITE = Spec(
     required=("heroHeadline", "heroSupportingText"),
 )
 
+# A Principal-recorded incident case - behaviour, safeguarding, attendance, health & safety or property - and
+# its own append-only audit trail. The same "not even the owner reads this" shape as PRINCIPAL_TEACHER_NOTES:
+# nobody but the Principal who works a case sees it. The app itself further narrows what it shows to
+# Secondary-section classes only (no Primary/Early Years incident feature exists yet); that is a feature scope
+# limit the app enforces, not a security boundary this spec needs to duplicate - the Principal role is trusted
+# with every incident case that exists. A case is never created through the app today (there is no "report an
+# incident" flow yet); the Principal only adds notes and changes a case's status, and every note or status
+# change also writes its own audit event, never edited or removed once written.
+INCIDENT_CASE = Spec(
+    "principal_recorded_incident_case",
+    manage=_PRINCIPAL,
+    read=frozenset(),
+    required=("title", "category", "severity", "status", "context"),
+)
+
+INCIDENT_AUDIT = Spec(
+    "principal_recorded_incident_audit",
+    manage=_PRINCIPAL,
+    read=frozenset(),
+    required=("incidentId", "action", "actorMembershipId"),
+)
+
 SPECS = [
     ATTENDANCE_EVENTS,
     ATTENDANCE_CORRECTIONS,
@@ -118,4 +140,6 @@ SPECS = [
     OPERATIONS_QUEUE,
     PRINCIPAL_TEACHER_NOTES,
     PUBLIC_WEBSITE,
+    INCIDENT_CASE,
+    INCIDENT_AUDIT,
 ]

@@ -12,12 +12,15 @@ class AdministrationConfig(AppConfig):
         from apps.schoollife.framework import SchoolLifeHandler
         from apps.sync import registry
 
-        from .specs import DOCUMENT_RECORDS, SPECS
+        from .specs import DOCUMENT_RECORDS, INCIDENT_CASE, SPECS
 
         for spec in SPECS:
             registry.register(SchoolLifeHandler(spec))
 
         # A document record already tracked here (its own "document" field is a label a person types, per the
         # brief) can now reference a real uploaded file, without this record's own workflow changing: uploading a
-        # file never sets its status by itself - see docs/MEDIA.md.
-        media_registry.register(owner_kind_for_sync_entity(DOCUMENT_RECORDS.entity_type))
+        # file never sets its status by itself - see docs/MEDIA.md. A Principal-recorded incident case can now
+        # reference real evidence photos the same way, without its own status or audit trail changing either -
+        # evidence attaches to the case only, never to its own audit trail.
+        for entity_type in (DOCUMENT_RECORDS.entity_type, INCIDENT_CASE.entity_type):
+            media_registry.register(owner_kind_for_sync_entity(entity_type))
