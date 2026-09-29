@@ -5,3 +5,5 @@ django-environ>=0.12
 dnspython>=2.6
 psycopg[binary]>=3.2
 cryptography>=43
+Pillow>=11
+boto3>=1.35

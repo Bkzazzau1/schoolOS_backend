@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     "apps.receivables",
     "apps.smartcollect",
     "apps.mandates",
+    "apps.media",
     "apps.staff",
     "apps.invitations",
     "apps.alumni",
@@ -221,6 +222,27 @@ MANDATES_REMITA_LIVE_FORM_BASE_URL = env("MANDATES_REMITA_LIVE_FORM_BASE_URL", d
 # drains it; where none runs, the server drains a bounded slice itself after a batch is started and while its progress is watched.
 MANDATES_INLINE_JOBS = env.bool("MANDATES_INLINE_JOBS", default=True)
 MANDATES_INLINE_SECONDS = env.int("MANDATES_INLINE_SECONDS", default=8)
+
+# SchoolOS Media & Files (apps.media): the one canonical file/attachment service every feature reuses (student
+# and staff documents, profile photos, the school logo, Gallery, Community, excursion and incident evidence,
+# generated receipts, future messaging attachments). "local" writes to MEDIA_LOCAL_ROOT and is for development
+# and tests only; "s3" talks to any S3-compatible object store (Wasabi included) through MEDIA_S3_ENDPOINT_URL,
+# never a host hard-coded to one provider. Credentials are never returned to a client: only short-lived presigned
+# upload/download URLs (S3) or an authenticated stream through this server (local).
+MEDIA_STORAGE_BACKEND = env("MEDIA_STORAGE_BACKEND", default="local")
+MEDIA_LOCAL_ROOT = env("MEDIA_LOCAL_ROOT", default=str(BASE_DIR / "media_storage"))
+MEDIA_S3_BUCKET = env("MEDIA_S3_BUCKET", default="")
+MEDIA_S3_REGION = env("MEDIA_S3_REGION", default="")
+MEDIA_S3_ENDPOINT_URL = env("MEDIA_S3_ENDPOINT_URL", default="")
+MEDIA_S3_ACCESS_KEY = env("MEDIA_S3_ACCESS_KEY", default="")
+MEDIA_S3_SECRET_KEY = env("MEDIA_S3_SECRET_KEY", default="")
+# How long a presigned/streamed download address is good for once issued.
+MEDIA_DOWNLOAD_URL_TTL_SECONDS = env.int("MEDIA_DOWNLOAD_URL_TTL_SECONDS", default=300)
+# Verifying an upload and building its thumbnail run from a durable job queue, never inside a database
+# transaction. A worker (`manage.py run_media_jobs --loop`) drains it; where none runs, the server drains a
+# bounded slice itself right after a request that just enqueued something.
+MEDIA_INLINE_JOBS = env.bool("MEDIA_INLINE_JOBS", default=True)
+MEDIA_INLINE_SECONDS = env.int("MEDIA_INLINE_SECONDS", default=8)
 
 PLATFORM_DOMAIN = env("PLATFORM_DOMAIN", default="")
 ANDROID_APP_PACKAGE = env("ANDROID_APP_PACKAGE", default="")
