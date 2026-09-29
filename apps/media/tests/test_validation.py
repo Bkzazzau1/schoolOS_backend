@@ -31,6 +31,14 @@ class CheckIntentTests(SimpleTestCase):
         intent = self._ok()
         self.assertEqual((intent.media_type, intent.extension), (MediaType.IMAGE, ".png"))
 
+    def test_a_document_category_accepts_a_photographed_or_scanned_original_as_well_as_pdf_and_word(self):
+        # A school "document" - a birth certificate, a guardian ID, staff's own "Passport photograph" (see
+        # apps/staff/constants.py: DEFAULT_DOCUMENTS) - is very often a photo or a scan, not only a PDF.
+        for category in ("admission_document", "student_document", "staff_document"):
+            for mime_type, extension in (("application/pdf", ".pdf"), ("image/jpeg", ".jpg"), ("image/png", ".png")):
+                intent = self._ok(category=category, declared_mime_type=mime_type)
+                self.assertEqual((intent.media_type, intent.extension), (MediaType.DOCUMENT, extension), (category, mime_type))
+
     def test_the_storage_key_is_random_and_never_derived_from_the_filename(self):
         first = self._ok(original_filename="secret-plans.png")
         second = self._ok(original_filename="secret-plans.png")

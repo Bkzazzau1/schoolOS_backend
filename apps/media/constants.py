@@ -115,6 +115,12 @@ ALLOWED_MIME_TYPES = {
         "application/msword": ".doc",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
         "text/plain": ".txt",
+        # A school "document" is very often a scanned or photographed paper original (a birth certificate, a
+        # guardian ID, a passport photograph - see apps/staff/constants.py: DEFAULT_DOCUMENTS, which already
+        # asks for exactly that) - never trusted as a real image just from its extension any more than a PDF
+        # is; validation.check_signature still sniffs the real bytes.
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
     },
     MediaType.GENERATED_DOCUMENT: {
         "application/pdf": ".pdf",
