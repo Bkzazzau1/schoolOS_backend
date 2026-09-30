@@ -29,7 +29,7 @@ APP_SCREENS = {
     ],
     "teacher": [
         "dashboard", "timetable", "classes", "attendance", "lesson-plans", "weekly-progress", "syllabus",
-        "assignments", "assessments", "cbt", "learning-progress", "students", "messages", "ai",
+        "assignments", "assessments", "cbt", "learning-progress", "students", "messages", "family-messages", "ai",
         "performance", "profile",
     ],
     "parent": [
@@ -62,7 +62,7 @@ class CatalogShapeTests(SimpleTestCase):
             if workspace == "owner":
                 expected.add("owner.access")  # new: the screen for managing this feature
             self.assertEqual(keys(workspace), expected, workspace)
-        self.assertEqual(len(catalog.ACTIVITIES), 115)
+        self.assertEqual(len(catalog.ACTIVITIES), 116)
 
     def test_every_workspace_has_a_landing_screen_that_cannot_be_removed(self):
         for workspace in ["owner", "principal", "administrator", "finance", "teacher", "driver", "parent", "general"]:

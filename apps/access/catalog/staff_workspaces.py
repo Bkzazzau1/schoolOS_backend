@@ -119,6 +119,7 @@ TEACHER = workspace(
         ("excursions", "Excursions"),
         ("gallery", "Media Gallery"),
         ("messages", "Messages"),
+        ("family-messages", "Family Messages"),
         ("ai", "Teacher AI"),
         ("performance", "My Performance"),
         ("profile", "Profile", "sensitive"),
