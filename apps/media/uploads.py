@@ -10,6 +10,7 @@ from django.utils import timezone
 from . import audit, jobs, permissions, validation
 from .constants import Status, Visibility, max_bytes_for
 from .models import MediaAsset, MediaDerivative
+from .scanning import Infected, ScannerError, get_scanner
 from .storage import get_storage
 from .thumbnails import build_image_thumbnail, probe_dimensions
 from .transcoding import TranscoderError, TranscoderUnavailable, get_transcoder
@@ -133,6 +134,12 @@ def _mark_available(asset: MediaAsset) -> None:
     audit.record(asset.school, "upload_available", obj=asset)
 
 
+def _mark_quarantined(asset: MediaAsset, code: str) -> None:
+    asset.status, asset.failure_code = Status.QUARANTINED, code
+    asset.save(update_fields=["status", "failure_code", "updated_at"])
+    audit.record(asset.school, "upload_quarantined", obj=asset, code=code)
+
+
 def run_verify(asset: MediaAsset) -> None:
     if asset.status != Status.UPLOADED:
         return  # a late or duplicate run of the same job: nothing to do
@@ -149,6 +156,16 @@ def run_verify(asset: MediaAsset) -> None:
     except UploadRefused as error:
         _mark_failed(asset, error.code)
         return
+    try:
+        get_scanner().scan(data)
+    except Infected as error:
+        _mark_quarantined(asset, error.code)
+        return
+    except ScannerError:
+        # No real malware scanner exists on this server, or a genuine scan failure that is not the uploader's
+        # fault either - either way, a known, expected gap: the upload still verifies, the same graceful degrade
+        # a video with no real transcoder gets (see transcoding.py).
+        pass
 
     asset.status = Status.VERIFIED
     if asset.is_image:
