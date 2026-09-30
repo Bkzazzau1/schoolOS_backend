@@ -4,5 +4,22 @@ from .parent_messages import (
     ParentMessageHandler,
     ParentMessageReceiptHandler,
 )
+from .teacher_channels import (
+    TEACHER_DEPARTMENT_MESSAGE,
+    TEACHER_DEPARTMENT_RECEIPT,
+    TEACHER_LEADERSHIP_MESSAGE,
+    TEACHER_LEADERSHIP_RECEIPT,
+    TeacherDepartmentMessageHandler,
+    TeacherDepartmentReceiptHandler,
+    TeacherLeadershipMessageHandler,
+    TeacherLeadershipReceiptHandler,
+)
 
-HANDLERS = [ParentMessageHandler(), ParentMessageReceiptHandler()]
+HANDLERS = [
+    ParentMessageHandler(),
+    ParentMessageReceiptHandler(),
+    TeacherLeadershipMessageHandler(),
+    TeacherLeadershipReceiptHandler(),
+    TeacherDepartmentMessageHandler(),
+    TeacherDepartmentReceiptHandler(),
+]
