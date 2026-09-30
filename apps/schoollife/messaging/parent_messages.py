@@ -106,3 +106,50 @@ class ParentMessageHandler(EntityHandler):
         if student is None:
             return None
         return payload if _may_reach_thread(membership, student) else None
+
+
+PARENT_MESSAGE_RECEIPT = "parent_message_receipt"
+
+
+class ParentMessageReceiptHandler(EntityHandler):
+    """A real 'I have seen this thread' receipt - the same real guardian, real current class
+    teacher, or manager who may reach a real family's thread (see `_may_reach_thread`) may each
+    record their own receipt for it. Entity id: `<membershipId>:thread-seen:<threadId>:<epoch>`,
+    append-only, the same shape `apps/transport/driver_messages.py` already uses for a Driver's own
+    receipts - this is what lets a thread's own `unread` state be real instead of always false."""
+
+    entity_type = PARENT_MESSAGE_RECEIPT
+    roles = MANAGERS | {Role.PARENT, Role.TEACHER}
+    allow_delete = False
+
+    def authorize(self, ctx: MutationContext) -> None:
+        if ctx.membership.role not in self.roles:
+            raise Rejected("Your role may not mark this thread seen.")
+        if ctx.operation != "create":
+            raise Rejected("This record is never changed once recorded.")
+        thread_id = str(ctx.payload.get("threadId") or "")
+        student = _student_for_thread(ctx.membership.school, thread_id)
+        if student is None:
+            raise Rejected("This conversation was not found.")
+        if not _may_reach_thread(ctx.membership, student):
+            raise Rejected("This is not a conversation you are part of.")
+
+    def clean(self, ctx: MutationContext) -> dict:
+        member_id = str(ctx.membership.id)
+        parts = ctx.entity_id.split(":")
+        if len(parts) < 4 or parts[0] != member_id or parts[1] != "thread-seen" or not parts[-1].isdigit():
+            raise Rejected("This receipt does not belong to the active membership.")
+        thread_id = ":".join(parts[2:-1])
+        if text(ctx.payload, "threadId", max_len=160) != thread_id:
+            raise Rejected("threadId must match the record.")
+        return {
+            "id": ctx.entity_id,
+            "threadId": thread_id,
+            "membershipId": member_id,
+            "seenAt": ctx.now,
+        }
+
+    def visible(self, membership, payload):
+        if membership.role in MANAGERS:
+            return payload
+        return payload if payload.get("membershipId") == str(membership.id) else None

@@ -1,3 +1,8 @@
-from .parent_messages import PARENT_MESSAGE, ParentMessageHandler
+from .parent_messages import (
+    PARENT_MESSAGE,
+    PARENT_MESSAGE_RECEIPT,
+    ParentMessageHandler,
+    ParentMessageReceiptHandler,
+)
 
-HANDLERS = [ParentMessageHandler()]
+HANDLERS = [ParentMessageHandler(), ParentMessageReceiptHandler()]
