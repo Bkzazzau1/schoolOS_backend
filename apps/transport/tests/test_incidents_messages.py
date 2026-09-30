@@ -1,5 +1,9 @@
+from django.contrib.auth import get_user_model
+
+from apps.schools.models import Membership, Role
+
 from .. import constants as c
-from .test_daily_run import DailyRunTestCase
+from .test_daily_run import DailyRunTestCase, assignment, route
 
 
 class IncidentTestCase(DailyRunTestCase):
@@ -121,41 +125,96 @@ class CaseEventTests(IncidentTestCase):
 
 
 class DriverMessageTests(IncidentTestCase):
-    def message_id(self, epoch="1758790000000000"):
-        return f"LOCAL-{self.driver.id}-{epoch}"
+    """The one real channel between a Driver and Transport Control (apps/transport/driver_messages.py).
+    A second Driver, with their own real route and their own real, separate thread, proves messages
+    never cross between Drivers."""
 
-    def message(self, **over):
+    def setUp(self):
+        super().setUp()
+        other_user = get_user_model().objects.create_user("other-driver@school.ng", "a-long-test-password-1")
+        self.other_driver = Membership.objects.create(user=other_user, school=self.school, role=Role.DRIVER)
+        self.ok(self.push(c.ROUTE, "BUS-02", route(id="BUS-02", vehicle="Bus 2 - Ford Transit"), who=self.admin))
+        self.ok(self.push(c.DRIVER_ASSIGNMENT, self.other_driver.id, assignment(str(self.other_driver.id), route_id="BUS-02"), who=self.admin))
+
+    def message_id(self, who=None, epoch="1758790000000000"):
+        return f"LOCAL-{(who or self.driver).id}-{epoch}"
+
+    def thread_id(self, driver=None):
+        return f"driver-thread-{(driver or self.driver).id}"
+
+    def message(self, who=None, target_driver=None, **over):
+        who = who or self.driver
+        target_driver = target_driver or (who if who.role == "driver" else self.driver)
         body = {
-            "messageId": self.message_id(), "threadId": "driver-thread-transport-control", "routeId": "BUS-01",
-            "vehicle": "Bus 1", "participantName": "Transport Control", "participantRole": "Transport Operations",
-            "channelLabel": "Assigned route operations", "body": "Running ten minutes late.",
-            "deliveryState": "queued", "createdAt": "2026-09-25T06:45:00Z",
+            "messageId": self.message_id(who), "threadId": self.thread_id(target_driver),
+            "body": "Running ten minutes late.", "createdAt": "2026-09-25T06:45:00Z",
         }
+        if who.role != "driver":
+            body["driverMembershipId"] = str(target_driver.id)
         body.update(over)
         return body
 
-    def test_a_driver_can_send_and_the_server_stamps_the_sender_and_route_vehicle(self):
-        self.ok(self.push(c.DRIVER_MESSAGE, self.message_id(), self.message(), who=self.driver))
+    def send(self, who=None, target_driver=None, **over):
+        who = who or self.driver
+        payload = self.message(who=who, target_driver=target_driver, **over)
+        return self.push(c.DRIVER_MESSAGE, payload["messageId"], payload, who=who)
+
+    def test_a_driver_can_send_and_the_server_stamps_the_sender_route_and_vehicle(self):
+        self.ok(self.send())
         stored = self.stored(c.DRIVER_MESSAGE, self.message_id()).payload
-        self.assertEqual((stored["senderMembershipId"], stored["vehicle"]), (str(self.driver.id), "Bus 1 - Toyota Hiace"))
+        self.assertEqual(
+            (stored["senderMembershipId"], stored["senderRole"], stored["driverMembershipId"], stored["vehicle"]),
+            (str(self.driver.id), "driver", str(self.driver.id), "Bus 1 - Toyota Hiace"),
+        )
 
-    def test_a_message_toward_parents_or_guardians_is_refused(self):
-        for over in ({"participantName": "Parent group"}, {"participantRole": "Guardian liaison"}, {"channelLabel": "Family updates"}):
-            self.rejected(self.push(c.DRIVER_MESSAGE, self.message_id(), self.message(**over), who=self.driver), "parents or guardians")
+    def test_transport_control_can_reply_into_a_real_drivers_thread(self):
+        self.ok(self.send(who=self.admin))
+        stored = self.stored(c.DRIVER_MESSAGE, self.message_id(self.admin)).payload
+        self.assertEqual(
+            (stored["senderMembershipId"], stored["senderRole"], stored["driverMembershipId"], stored["routeId"]),
+            (str(self.admin.id), "administrator", str(self.driver.id), "BUS-01"),
+        )
 
-    def test_it_must_be_the_drivers_own_message_on_their_own_route(self):
-        self.rejected(self.push(c.DRIVER_MESSAGE, self.message_id(), self.message(routeId="BUS-99"), who=self.driver), "routeId")
-        theirs = f"LOCAL-someone-else-1758790000000000"
-        self.rejected(self.push(c.DRIVER_MESSAGE, theirs, self.message(messageId=theirs), who=self.driver), "does not belong")
+    def test_a_drivers_own_route_is_always_the_servers_not_the_devices(self):
+        self.ok(self.send(routeId="BUS-99"))
+        self.assertEqual(self.stored(c.DRIVER_MESSAGE, self.message_id()).payload["routeId"], "BUS-01")
+
+    def test_transport_control_must_name_a_real_currently_assigned_driver(self):
+        self.rejected(self.send(who=self.admin, driverMembershipId="not-a-real-driver"), "must be a real")
+        self.rejected(self.send(who=self.admin, driverMembershipId=str(self.owner.id)), "must be a real")
+
+    def test_a_thread_id_that_does_not_match_the_real_driver_is_refused(self):
+        self.rejected(self.send(threadId="driver-thread-someone-else"), "own channel")
+        self.rejected(self.send(who=self.admin, threadId=self.thread_id(self.other_driver)), "own channel")
+
+    def test_messages_never_cross_between_drivers(self):
+        self.ok(self.send())
+        self.ok(self.send(who=self.other_driver))
+        self.ok(self.send(who=self.admin))
+
+        def seen(who):
+            self.client.force_authenticate(who.user)
+            found = self.client.get("/api/v1/sync/pull/", {"school": str(self.school.id)}).json()["records"]
+            return {r["entityId"] for r in found if r["entityType"] == c.DRIVER_MESSAGE}
+
+        mine, admins_reply = self.message_id(), self.message_id(self.admin)
+        others = self.message_id(self.other_driver)
+        self.assertEqual(seen(self.driver), {mine, admins_reply})
+        self.assertEqual(seen(self.other_driver), {others})
+        self.assertEqual(seen(self.admin), {mine, admins_reply, others})
+        self.assertIn(mine, seen(self.members["principal"]))
+
+    def test_an_unrelated_role_cannot_send_transport_messages(self):
+        self.rejected(self.send(who=self.members["teacher"]), "role may not")
 
     def test_an_empty_or_huge_body_is_refused(self):
-        self.rejected(self.push(c.DRIVER_MESSAGE, self.message_id(), self.message(body="  "), who=self.driver), "body")
-        self.rejected(self.push(c.DRIVER_MESSAGE, self.message_id(), self.message(body="x" * 2001), who=self.driver), "too long")
+        self.rejected(self.send(body="  "), "body")
+        self.rejected(self.send(body="x" * 2001), "too long")
 
-    def test_it_is_never_changed_and_only_a_driver_sends(self):
-        self.ok(self.push(c.DRIVER_MESSAGE, self.message_id(), self.message(), who=self.driver))
+    def test_it_is_never_changed_or_removed_once_sent(self):
+        self.ok(self.send())
         self.rejected(self.push(c.DRIVER_MESSAGE, self.message_id(), self.message(), operation="update", who=self.driver), "never changed")
-        self.rejected(self.push(c.DRIVER_MESSAGE, self.message_id("1"), self.message(messageId=self.message_id("1")), who=self.admin), "role may not")
+        self.rejected(self.push(c.DRIVER_MESSAGE, self.message_id(), operation="delete", who=self.driver), "never changed")
 
 
 class DriverReceiptTests(IncidentTestCase):
