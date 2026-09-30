@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.media import jobs
 from apps.media.constants import JobStatus, Status
 from apps.media.models import MediaJob
+from apps.media.scanning import Infected, MalwareScanner, use_scanner
 from apps.media.storage import MediaStorageError, use_storage
 from apps.media.transcoding import TranscoderError, VideoTranscoder, use_transcoder
 
@@ -182,3 +183,67 @@ class VideoThumbnailTests(MediaTestCase):
         asset = MediaAsset.objects.get(id=asset_id)
         self.assertEqual(asset.status, Status.AVAILABLE)  # not FAILED: nothing the uploader did was wrong
         self.assertFalse(asset.derivatives.filter(kind="thumbnail").exists())
+
+
+class FakeScanner(MalwareScanner):
+    """A scanner double that never shells out to a real clamscan binary - lets a quarantine test prove the whole
+    verify/quarantine/audit machinery deterministically, the same way FakeTranscoder proves video thumbnailing
+    without a real ffmpeg binary, and without this environment needing ClamAV installed at all."""
+
+    def __init__(self, *, infected: bool = False):
+        self.infected = infected
+        self.calls = 0
+
+    def scan(self, data: bytes) -> None:
+        self.calls += 1
+        if self.infected:
+            raise Infected()
+
+
+@override_settings(MEDIA_INLINE_JOBS=False)
+class MalwareScanningTests(MediaTestCase):
+    def _uploaded(self, data=None):
+        data = data or make_png()
+        created = self.initiate(owner_type="gallery_media_album", owner_id=self.album_id, category="gallery_photo", data=data, who=self.teacher)
+        asset_id = created.json()["asset"]["id"]
+        self.put_body(f"assets/{asset_id}/upload/", data, "image/png", who=self.teacher)
+        self.post(f"assets/{asset_id}/complete/", who=self.teacher)
+        return asset_id
+
+    def test_without_a_real_scanner_an_upload_still_verifies_normally(self):
+        # This server genuinely has no clamscan installed - the real, default scanner - so this proves the
+        # honest degrade-gracefully path end to end, through the actual job queue, not just a final status check.
+        from apps.media.models import MediaAsset
+
+        asset_id = self._uploaded()
+        jobs.drain()
+        asset = MediaAsset.objects.get(id=asset_id)
+        self.assertEqual(asset.status, Status.AVAILABLE)
+        job = MediaJob.objects.get(asset_id=asset_id, kind="verify")
+        self.assertEqual(job.status, JobStatus.SUCCEEDED)  # not retried, not failed: a known, expected gap
+
+    def test_a_clean_result_from_a_real_scanner_verifies_normally(self):
+        from apps.media.models import MediaAsset
+
+        asset_id = self._uploaded()
+        scanner = FakeScanner(infected=False)
+        with use_scanner(scanner):
+            jobs.drain()
+        self.assertEqual(scanner.calls, 1)
+        asset = MediaAsset.objects.get(id=asset_id)
+        self.assertEqual(asset.status, Status.AVAILABLE)
+
+    def test_an_infected_file_is_quarantined_never_verified_never_thumbnailed_never_downloadable(self):
+        from apps.media.models import MediaAsset
+
+        asset_id = self._uploaded()
+        with use_scanner(FakeScanner(infected=True)):
+            jobs.drain()
+        asset = MediaAsset.objects.get(id=asset_id)
+        self.assertEqual((asset.status, asset.failure_code), (Status.QUARANTINED, "malware_detected"))
+        self.assertFalse(asset.derivatives.filter(kind="thumbnail").exists())  # never reached the thumbnail job
+        job = MediaJob.objects.get(asset_id=asset_id, kind="verify")
+        self.assertEqual(job.status, JobStatus.SUCCEEDED)  # the job did its work correctly; the file is what failed
+        download = self.get(f"assets/{asset_id}/download/", who=self.teacher)
+        self.assertEqual(download.status_code, 400)  # quarantined is neither AVAILABLE nor VERIFIED: not open-able
+        self.assertEqual(download.json()["code"], "not_available")
