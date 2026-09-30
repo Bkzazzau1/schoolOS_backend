@@ -99,12 +99,22 @@ transient storage error retries with backoff; a checksum mismatch or an invalid 
 recorded once, never retried forever. Completing an upload a second time (a lost response, a retried request) is
 a safe no-op - this is also how a client reconciles an upload it lost track of.
 
-## Thumbnails (`apps/media/thumbnails.py`)
+## Thumbnails (`apps/media/thumbnails.py`, `apps/media/transcoding.py`)
 
-Images only, today: a 480px-max-side JPEG, orientation corrected first (a photo taken sideways is never stored
-rotated). **Video is validated, stored and served, but not yet transcoded or thumbnailed** - Pillow (already used
-for images) has no video support, and adding a transcoding dependency was out of scope for this phase; the
-architecture (a `MediaDerivative` per asset, one job kind) is ready for it without a rewrite.
+An image always gets a 480px-max-side JPEG thumbnail, orientation corrected first (a photo taken sideways is
+never stored rotated) - Pillow, unchanged.
+
+A video's own preview frame goes through `transcoding.py`'s `VideoTranscoder` seam instead - the same
+override-for-tests shape `apps/media/storage`'s `use_storage`/`get_storage` already uses for storage backends.
+The real implementation, `FfmpegTranscoder`, shells out to a real `ffmpeg` binary (`shutil.which("ffmpeg")`) to
+grab the first frame and shrink it to the same target size the image path uses. **Whether a video actually gets a
+thumbnail depends on whether this server has `ffmpeg` installed** - where it is not (this repository's own
+development/test environment has none), the video is still verified, stored, downloadable and marked `available`
+exactly as before; it simply has no thumbnail, the same honest gap as always, now reached through a real job
+attempt rather than never being tried at all. Nothing about this is a job failure or a retry: `TranscoderUnavailable`
+is a known, expected condition `run_thumbnail` treats the same way a permanent decode failure is - the asset
+becomes available without a preview, never stuck retrying, never marked failed over something nobody did wrong.
+Install a real `ffmpeg` binary on a server and video thumbnails start working with no further code change.
 
 ## Deletion
 
@@ -130,7 +140,11 @@ from another school is a 404, identical to one that does not exist at all.
 
 ## Pending (nothing invented)
 
-* **Video thumbnails / transcoding** - not built this phase; video uploads, storage and download work today.
+* **Video thumbnails / transcoding** - the real machinery (job dispatch, the `VideoTranscoder` seam,
+  `MediaDerivative` storage, graceful degradation) is built and tested against a fake transcoder; what is
+  actually pending is a real `ffmpeg` binary on a server. No environment this app has been built or tested in so
+  far has one installed, so no video has ever actually received a real thumbnail yet - video uploads, storage
+  and download work today regardless.
 * **Malware/antivirus scanning** - the `quarantined` status and the job-queue shape exist for it; nothing scans
   today.
 * **Community, excursion evidence, incident evidence, messaging attachments** - their owner kinds are either
