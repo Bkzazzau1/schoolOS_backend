@@ -13,6 +13,7 @@ from apps.schoollife.community.common import POST as COMMUNITY_POST
 from apps.schoollife.specs.campus import GALLERY
 from apps.schools.models import Membership, Role, School
 from apps.staff.constants import PROFILE as STAFF_PROFILE
+from apps.structure.constants import APPEARANCE, APPEARANCE_ID
 from apps.sync.models import SyncRecord
 
 User = get_user_model()
@@ -103,6 +104,11 @@ class MediaTestCase(APITestCase):
         SyncRecord.objects.create(
             school=self.school, entity_type=DOCUMENT_RECORDS.entity_type, entity_id=self.document_record_id,
             payload={"id": self.document_record_id, "document": "Birth certificate", "recordOwner": "student-1", "kind": "admission"},
+        )
+
+        SyncRecord.objects.create(
+            school=self.school, entity_type=APPEARANCE, entity_id=APPEARANCE_ID,
+            payload={"themeId": "forest", "updatedByMembershipId": str(self.owner.id)},
         )
 
     # -- API -------------------------------------------------------------------------------------

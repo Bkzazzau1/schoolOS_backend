@@ -1,7 +1,7 @@
 """Gallery is the first real consumer: an album (its own existing SyncRecord, unchanged) can now carry real
 photos and videos - captions, an uploader, a created date, several files - instead of only the "how many photos"
-count it had before. Administrator's document records and a staff member's onboarding documents can now carry a
-real file the same way, without either record's own workflow changing.
+count it had before. Administrator's document records, a staff member's onboarding documents and the school's
+own appearance record can now carry a real file the same way, without any record's own workflow changing.
 """
 
 from apps.media.constants import Status
@@ -63,6 +63,32 @@ class AdministratorDocumentRecordIntegrationTests(MediaTestCase):
         self.assertEqual(cannot_upload.status_code, 403)
         cannot_view = self.get(f"assets/?ownerType=administrator_document_record&ownerId={self.document_record_id}", who=self.teacher)
         self.assertEqual(cannot_view.status_code, 403)
+
+
+class SchoolLogoIntegrationTests(MediaTestCase):
+    """The school's own appearance record (`apps/structure/appearance.py`) can now also keep a real, durable
+    copy of the logo in the shared media service, alongside its own small base64 copy - that copy is untouched
+    by any of this and stays what every screen renders from, including fully offline. Only the proprietor may
+    write here, matching AppearanceHandler's own roles exactly; everyone in the school may still see it, since
+    AppearanceHandler.visible() returns the record to anyone."""
+
+    def test_the_owner_can_keep_a_real_copy_of_the_logo_and_everyone_can_see_it(self):
+        asset = self.upload_all(owner_type="school_appearance", owner_id="theme", category="school_logo", data=make_png(), who=self.owner)
+        self.assertEqual(asset["status"], Status.AVAILABLE)
+        for role_member in (self.owner, self.principal, self.administrator, self.teacher, self.parent, self.student):
+            seen = self.get("assets/?ownerType=school_appearance&ownerId=theme", who=role_member)
+            self.assertEqual(seen.status_code, 200, role_member.role)
+            self.assertEqual(len(seen.json()["assets"]), 1, role_member.role)
+
+    def test_nobody_but_the_owner_can_attach_or_remove_a_logo_file(self):
+        for who in (self.principal, self.administrator, self.teacher, self.parent, self.student):
+            cannot_upload = self.initiate(owner_type="school_appearance", owner_id="theme", category="school_logo", data=make_png(), who=who)
+            self.assertEqual(cannot_upload.status_code, 403, who.role)
+        asset = self.upload_all(owner_type="school_appearance", owner_id="theme", category="school_logo", data=make_png(), who=self.owner)
+        cannot_retire = self.post(f"assets/{asset['id']}/retire/", {"reason": "Old badge"}, who=self.administrator)
+        self.assertEqual(cannot_retire.status_code, 403)
+        can_retire = self.post(f"assets/{asset['id']}/retire/", {"reason": "New badge design"}, who=self.owner)
+        self.assertEqual(can_retire.status_code, 200, can_retire.content)
 
 
 class StaffDocumentIntegrationTests(MediaTestCase):
