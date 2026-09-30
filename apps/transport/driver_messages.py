@@ -1,10 +1,14 @@
-"""What a Driver sends and acknowledges from their own Messages screen: a message to school
-operations, a "thread seen" receipt, an "alert read" receipt.
+"""What passes between a Driver and Transport Control: a real, two-way message on their one real
+shared channel, plus a Driver's own "thread seen" and "alert read" receipts.
 
-Only this direction exists: nothing in the app yet sends a message or an alert *to* a Driver
-(driver_messages_snapshot, the read model that would carry them, has no writer anywhere), so
-there is nothing on the server side to hand back. These records simply stop waiting forever on
-a device and are there for the Transport Control inbox that will read them.
+The message channel is genuinely two-way: a Driver writes from their own Messages screen, and
+Transport Control (apps/transport/constants.py MANAGERS - Proprietor or Administrator, the same
+role set that already sets every other transport policy in this module) may write back into that
+same Driver's thread, the same `roles = {"driver"} | c.MANAGERS` shape `incident.py` already uses
+for a Driver-reported, management-reviewed record. Principal keeps its existing read-only
+oversight (READERS). Receipts stay Driver-only and one-directional - a receipt is always the
+Driver's own acknowledgement, and nothing read-receipted here is ever sent *to* a Driver by
+anyone else.
 """
 
 from typing import Any
@@ -17,7 +21,6 @@ from . import constants as c
 from . import daily_run, shared
 
 _MAX_BODY = 2000
-_FORBIDDEN_CHANNEL_WORDS = ("parent", "guardian", "family")
 
 
 class _DriverAppendOnly(EntityHandler):
@@ -39,46 +42,66 @@ class _DriverAppendOnly(EntityHandler):
         return None
 
 
-class DriverMessageHandler(_DriverAppendOnly):
-    """A message from a Driver to school operations (entity id: LOCAL-membershipId-epoch)."""
+class DriverMessageHandler(EntityHandler):
+    """A real message on the one real channel between a Driver and Transport Control - one thread
+    per Driver (entity id: LOCAL-<sender membershipId>-epoch), not per route, since a Driver's
+    real assigned route can change without starting a new conversation. Who the real Driver is
+    when Transport Control writes is checked against a real, currently active driver_transport_assignment
+    - never taken on trust from the app."""
 
     entity_type = c.DRIVER_MESSAGE
-    author_field = "senderMembershipId"
+    roles = frozenset({"driver"}) | c.MANAGERS
+    allow_delete = False
+
+    def authorize(self, ctx: MutationContext) -> None:
+        if ctx.membership.role not in self.roles:
+            raise Rejected("Your role may not send transport messages.")
+        if ctx.operation != "create":
+            raise Rejected("This record is never changed once recorded.")
 
     def clean(self, ctx: MutationContext) -> dict[str, Any]:
         p = ctx.payload
         member_id = str(ctx.membership.id)
         prefix = f"LOCAL-{member_id}-"
         if not ctx.entity_id.startswith(prefix) or not ctx.entity_id[len(prefix):].isdigit():
-            raise Rejected("This message does not belong to the active Driver.")
+            raise Rejected("This message does not belong to the active sender.")
         if text(p, "messageId", max_len=160) != ctx.entity_id:
             raise Rejected("messageId must match the record.")
 
-        route_id = daily_run.require_driver_route(ctx)
-        if text(p, "routeId", max_len=64) != route_id:
-            raise Rejected("routeId must match the Driver's real current assignment.")
+        if ctx.membership.role == "driver":
+            driver_membership_id = member_id
+            route_id = daily_run.require_driver_route(ctx)
+        else:
+            driver_membership_id = text(p, "driverMembershipId", max_len=64)
+            assignment = shared.record(ctx.membership.school, c.DRIVER_ASSIGNMENT, driver_membership_id)
+            if not assignment or not assignment.get("active"):
+                raise Rejected("driverMembershipId must be a real, currently assigned Driver.")
+            route_id = assignment["routeId"]
 
-        participant = text(p, "participantName", max_len=160)
-        role = text(p, "participantRole", max_len=160)
-        channel = text(p, "channelLabel", max_len=160)
-        scope = f"{participant} {role} {channel}".lower()
-        if any(word in scope for word in _FORBIDDEN_CHANNEL_WORDS):
-            raise Rejected("Drivers cannot directly message parents or guardians from this workspace.")
+        thread_id = f"driver-thread-{driver_membership_id}"
+        if text(p, "threadId", max_len=160) != thread_id:
+            raise Rejected("threadId must match this Driver's own channel.")
 
         route = shared.record(ctx.membership.school, c.ROUTE, route_id) or {}
         return {
             "messageId": ctx.entity_id,
-            "threadId": text(p, "threadId", max_len=160),
+            "threadId": thread_id,
+            "driverMembershipId": driver_membership_id,
             "routeId": route_id,
             "vehicle": route.get("vehicle", ""),
-            "participantName": participant,
-            "participantRole": role,
-            "channelLabel": channel,
             "body": text(p, "body", max_len=_MAX_BODY),
             "createdAt": text(p, "createdAt", max_len=40, required=False),
             "receivedAt": ctx.now,
             "senderMembershipId": member_id,
+            "senderRole": ctx.membership.role,
         }
+
+    def visible(self, membership, payload):
+        if membership.role in c.READERS:
+            return payload
+        if membership.role == "driver" and payload.get("driverMembershipId") == str(membership.id):
+            return payload
+        return None
 
 
 class _ReceiptHandler(_DriverAppendOnly):
