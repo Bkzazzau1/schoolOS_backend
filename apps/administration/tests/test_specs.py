@@ -68,16 +68,9 @@ class EveryModuleTests(ModuleTestCase):
                 self.assertEqual(seen, expected, (spec.entity_type, role))
 
 
-class ParentMessageContributorTests(ModuleTestCase):
-    """A parent may add a message toward their child's class channel; the whole staff side reads it."""
-
-    def test_a_parent_can_add_their_own_message_and_a_teacher_can_read_it(self):
-        from apps.schoollife.specs.communications import PARENT_MESSAGE
-
-        parent = self.members["parent"]
-        self.ok(self.send(PARENT_MESSAGE, parent, "msg-1"))
-        self.assertIn(("parent_message", "msg-1"), self.pulled(self.members["teacher"]))
-        self.assertNotIn(("parent_message", "msg-1"), self.pulled(self.members["student"]))
+# parent_message is no longer a Spec - it needs a real family's and a real class's own records to authorize
+# correctly (a hand-rolled EntityHandler, not this module's generic Spec machinery) - see
+# apps/schoollife/messaging/parent_messages.py and its own apps/schoollife/tests/test_messaging.py.
 
 
 class AttendanceEventIdentityTests(ModuleTestCase):
