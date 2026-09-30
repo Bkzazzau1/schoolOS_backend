@@ -218,13 +218,31 @@ class DriverMessageTests(IncidentTestCase):
 
 
 class DriverReceiptTests(IncidentTestCase):
+    def thread_id(self, driver=None):
+        return f"driver-thread-{(driver or self.driver).id}"
+
     def test_a_thread_seen_receipt(self):
-        rid = f"{self.driver.id}:thread-seen:driver-thread-transport-control:1758790000000000"
-        body = {"id": rid, "threadId": "driver-thread-transport-control", "routeId": "BUS-01", "seenAt": "2026-09-25T06:46:00Z", "clientState": "queued"}
+        rid = f"{self.driver.id}:thread-seen:{self.thread_id()}:1758790000000000"
+        body = {"id": rid, "threadId": self.thread_id(), "seenAt": "2026-09-25T06:46:00Z"}
         self.ok(self.push(c.DRIVER_MESSAGE_RECEIPT, rid, body, who=self.driver))
         stored = self.stored(c.DRIVER_MESSAGE_RECEIPT, rid).payload
-        self.assertEqual((stored["threadId"], stored["membershipId"]), ("driver-thread-transport-control", str(self.driver.id)))
+        self.assertEqual(
+            (stored["threadId"], stored["membershipId"], stored["driverMembershipId"]),
+            (self.thread_id(), str(self.driver.id), str(self.driver.id)),
+        )
         self.rejected(self.push(c.DRIVER_MESSAGE_RECEIPT, rid, body, operation="update", who=self.driver), "never changed")
+
+    def test_transport_control_can_mark_a_real_drivers_thread_seen(self):
+        rid = f"{self.admin.id}:thread-seen:{self.thread_id()}:1758790000000000"
+        body = {"id": rid, "threadId": self.thread_id(), "driverMembershipId": str(self.driver.id), "seenAt": "2026-09-25T06:46:00Z"}
+        self.ok(self.push(c.DRIVER_MESSAGE_RECEIPT, rid, body, who=self.admin))
+        stored = self.stored(c.DRIVER_MESSAGE_RECEIPT, rid).payload
+        self.assertEqual((stored["membershipId"], stored["driverMembershipId"]), (str(self.admin.id), str(self.driver.id)))
+
+    def test_a_thread_id_that_does_not_match_the_real_driver_is_refused(self):
+        rid = f"{self.driver.id}:thread-seen:driver-thread-someone-else:1758790000000000"
+        body = {"id": rid, "threadId": "driver-thread-someone-else", "seenAt": ""}
+        self.rejected(self.push(c.DRIVER_MESSAGE_RECEIPT, rid, body, who=self.driver), "own channel")
 
     def test_an_alert_read_receipt_and_a_forged_subject_is_refused(self):
         rid = f"{self.driver.id}:alert-read:driver-alert-001:1758790000000000"
@@ -235,5 +253,5 @@ class DriverReceiptTests(IncidentTestCase):
 
     def test_someone_elses_receipt_is_refused(self):
         rid = "someone-else:thread-seen:t1:1758790000000000"
-        body = {"id": rid, "threadId": "t1", "routeId": "BUS-01", "seenAt": ""}
+        body = {"id": rid, "threadId": "t1", "seenAt": ""}
         self.rejected(self.push(c.DRIVER_MESSAGE_RECEIPT, rid, body, who=self.driver), "does not belong")

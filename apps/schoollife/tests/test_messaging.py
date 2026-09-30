@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from django.contrib.auth import get_user_model
 
 from apps.academics.models import AcademicClass, AcademicSession, ClassSubject, Subject, TeachingAssignment
-from apps.schoollife.messaging.parent_messages import PARENT_MESSAGE
+from apps.schoollife.messaging.parent_messages import PARENT_MESSAGE, PARENT_MESSAGE_RECEIPT
 from apps.schools.models import Membership, Role
 from apps.staff.tests.helpers import StaffTestCase
 from apps.students.models import GuardianLink, Student, StudentEnrollment
@@ -155,3 +155,55 @@ class WhoMayReadTests(ParentMessageTestCase):
         payload = {"id": "MSG-X", "threadId": self.thread_id, "body": "Hello"}
         response = self.push(PARENT_MESSAGE, "MSG-X", payload, who=self.other_owner, school=self.school)
         self.assertEqual(response.status_code, 403)
+
+
+class ReceiptTests(ParentMessageTestCase):
+    """A real 'I have seen this thread' receipt - what lets a thread's own unread state be real."""
+
+    def receipt_id(self, who, thread_id=None, epoch="1758790000000000"):
+        return f"{who.id}:thread-seen:{thread_id or self.thread_id}:{epoch}"
+
+    def receipt(self, who, thread_id=None, **over):
+        thread_id = thread_id or self.thread_id
+        rid = self.receipt_id(who, thread_id)
+        payload = {"id": rid, "threadId": thread_id, "seenAt": "2026-09-25T06:46:00Z", **over}
+        return self.push(PARENT_MESSAGE_RECEIPT, rid, payload, who=who)
+
+    def test_the_real_guardian_and_the_real_class_teacher_can_each_mark_their_own_receipt(self):
+        self.ok(self.receipt(self.parent))
+        self.ok(self.receipt(self.teacher))
+        stored_parent = self.stored_of_receipt(self.receipt_id(self.parent))
+        self.assertEqual((stored_parent["threadId"], stored_parent["membershipId"]), (self.thread_id, str(self.parent.id)))
+
+    def test_a_manager_can_mark_a_receipt_for_oversight(self):
+        self.ok(self.receipt(self.principal))
+
+    def test_nobody_outside_the_conversation_can_mark_a_receipt(self):
+        self.rejected(self.receipt(self.other_parent), "not a conversation")
+        self.rejected(self.receipt(self.other_teacher), "not a conversation")
+
+    def test_an_unrelated_role_cannot_mark_a_receipt_at_all(self):
+        self.rejected(self.receipt(self.members["student"]), "role may not")
+
+    def test_a_receipt_is_never_changed_once_recorded(self):
+        self.ok(self.receipt(self.parent))
+        rid = self.receipt_id(self.parent)
+        payload = {"id": rid, "threadId": self.thread_id, "seenAt": "2026-09-25T06:46:00Z"}
+        self.rejected(self.push(PARENT_MESSAGE_RECEIPT, rid, payload, who=self.parent, operation="update"), "never changed")
+        self.rejected(self.push(PARENT_MESSAGE_RECEIPT, rid, operation="delete", who=self.parent), "never changed")
+
+    def test_a_forged_receipt_id_is_refused(self):
+        rid = f"{self.other_parent.id}:thread-seen:{self.thread_id}:1758790000000000"
+        payload = {"id": rid, "threadId": self.thread_id, "seenAt": ""}
+        self.rejected(self.push(PARENT_MESSAGE_RECEIPT, rid, payload, who=self.parent), "does not belong")
+
+    def test_only_the_person_who_made_a_receipt_and_managers_read_it_back(self):
+        self.ok(self.receipt(self.parent))
+        seen = lambda who: (PARENT_MESSAGE_RECEIPT, self.receipt_id(self.parent)) in self.pulled(who)  # noqa: E731
+        self.assertTrue(seen(self.parent))
+        self.assertTrue(seen(self.principal))
+        self.assertFalse(seen(self.teacher))
+        self.assertFalse(seen(self.other_parent))
+
+    def stored_of_receipt(self, receipt_id):
+        return SyncRecord.objects.get(school=self.school, entity_type=PARENT_MESSAGE_RECEIPT, entity_id=receipt_id).payload
