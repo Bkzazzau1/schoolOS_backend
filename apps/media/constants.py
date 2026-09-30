@@ -55,7 +55,9 @@ class StorageProvider(models.TextChoices):
 class JobKind(models.TextChoices):
     #: Confirm the uploaded bytes really exist, are the declared size, and match the declared checksum.
     VERIFY = "verify", "Verify the upload"
-    #: Build a thumbnail/preview derivative (images today; video is prepared for, not yet built - see thumbnails.py).
+    #: Build a thumbnail/preview derivative - an image always gets one; a video gets one wherever a real
+    #: transcoder is actually installed on this server, and stays available without one otherwise (see
+    #: transcoding.py and uploads.py: run_thumbnail).
     THUMBNAIL = "thumbnail", "Build a thumbnail"
     #: Ask the storage backend to forget the bytes of a retired asset, once its retention period has passed.
     PURGE = "purge", "Purge retired bytes"

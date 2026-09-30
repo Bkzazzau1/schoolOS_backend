@@ -12,6 +12,7 @@ from .constants import Status, Visibility, max_bytes_for
 from .models import MediaAsset, MediaDerivative
 from .storage import get_storage
 from .thumbnails import build_image_thumbnail, probe_dimensions
+from .transcoding import TranscoderError, TranscoderUnavailable, get_transcoder
 from .validation import UploadRefused
 
 
@@ -159,18 +160,33 @@ def run_verify(asset: MediaAsset) -> None:
     asset.save(update_fields=["status", "width", "height", "updated_at"])
     audit.record(asset.school, "upload_verified", obj=asset)
 
-    if asset.is_image:
+    if asset.is_image or asset.is_video:
         jobs.enqueue(asset, "thumbnail")
     else:
         _mark_available(asset)
 
 
 def run_thumbnail(asset: MediaAsset) -> None:
-    if asset.status != Status.VERIFIED or not asset.is_image:
+    if asset.status != Status.VERIFIED or not (asset.is_image or asset.is_video):
         return
     storage = get_storage()
     data = storage.read_bytes(asset.storage_key, max_bytes=max_bytes_for(asset.category, asset.media_type))
-    thumbnail_bytes, width, height, mime_type = build_image_thumbnail(data)
+    if asset.is_image:
+        thumbnail_bytes, width, height, mime_type = build_image_thumbnail(data)
+    else:
+        try:
+            thumbnail_bytes, width, height, mime_type = get_transcoder().build_thumbnail(data)
+        except TranscoderUnavailable:
+            # No real video transcoder exists on this server - the video itself is still real, stored and
+            # downloadable; it simply has no preview frame, the same honest gap docs/MEDIA.md already describes.
+            # Not a job failure: nothing here was done wrong, so this never retries or marks the asset failed.
+            _mark_available(asset)
+            return
+        except TranscoderError:
+            # A genuine decode failure (a corrupt file ffmpeg itself cannot read) is not the upload's fault
+            # either - the video stays available without a preview rather than being marked failed.
+            _mark_available(asset)
+            return
     key = f"{asset.storage_key}.thumb.jpg"
     storage.write_bytes(key, thumbnail_bytes, mime_type=mime_type)
     MediaDerivative.objects.update_or_create(

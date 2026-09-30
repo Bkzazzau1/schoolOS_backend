@@ -83,6 +83,10 @@ class MediaAsset(models.Model):
     def is_image(self) -> bool:
         return self.media_type == constants.MediaType.IMAGE
 
+    @property
+    def is_video(self) -> bool:
+        return self.media_type == constants.MediaType.VIDEO
+
 
 class MediaDerivative(models.Model):
     """A file generated FROM an asset for cheap, repeated display - today only an image thumbnail, so a gallery

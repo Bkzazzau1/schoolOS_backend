@@ -1,5 +1,5 @@
-"""Turning an image's real bytes into a small preview. The only media type SchoolOS builds a thumbnail for today;
-video is validated, stored and served, but not yet transcoded or thumbnailed - see docs/MEDIA.md.
+"""Turning an image's real bytes into a small preview. Video's own preview frame is built the same way, through
+a real-or-absent transcoder instead - see transcoding.py and uploads.py: run_thumbnail.
 """
 
 from io import BytesIO
