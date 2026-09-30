@@ -54,16 +54,21 @@ manage action is checked against the owner's own rules (`apps/media/permissions.
 | `ownerType` | Registered by | Who may upload | Who may see | Who may retire |
 |---|---|---|---|---|
 | `gallery_media_album` | `apps/schoollife/apps.py` | teacher, staff, or a manager (proprietor/principal/administrator) | everyone, unless the album is marked `internal` (staff only) | a manager, or whoever uploaded that one file |
-| `community_post` | `apps/schoollife/apps.py` | registered ready for the day Community's own `mediaLabel` caption is replaced by a real attachment - not wired into any screen yet | as above | as above |
+| `community_post` | `apps/schoollife/apps.py` | any adult member (the same WRITERS role set posting already uses) | as above | a moderator, or whoever uploaded that one file |
+| `school_excursion` | `apps/schoollife/apps.py` | a manager, or the teacher who added that trip | everyone the excursion module already reaches | a manager, or whoever uploaded that one file |
 | `administrator_document_record` | `apps/administration/apps.py` | the administrator | proprietor, principal, administrator | the administrator |
 | `staff_profile_document` | `apps/staff/apps.py` | the owner, the principal, or the staff member themselves (once their account is linked) | the above, plus the administrator (view only - documents are part of the file the administrator already reviews) | the owner, the principal, or the staff member themselves |
+| `principal_recorded_incident_case` | `apps/administration/apps.py` | the principal only | the principal only - not even the owner reads this | the principal only |
+| `school_appearance` | `apps/structure/apps.py` | the proprietor only | everyone in the school | the proprietor only |
 
-Adding a new owner (excursion evidence, an incident report, a future messaging thread) is one `OwnerKind`
-registration in that feature's own `AppConfig.ready()` - nothing in `apps/media` changes. `apps/media/constants.py`
-already defines the categories the brief asked for (`student_document`, `admission_document`, `excursion_evidence`,
-`incident_evidence`, `message_attachment`, `receipt`, `generated_report`, ...); a category is usable under any
-owner as soon as that owner exists, so student and admission documents can already be attached to
-`administrator_document_record` today, category `student_document` / `admission_document`.
+Adding a new owner (a future messaging thread, say) is usually one `OwnerKind` registration in that feature's own
+`AppConfig.ready()` against an entity type that already has a sync handler - nothing in `apps/media` changes. If
+no sync entity exists yet either (as was true for incident cases before this table's own `principal_recorded_
+incident_case` row), that entity has to be built first - registering the media owner kind alone is not enough.
+`apps/media/constants.py` already defines every category the app currently uses (`student_document`,
+`admission_document`, `staff_document`, `community_attachment`, `excursion_evidence`, `incident_evidence`,
+`school_logo`, `message_attachment`, `receipt`, `generated_report`, ...) plus `gallery_photo`/`gallery_video`; a
+category is usable under any owner as soon as that owner exists.
 
 ## Storage (`apps/media/storage/`)
 
@@ -91,13 +96,17 @@ anything derived from what the device called it or from its own claimed extensio
 ## Lifecycle and background jobs (`apps/media/jobs.py`, `apps/media/uploads.py`)
 
 `pending_upload -> uploaded -> verified -> available`, with `failed` for a checksum/signature/size mismatch and
-`retired` for a soft delete (`quarantined` exists for future malware scanning; nothing sets it yet). Verifying
-(re-reading the real bytes, hashing them, checking the signature again, probing an image's dimensions) and
-building a thumbnail run from a durable job queue outside any database transaction - `manage.py run_media_jobs
-[--loop]`, or, where no worker runs, a bounded inline drain right after the request that queued the work. A
-transient storage error retries with backoff; a checksum mismatch or an invalid image is a permanent failure,
-recorded once, never retried forever. Completing an upload a second time (a lost response, a retried request) is
-a safe no-op - this is also how a client reconciles an upload it lost track of.
+`retired` for a soft delete. `quarantined` is real now too: verifying a file also scans it for malware
+(`apps/media/scanning.py`) - an infected file is quarantined instead of verified, so it is never thumbnailed and
+never downloadable (`open_download`'s own allow-list already only accepts `available`/`verified`; quarantine
+needed no new filtering there), the same way a checksum mismatch already stops a file short of `verified` today.
+Verifying (re-reading the real bytes, hashing them, checking the signature again, scanning for malware, probing
+an image's dimensions) and building a thumbnail run from a durable job queue outside any database transaction -
+`manage.py run_media_jobs [--loop]`, or, where no worker runs, a bounded inline drain right after the request
+that queued the work. A transient storage error retries with backoff; a checksum mismatch, an invalid image or a
+detected infection is a permanent outcome, recorded once, never retried forever. Completing an upload a second
+time (a lost response, a retried request) is a safe no-op - this is also how a client reconciles an upload it
+lost track of.
 
 ## Thumbnails (`apps/media/thumbnails.py`, `apps/media/transcoding.py`)
 
@@ -115,6 +124,20 @@ attempt rather than never being tried at all. Nothing about this is a job failur
 is a known, expected condition `run_thumbnail` treats the same way a permanent decode failure is - the asset
 becomes available without a preview, never stuck retrying, never marked failed over something nobody did wrong.
 Install a real `ffmpeg` binary on a server and video thumbnails start working with no further code change.
+
+## Malware scanning (`apps/media/scanning.py`)
+
+Every upload is scanned as part of verifying it, through the same override-for-tests seam shape as storage and
+video transcoding: a `MalwareScanner` interface, a real `ClamAvScanner` implementation that shells out to a real
+`clamscan` binary (`shutil.which("clamscan")`), and `use_scanner`/`get_scanner` module-level swap functions for
+tests. **Whether an upload is actually scanned depends on whether this server has ClamAV's `clamscan` installed**
+- where it is not (this repository's own development/test environment has none), the upload still verifies
+normally; it simply was not checked for malware, the same honest gap the `quarantined` status has always
+documented. This is never a job failure or a retry: `ScannerUnavailable` (and, symmetrically, a genuine scan
+failure that is not the uploader's fault either) is caught the same way `TranscoderUnavailable` already is - the
+upload proceeds to `verified` as normal. An actual detection is different: the file is quarantined instead of
+verified, so it is never thumbnailed and never downloadable, and the quarantine is recorded in the audit trail.
+Install a real `clamscan` binary on a server and scanning starts working with no further code change.
 
 ## Deletion
 
@@ -145,12 +168,13 @@ from another school is a 404, identical to one that does not exist at all.
   actually pending is a real `ffmpeg` binary on a server. No environment this app has been built or tested in so
   far has one installed, so no video has ever actually received a real thumbnail yet - video uploads, storage
   and download work today regardless.
-* **Malware/antivirus scanning** - the `quarantined` status and the job-queue shape exist for it; nothing scans
-  today.
-* **Community, excursion evidence, incident evidence, messaging attachments** - their owner kinds are either
-  registered (`community_post`) or trivial to add the same one-registration way; no screen calls the media API
-  for any of them yet - see the Flutter app's own docs for exactly what is wired into a screen today (Gallery)
-  versus only backend-ready.
-* **The school logo** (`lib/core/appearance` on the app side) still uses its own small base64-in-sync-payload
-  path, capped at 140 KB, unchanged by this work; `school_logo` is a defined category, ready for that flow to
-  move onto the real media service later without inventing a second one meanwhile.
+* **Malware/antivirus scanning** - likewise: the real machinery (the `MalwareScanner` seam, quarantining on
+  detection, graceful degradation) is built and tested against a fake scanner; what is actually pending is a real
+  `clamscan` binary on a server, which no environment this app has been built or tested in so far has - every
+  upload verifies normally today, unscanned.
+* **Messaging attachments** - registered ready for the day a Messaging feature exists to carry them; nothing
+  calls the media API for them yet, since Messaging itself is not built.
+* **Community post attachments, excursion evidence, incident evidence and the school logo** are wired into a real
+  screen on the app side now - see the Flutter app's own `docs/BACKEND_INTEGRATION.md` for exactly what each
+  looks like there. Incident evidence's own owner kind (`principal_recorded_incident_case`) needed a real new
+  sync entity built for it (`apps/administration/specs.py`), not just a registration - it had none before.
