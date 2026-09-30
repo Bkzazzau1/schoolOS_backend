@@ -9,6 +9,7 @@ from apps.media import jobs
 from apps.media.constants import JobStatus, Status
 from apps.media.models import MediaJob
 from apps.media.storage import MediaStorageError, use_storage
+from apps.media.transcoding import TranscoderError, VideoTranscoder, use_transcoder
 
 from .base import MediaTestCase, make_png
 from .test_storage import FakeRemoteStorage
@@ -115,3 +116,69 @@ def _local_path(asset):
     from apps.media.storage import get_storage
 
     return get_storage().absolute_path(asset.storage_key)
+
+
+class FakeTranscoder(VideoTranscoder):
+    """A transcoder double that never shells out to a real ffmpeg binary - lets a video thumbnail test prove the
+    whole job/derivative/status machinery deterministically, the same way FakeRemoteStorage proves storage
+    without a real S3 bucket, and without this environment needing ffmpeg installed at all."""
+
+    def __init__(self, *, width=64, height=36, fail: Exception | None = None):
+        self.width, self.height, self.fail = width, height, fail
+        self.calls = 0
+
+    def build_thumbnail(self, data: bytes) -> tuple[bytes, int, int, str]:
+        self.calls += 1
+        if self.fail:
+            raise self.fail
+        return b"fake-jpeg-bytes", self.width, self.height, "image/jpeg"
+
+
+@override_settings(MEDIA_INLINE_JOBS=False)
+class VideoThumbnailTests(MediaTestCase):
+    """The exact fake mp4 bytes test_gallery_and_records_integration.py's own video test already uses - just
+    enough to pass the container-format signature sniff, not a real decodable video."""
+
+    def _uploaded_video(self):
+        data = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 32
+        created = self.initiate(owner_type="gallery_media_album", owner_id=self.album_id, category="gallery_video", data=data, mime_type="video/mp4", file_name="clip.mp4", who=self.teacher)
+        asset_id = created.json()["asset"]["id"]
+        self.put_body(f"assets/{asset_id}/upload/", data, "video/mp4", who=self.teacher)
+        self.post(f"assets/{asset_id}/complete/", who=self.teacher)
+        return asset_id
+
+    def test_without_a_real_transcoder_a_video_still_becomes_available_with_no_thumbnail(self):
+        # This server genuinely has no ffmpeg installed - the real, default transcoder - so this proves the
+        # honest degrade-gracefully path end to end, through the actual job queue, not just a final status check.
+        from apps.media.models import MediaAsset
+
+        asset_id = self._uploaded_video()
+        jobs.drain()
+        asset = MediaAsset.objects.get(id=asset_id)
+        self.assertEqual(asset.status, Status.AVAILABLE)
+        self.assertFalse(asset.derivatives.filter(kind="thumbnail").exists())
+        job = MediaJob.objects.get(asset_id=asset_id, kind="thumbnail")
+        self.assertEqual(job.status, JobStatus.SUCCEEDED)  # not retried, not failed: a known, expected gap
+
+    def test_with_a_real_transcoder_a_video_gets_a_real_thumbnail(self):
+        from apps.media.models import MediaAsset
+
+        asset_id = self._uploaded_video()
+        with use_transcoder(FakeTranscoder(width=64, height=36)):
+            jobs.drain()
+        asset = MediaAsset.objects.get(id=asset_id)
+        self.assertEqual(asset.status, Status.AVAILABLE)
+        derivative = asset.derivatives.get(kind="thumbnail")
+        self.assertEqual((derivative.width, derivative.height, derivative.mime_type), (64, 36, "image/jpeg"))
+        seen = self.get(f"assets/{asset_id}/", who=self.teacher).json()["asset"]
+        self.assertTrue(seen["hasThumbnail"])
+
+    def test_a_genuine_decode_failure_leaves_the_video_available_without_a_thumbnail_not_failed(self):
+        from apps.media.models import MediaAsset
+
+        asset_id = self._uploaded_video()
+        with use_transcoder(FakeTranscoder(fail=TranscoderError("video_frame_extraction_failed", "bad video"))):
+            jobs.drain()
+        asset = MediaAsset.objects.get(id=asset_id)
+        self.assertEqual(asset.status, Status.AVAILABLE)  # not FAILED: nothing the uploader did was wrong
+        self.assertFalse(asset.derivatives.filter(kind="thumbnail").exists())
