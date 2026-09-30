@@ -14,11 +14,12 @@ class SchoolLifeConfig(AppConfig):
         from .community import HANDLERS as COMMUNITY
         from .community.common import POST as COMMUNITY_POST
         from .framework import SchoolLifeHandler
+        from .messaging import HANDLERS as MESSAGING
         from .specs import SPECS
         from .specs.calendar import EXCURSIONS
         from .specs.campus import GALLERY
 
-        for handler in [*COMMUNITY, *(SchoolLifeHandler(spec) for spec in SPECS)]:
+        for handler in [*COMMUNITY, *MESSAGING, *(SchoolLifeHandler(spec) for spec in SPECS)]:
             registry.register(handler)
 
         # Gallery is the first real consumer of the shared media service (real photos and videos, not just an
