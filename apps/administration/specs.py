@@ -129,6 +129,20 @@ INCIDENT_AUDIT = Spec(
     required=("incidentId", "action", "actorMembershipId"),
 )
 
+# The Principal's own record of an announcement or reply they sent - their own "sent" log, the
+# same "not even another manager reads this by default" shape PRINCIPAL_TEACHER_NOTES already
+# established. The app was already pushing this on every send, but with no handler registered it
+# could only ever be silently rejected outside DEBUG - registering it here just lets the
+# Principal's own compose history sync across their own devices. What actually reaches a real
+# audience is a separate, already-real write (parent_message, for a real announcement to Secondary
+# guardians); this record is not that.
+PRINCIPAL_OUTGOING_COMMUNICATION = Spec(
+    "principal_outgoing_communication",
+    manage=_PRINCIPAL,
+    read=frozenset(),
+    required=("kind", "message", "channel", "sectionScope"),
+)
+
 SPECS = [
     ATTENDANCE_EVENTS,
     ATTENDANCE_CORRECTIONS,
@@ -142,4 +156,5 @@ SPECS = [
     PUBLIC_WEBSITE,
     INCIDENT_CASE,
     INCIDENT_AUDIT,
+    PRINCIPAL_OUTGOING_COMMUNICATION,
 ]
