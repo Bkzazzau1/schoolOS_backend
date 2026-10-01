@@ -2,7 +2,7 @@ from datetime import date
 
 from rest_framework import serializers
 
-from .models import AlumniProfile
+from .models import AlumniEvent, AlumniProfile
 
 
 class AlumniProfileSerializer(serializers.ModelSerializer):
@@ -109,3 +109,40 @@ class AlumniReviewSerializer(serializers.Serializer):
 
 class AlumniRejectSerializer(serializers.Serializer):
     note = serializers.CharField(max_length=500, allow_blank=False)
+
+
+class AlumniEventSerializer(serializers.ModelSerializer):
+    """`attendingCount` and `myRsvp` are both real, computed from `AlumniEventRsvp` rows - never
+    stored on the event itself. `myRsvp` needs the acting membership passed in as `context["viewer"]`."""
+
+    id = serializers.UUIDField(read_only=True)
+    timeText = serializers.CharField(source="time_text", read_only=True)
+    attendingCount = serializers.SerializerMethodField()
+    myRsvp = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AlumniEvent
+        fields = ["id", "title", "date", "timeText", "venue", "note", "attendingCount", "myRsvp"]
+        read_only_fields = fields
+
+    def get_attendingCount(self, obj):
+        return obj.rsvps.filter(attending=True).count()
+
+    def get_myRsvp(self, obj):
+        viewer = self.context.get("viewer")
+        if viewer is None:
+            return None
+        rsvp = obj.rsvps.filter(membership=viewer).first()
+        return rsvp.attending if rsvp else None
+
+
+class AlumniEventCreateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=200)
+    date = serializers.DateField()
+    timeText = serializers.CharField(max_length=40, required=False, allow_blank=True)
+    venue = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    note = serializers.CharField(max_length=2000, required=False, allow_blank=True)
+
+
+class AlumniEventRsvpSerializer(serializers.Serializer):
+    attending = serializers.BooleanField()

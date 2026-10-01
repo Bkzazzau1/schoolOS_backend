@@ -2,6 +2,8 @@ from django.urls import path
 
 from .views import (
     AlumniDirectoryView,
+    AlumniEventListView,
+    AlumniEventRsvpView,
     AlumniManagementView,
     AlumniRejectView,
     AlumniTransitionView,
@@ -20,6 +22,16 @@ urlpatterns = [
         "schools/<uuid:school_id>/directory/",
         AlumniDirectoryView.as_view(),
         name="alumni-directory",
+    ),
+    path(
+        "schools/<uuid:school_id>/events/",
+        AlumniEventListView.as_view(),
+        name="alumni-events",
+    ),
+    path(
+        "schools/<uuid:school_id>/events/<uuid:event_id>/rsvp/",
+        AlumniEventRsvpView.as_view(),
+        name="alumni-event-rsvp",
     ),
     path(
         "schools/<uuid:school_id>/management/",

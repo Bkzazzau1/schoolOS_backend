@@ -1,6 +1,7 @@
 from functools import wraps
 
 from django.db import models
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -9,9 +10,12 @@ from rest_framework.views import APIView
 from apps.access.permissions import require_activity
 from apps.schools.models import Role
 
-from .models import AlumniProfile, AlumniVerificationStatus
+from .models import AlumniEvent, AlumniEventRsvp, AlumniProfile, AlumniVerificationStatus
 from .serializers import (
     AlumniDirectoryEntrySerializer,
+    AlumniEventCreateSerializer,
+    AlumniEventRsvpSerializer,
+    AlumniEventSerializer,
     AlumniProfileSerializer,
     AlumniRejectSerializer,
     AlumniReviewSerializer,
@@ -126,6 +130,62 @@ class AlumniDirectoryView(APIView):
 
         return Response(
             {"entries": [AlumniDirectoryEntrySerializer(profile).data for profile in profiles]}
+        )
+
+
+class AlumniEventListView(APIView):
+    """Real reunion/event records for this school. Any real Alumni membership may read and see
+    their own real RSVP state; only school management may create one - alumni browse and RSVP,
+    they do not propose their own events."""
+
+    def get(self, request, school_id):
+        membership = _self_membership(request, school_id, activity="alumni.events")
+        events = (
+            AlumniEvent.objects.filter(school_id=school_id)
+            .prefetch_related("rsvps")
+        )
+        return Response(
+            {
+                "events": [
+                    AlumniEventSerializer(event, context={"viewer": membership}).data
+                    for event in events
+                ]
+            }
+        )
+
+    @_alumni_error
+    def post(self, request, school_id):
+        manager = require_alumni_manager(request, school_id)
+        body = AlumniEventCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        event = AlumniEvent.objects.create(
+            school=manager.school,
+            created_by=manager,
+            title=body.validated_data["title"],
+            date=body.validated_data["date"],
+            time_text=body.validated_data.get("timeText", ""),
+            venue=body.validated_data.get("venue", ""),
+            note=body.validated_data.get("note", ""),
+        )
+        return Response(
+            {"event": AlumniEventSerializer(event, context={"viewer": None}).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AlumniEventRsvpView(APIView):
+    def post(self, request, school_id, event_id):
+        membership = _self_membership(request, school_id, activity="alumni.events")
+        event = get_object_or_404(AlumniEvent, id=event_id, school_id=school_id)
+        body = AlumniEventRsvpSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        AlumniEventRsvp.objects.update_or_create(
+            event=event,
+            membership=membership,
+            defaults={"attending": body.validated_data["attending"]},
+        )
+        return Response(
+            {"event": AlumniEventSerializer(event, context={"viewer": membership}).data}
         )
 
 
