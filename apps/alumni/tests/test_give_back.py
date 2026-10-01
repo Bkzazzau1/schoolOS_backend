@@ -80,6 +80,18 @@ class AlumniGiveBackTests(StaffTestCase):
         self.assertEqual(response.status_code, 200, response.json())
         self.assertEqual(response.json()["pledge"]["status"], "withdrawn")
 
+    def test_a_fulfilled_or_already_withdrawn_pledge_cannot_be_withdrawn_again(self):
+        pledge_id = self._create(self.members["alumni"]).json()["pledge"]["id"]
+        self._set_status(self.members["proprietor"], pledge_id, status="acknowledged")
+        self._set_status(self.members["proprietor"], pledge_id, status="fulfilled")
+        response = self._withdraw(self.members["alumni"], pledge_id)
+        self.assertEqual(response.status_code, 400, response.json())
+
+        other_pledge_id = self._create(self.members["alumni"]).json()["pledge"]["id"]
+        self._withdraw(self.members["alumni"], other_pledge_id)
+        response = self._withdraw(self.members["alumni"], other_pledge_id)
+        self.assertEqual(response.status_code, 400, response.json())
+
     def test_only_management_can_acknowledge_or_fulfil_never_withdraw(self):
         pledge_id = self._create(self.members["alumni"]).json()["pledge"]["id"]
         self.assertEqual(self._set_status(self.members["alumni"], pledge_id).status_code, 403)

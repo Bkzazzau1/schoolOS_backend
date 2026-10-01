@@ -240,9 +240,12 @@ class AlumniPledgeListView(APIView):
 
 
 class AlumniPledgeWithdrawView(APIView):
+    @_alumni_error
     def post(self, request, school_id, pledge_id):
         membership = _self_membership(request, school_id, activity="alumni.give-back")
         pledge = get_object_or_404(AlumniPledge, id=pledge_id, school_id=school_id, membership=membership)
+        if pledge.status not in (AlumniPledgeStatus.OFFERED, AlumniPledgeStatus.ACKNOWLEDGED):
+            raise AlumniError("Only an offered or acknowledged pledge can be withdrawn.")
         pledge.status = AlumniPledgeStatus.WITHDRAWN
         pledge.save(update_fields=["status", "updated_at"])
         return Response({"pledge": AlumniPledgeSerializer(pledge).data})
