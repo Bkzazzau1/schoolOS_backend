@@ -5,6 +5,11 @@ from .views import (
     AlumniEventListView,
     AlumniEventRsvpView,
     AlumniManagementView,
+    AlumniMentorDirectoryView,
+    AlumniMentorshipRequestListView,
+    AlumniMentorshipRequestRespondView,
+    AlumniMentorshipRequestWithdrawView,
+    AlumniMyMentorProfileView,
     AlumniOpportunityCloseView,
     AlumniOpportunityListView,
     AlumniPledgeListView,
@@ -62,6 +67,31 @@ urlpatterns = [
         "schools/<uuid:school_id>/opportunities/<uuid:opportunity_id>/close/",
         AlumniOpportunityCloseView.as_view(),
         name="alumni-opportunity-close",
+    ),
+    path(
+        "schools/<uuid:school_id>/mentorship/mentors/",
+        AlumniMentorDirectoryView.as_view(),
+        name="alumni-mentorship-mentors",
+    ),
+    path(
+        "schools/<uuid:school_id>/mentorship/me/",
+        AlumniMyMentorProfileView.as_view(),
+        name="alumni-mentorship-me",
+    ),
+    path(
+        "schools/<uuid:school_id>/mentorship/requests/",
+        AlumniMentorshipRequestListView.as_view(),
+        name="alumni-mentorship-requests",
+    ),
+    path(
+        "schools/<uuid:school_id>/mentorship/requests/<uuid:request_id>/respond/",
+        AlumniMentorshipRequestRespondView.as_view(),
+        name="alumni-mentorship-request-respond",
+    ),
+    path(
+        "schools/<uuid:school_id>/mentorship/requests/<uuid:request_id>/withdraw/",
+        AlumniMentorshipRequestWithdrawView.as_view(),
+        name="alumni-mentorship-request-withdraw",
     ),
     path(
         "schools/<uuid:school_id>/management/",

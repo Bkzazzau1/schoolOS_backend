@@ -13,6 +13,9 @@ from apps.schools.models import Role
 from .models import (
     AlumniEvent,
     AlumniEventRsvp,
+    AlumniMentorProfile,
+    AlumniMentorshipRequest,
+    AlumniMentorshipRequestStatus,
     AlumniOpportunity,
     AlumniOpportunityStatus,
     AlumniPledge,
@@ -25,6 +28,11 @@ from .serializers import (
     AlumniEventCreateSerializer,
     AlumniEventRsvpSerializer,
     AlumniEventSerializer,
+    AlumniMentorProfileSerializer,
+    AlumniMentorProfileWriteSerializer,
+    AlumniMentorshipRequestCreateSerializer,
+    AlumniMentorshipRequestRespondSerializer,
+    AlumniMentorshipRequestSerializer,
     AlumniOpportunityCreateSerializer,
     AlumniOpportunitySerializer,
     AlumniPledgeCreateSerializer,
@@ -311,6 +319,135 @@ class AlumniOpportunityCloseView(APIView):
         opportunity.status = AlumniOpportunityStatus.CLOSED
         opportunity.save(update_fields=["status", "updated_at"])
         return Response({"opportunity": AlumniOpportunitySerializer(opportunity).data})
+
+
+class AlumniMentorDirectoryView(APIView):
+    """Every real, active mentor profile for this school - never contact info, the same restraint
+    `AlumniDirectoryEntrySerializer` already applies. Alumni mentoring alumni only; no manager role
+    is involved anywhere in Mentorship."""
+
+    def get(self, request, school_id):
+        _self_membership(request, school_id, activity="alumni.mentorship")
+        mentors = AlumniMentorProfile.objects.filter(school_id=school_id, is_active=True).select_related(
+            "membership__user"
+        )
+        return Response({"mentors": [AlumniMentorProfileSerializer(mentor).data for mentor in mentors]})
+
+
+class AlumniMyMentorProfileView(APIView):
+    """A real alumnus's own opt-in mentor profile - a separate decision from the Alumni Directory,
+    the same shape `MyAlumniProfileView` already uses for the identity profile."""
+
+    def get(self, request, school_id):
+        membership = _self_membership(request, school_id, activity="alumni.mentorship")
+        profile = (
+            AlumniMentorProfile.objects.filter(school_id=school_id, membership=membership)
+            .select_related("membership__user")
+            .first()
+        )
+        if profile is None:
+            return Response({"mentorProfile": None})
+        return Response({"mentorProfile": AlumniMentorProfileSerializer(profile).data})
+
+    @_alumni_error
+    def put(self, request, school_id):
+        membership = _self_membership(request, school_id, activity="alumni.mentorship")
+        body = AlumniMentorProfileWriteSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        profile, _ = AlumniMentorProfile.objects.update_or_create(
+            membership=membership,
+            defaults={
+                "school": membership.school,
+                "expertise": body.validated_data["expertise"],
+                "bio": body.validated_data["bio"],
+                "is_active": body.validated_data.get("isActive", True),
+            },
+        )
+        return Response({"mentorProfile": AlumniMentorProfileSerializer(profile).data})
+
+
+class AlumniMentorshipRequestListView(APIView):
+    """Every real request involving the acting alumnus, as mentor or as mentee - never a public
+    board, the same self-scoped reasoning Give Back's pledges use."""
+
+    def get(self, request, school_id):
+        membership = _self_membership(request, school_id, activity="alumni.mentorship")
+        requests = (
+            AlumniMentorshipRequest.objects.filter(school_id=school_id)
+            .filter(models.Q(mentor=membership) | models.Q(mentee=membership))
+            .select_related("mentor__user", "mentee__user")
+        )
+        return Response(
+            {"requests": [AlumniMentorshipRequestSerializer(item).data for item in requests]}
+        )
+
+    @_alumni_error
+    def post(self, request, school_id):
+        membership = _self_membership(request, school_id, activity="alumni.mentorship")
+        body = AlumniMentorshipRequestCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        mentor_id = body.validated_data["mentorMembershipId"]
+
+        if str(mentor_id) == str(membership.id):
+            raise AlumniError("You cannot request yourself as a mentor.")
+        mentor_profile = AlumniMentorProfile.objects.filter(
+            school_id=school_id, membership_id=mentor_id, is_active=True
+        ).first()
+        if mentor_profile is None:
+            raise AlumniError("Choose a real, currently active mentor.")
+        if AlumniMentorshipRequest.objects.filter(
+            school_id=school_id,
+            mentor_id=mentor_id,
+            mentee=membership,
+            status=AlumniMentorshipRequestStatus.PENDING,
+        ).exists():
+            raise AlumniError("You already have a pending request to this mentor.")
+
+        mentorship_request = AlumniMentorshipRequest.objects.create(
+            school=membership.school,
+            mentor_id=mentor_id,
+            mentee=membership,
+            message=body.validated_data.get("message", ""),
+        )
+        return Response(
+            {"request": AlumniMentorshipRequestSerializer(mentorship_request).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AlumniMentorshipRequestRespondView(APIView):
+    """Only the real mentor named on the request may accept or decline it."""
+
+    @_alumni_error
+    def post(self, request, school_id, request_id):
+        membership = _self_membership(request, school_id, activity="alumni.mentorship")
+        mentorship_request = get_object_or_404(
+            AlumniMentorshipRequest, id=request_id, school_id=school_id, mentor=membership
+        )
+        if mentorship_request.status != AlumniMentorshipRequestStatus.PENDING:
+            raise AlumniError("This request has already been answered.")
+        body = AlumniMentorshipRequestRespondSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        mentorship_request.status = body.validated_data["status"]
+        mentorship_request.save(update_fields=["status", "updated_at"])
+        return Response({"request": AlumniMentorshipRequestSerializer(mentorship_request).data})
+
+
+class AlumniMentorshipRequestWithdrawView(APIView):
+    """Only the real mentee may withdraw their own request, and only while it is still pending -
+    mirrors `AlumniPledgeWithdrawView`'s shape."""
+
+    @_alumni_error
+    def post(self, request, school_id, request_id):
+        membership = _self_membership(request, school_id, activity="alumni.mentorship")
+        mentorship_request = get_object_or_404(
+            AlumniMentorshipRequest, id=request_id, school_id=school_id, mentee=membership
+        )
+        if mentorship_request.status != AlumniMentorshipRequestStatus.PENDING:
+            raise AlumniError("Only a pending request can be withdrawn.")
+        mentorship_request.status = AlumniMentorshipRequestStatus.WITHDRAWN
+        mentorship_request.save(update_fields=["status", "updated_at"])
+        return Response({"request": AlumniMentorshipRequestSerializer(mentorship_request).data})
 
 
 class AlumniManagementView(APIView):

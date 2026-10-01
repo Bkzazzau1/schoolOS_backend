@@ -4,6 +4,9 @@ from rest_framework import serializers
 
 from .models import (
     AlumniEvent,
+    AlumniMentorProfile,
+    AlumniMentorshipRequest,
+    AlumniMentorshipRequestStatus,
     AlumniOpportunity,
     AlumniOpportunityType,
     AlumniPledge,
@@ -247,3 +250,79 @@ class AlumniOpportunityCreateSerializer(serializers.Serializer):
                 "Add a contact method, or describe how an interested alumnus can follow up."
             )
         return attrs
+
+
+class AlumniMentorProfileSerializer(serializers.ModelSerializer):
+    """Never contact info - the same restraint `AlumniDirectoryEntrySerializer` already applies."""
+
+    membershipId = serializers.UUIDField(source="membership_id", read_only=True)
+    name = serializers.SerializerMethodField()
+    isActive = serializers.BooleanField(source="is_active", read_only=True)
+    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
+
+    class Meta:
+        model = AlumniMentorProfile
+        fields = ["membershipId", "name", "expertise", "bio", "isActive", "updatedAt"]
+        read_only_fields = fields
+
+    def get_name(self, obj):
+        return obj.membership.user.get_full_name() or obj.membership.user.email
+
+
+class AlumniMentorProfileWriteSerializer(serializers.Serializer):
+    expertise = serializers.CharField(max_length=200, min_length=2)
+    bio = serializers.CharField(max_length=2000, min_length=5)
+    isActive = serializers.BooleanField(required=False, default=True)
+
+
+class AlumniMentorshipRequestSerializer(serializers.ModelSerializer):
+    """`mentorEmail`/`menteeEmail` are only ever present once `status` is really `accepted` - a
+    pending or declined request never leaks either side's real contact info."""
+
+    id = serializers.UUIDField(read_only=True)
+    mentorMembershipId = serializers.UUIDField(source="mentor_id", read_only=True)
+    mentorName = serializers.SerializerMethodField()
+    mentorEmail = serializers.SerializerMethodField()
+    menteeMembershipId = serializers.UUIDField(source="mentee_id", read_only=True)
+    menteeName = serializers.SerializerMethodField()
+    menteeEmail = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = AlumniMentorshipRequest
+        fields = [
+            "id",
+            "mentorMembershipId",
+            "mentorName",
+            "mentorEmail",
+            "menteeMembershipId",
+            "menteeName",
+            "menteeEmail",
+            "message",
+            "status",
+            "createdAt",
+        ]
+        read_only_fields = fields
+
+    def get_mentorName(self, obj):
+        return obj.mentor.user.get_full_name() or obj.mentor.user.email
+
+    def get_menteeName(self, obj):
+        return obj.mentee.user.get_full_name() or obj.mentee.user.email
+
+    def get_mentorEmail(self, obj):
+        return obj.mentor.user.email if obj.status == AlumniMentorshipRequestStatus.ACCEPTED else None
+
+    def get_menteeEmail(self, obj):
+        return obj.mentee.user.email if obj.status == AlumniMentorshipRequestStatus.ACCEPTED else None
+
+
+class AlumniMentorshipRequestCreateSerializer(serializers.Serializer):
+    mentorMembershipId = serializers.UUIDField()
+    message = serializers.CharField(max_length=2000, required=False, allow_blank=True)
+
+
+class AlumniMentorshipRequestRespondSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=[AlumniMentorshipRequestStatus.ACCEPTED, AlumniMentorshipRequestStatus.DECLINED]
+    )

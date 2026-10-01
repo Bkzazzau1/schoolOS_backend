@@ -291,3 +291,92 @@ class AlumniOpportunity(models.Model):
 
     def __str__(self):
         return f"{self.title} · {self.organisation} · {self.status}"
+
+
+class AlumniMentorProfile(models.Model):
+    """A real alumnus's opt-in to mentor other alumni - a separate decision from appearing in the
+    Alumni Directory (see `AlumniProfile.directory_visible`): what someone will mentor on often
+    differs from their current profession, and the two choices are made independently."""
+
+    membership = models.OneToOneField(
+        Membership,
+        on_delete=models.CASCADE,
+        related_name="alumni_mentor_profile",
+        primary_key=True,
+    )
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="alumni_mentor_profiles")
+    expertise = models.CharField(max_length=200)
+    bio = models.TextField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        if self.membership_id and self.membership.role != Role.ALUMNI:
+            raise ValidationError("Only an Alumni membership may become a mentor.")
+        if self.membership_id and self.membership.school_id != self.school_id:
+            raise ValidationError("The mentor profile must belong to the same school as the membership.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.membership_id} · mentor · {'active' if self.is_active else 'paused'}"
+
+
+class AlumniMentorshipRequestStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    ACCEPTED = "accepted", "Accepted"
+    DECLINED = "declined", "Declined"
+    WITHDRAWN = "withdrawn", "Withdrawn"
+
+
+class AlumniMentorshipRequest(models.Model):
+    """A real mentee's request to a real mentor. Contact info is never exchanged by this record
+    itself - only once `status` is really `accepted` does either side's real account email become
+    visible to the other (see `AlumniMentorshipRequestSerializer`)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="alumni_mentorship_requests")
+    mentor = models.ForeignKey(
+        Membership, on_delete=models.CASCADE, related_name="alumni_mentorship_requests_as_mentor"
+    )
+    mentee = models.ForeignKey(
+        Membership, on_delete=models.CASCADE, related_name="alumni_mentorship_requests_as_mentee"
+    )
+    message = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=10, choices=AlumniMentorshipRequestStatus.choices, default=AlumniMentorshipRequestStatus.PENDING
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["mentor", "mentee"],
+                condition=models.Q(status=AlumniMentorshipRequestStatus.PENDING),
+                name="one_pending_mentorship_request_per_mentor_mentee",
+            )
+        ]
+
+    def clean(self):
+        if self.mentor_id and self.mentor.role != Role.ALUMNI:
+            raise ValidationError("The mentor must be a real Alumni membership.")
+        if self.mentee_id and self.mentee.role != Role.ALUMNI:
+            raise ValidationError("The mentee must be a real Alumni membership.")
+        if self.mentor_id and self.mentee_id and self.mentor_id == self.mentee_id:
+            raise ValidationError("A mentor cannot request themselves.")
+        if self.mentor_id and self.mentor.school_id != self.school_id:
+            raise ValidationError("The mentor must belong to the same school.")
+        if self.mentee_id and self.mentee.school_id != self.school_id:
+            raise ValidationError("The mentee must belong to the same school.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.mentee_id} -> {self.mentor_id} · {self.status}"
