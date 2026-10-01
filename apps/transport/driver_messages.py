@@ -1,6 +1,7 @@
 """What passes between a Driver and Transport Control: a real, two-way message on their one real
-shared channel, a real "thread seen" receipt either side may record for themselves, and a Driver's
-own "alert read" receipt (alerts have no real backend yet - see docs/BACKEND_INTEGRATION.md).
+shared channel, a real "thread seen" receipt either side may record for themselves, a real
+operational alert Transport Control broadcasts to every real Driver, and a Driver's own "alert
+read" receipt for it.
 
 The message channel is genuinely two-way: a Driver writes from their own Messages screen, and
 Transport Control (apps/transport/constants.py MANAGERS - Proprietor or Administrator, the same
@@ -22,6 +23,8 @@ from . import constants as c
 from . import daily_run, shared
 
 _MAX_BODY = 2000
+_MAX_TITLE = 200
+_MAX_SCOPE_LABEL = 120
 
 
 class _DriverAppendOnly(EntityHandler):
@@ -157,10 +160,56 @@ class MessageReceiptHandler(EntityHandler):
         return payload if payload.get("membershipId") == str(membership.id) else None
 
 
+class DriverAlertHandler(EntityHandler):
+    """A real, school-wide operational notice from Transport Control to every real Driver -
+    broadcast, not a per-driver thread: entity id LOCAL-<sender membershipId>-<epoch>, create-only,
+    the same append-only shape every other channel in this module uses. `scopeLabel` is the
+    sender's own free-text description of who this is really for ("All Routes", "Route 7 only") -
+    informational only, not a second access-control layer: every real Driver in this school can
+    read every real alert, the same broadcast shape a guardian announcement already uses on the
+    other side of the app."""
+
+    entity_type = c.DRIVER_ALERT
+    roles = c.MANAGERS
+    allow_delete = False
+
+    def authorize(self, ctx: MutationContext) -> None:
+        if ctx.membership.role not in self.roles:
+            raise Rejected("Your role may not send operational alerts.")
+        if ctx.operation != "create":
+            raise Rejected("This record is never changed once recorded.")
+
+    def clean(self, ctx: MutationContext) -> dict[str, Any]:
+        p = ctx.payload
+        member_id = str(ctx.membership.id)
+        prefix = f"LOCAL-{member_id}-"
+        if not ctx.entity_id.startswith(prefix) or not ctx.entity_id[len(prefix):].isdigit():
+            raise Rejected("This alert does not belong to the active sender.")
+
+        priority = text(p, "priority", max_len=20)
+        if priority not in c.DRIVER_ALERT_PRIORITIES:
+            raise Rejected("priority must be one of: " + ", ".join(c.DRIVER_ALERT_PRIORITIES))
+
+        return {
+            "id": ctx.entity_id,
+            "title": text(p, "title", max_len=_MAX_TITLE),
+            "body": text(p, "body", max_len=_MAX_BODY),
+            "priority": priority,
+            "scopeLabel": text(p, "scopeLabel", max_len=_MAX_SCOPE_LABEL, required=False) or "All Routes",
+            "createdAt": ctx.now,
+            "senderMembershipId": member_id,
+        }
+
+    def visible(self, membership, payload):
+        if membership.role in c.READERS or membership.role == "driver":
+            return payload
+        return None
+
+
 class AlertReceiptHandler(_DriverAppendOnly):
-    """membershipId:alert-read:<alertId>:<epoch>. Operational alerts have no real backend yet
-    (see docs/BACKEND_INTEGRATION.md), so this stays the Driver-only, one-directional shape it
-    already was - nothing ever sent *to* a Driver here needs a receipt from anyone else yet."""
+    """membershipId:alert-read:<alertId>:<epoch> - a Driver's own real receipt for a real,
+    currently existing operational alert. One-directional: nothing ever sent *to* a Driver here
+    needs a receipt from anyone else."""
 
     entity_type = c.DRIVER_ALERT_RECEIPT
 
@@ -173,6 +222,8 @@ class AlertReceiptHandler(_DriverAppendOnly):
         alert_id = ":".join(parts[2:-1])
         if text(p, "alertId", max_len=160) != alert_id:
             raise Rejected("alertId must match the record.")
+        if not shared.record(ctx.membership.school, c.DRIVER_ALERT, alert_id):
+            raise Rejected("alertId must be a real operational alert.")
 
         route_id = daily_run.require_driver_route(ctx)
         if text(p, "routeId", max_len=64) != route_id:

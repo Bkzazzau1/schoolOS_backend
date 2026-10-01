@@ -30,7 +30,9 @@ CASE_EVENT = "transport_case_event"
 
 DRIVER_MESSAGE = "driver_message"
 DRIVER_MESSAGE_RECEIPT = "driver_message_receipt"
+DRIVER_ALERT = "driver_alert"
 DRIVER_ALERT_RECEIPT = "driver_alert_receipt"
+DRIVER_ALERT_PRIORITIES = ("routine", "important", "urgent")
 
 INCIDENT_CATEGORIES = (
     "vehicleBreakdown", "accident", "trafficDelay", "routeObstruction", "studentNotAtStop",

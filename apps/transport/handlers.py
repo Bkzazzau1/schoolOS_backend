@@ -8,7 +8,12 @@ school_transport_route itself is not here: apps.schoollife already owns it."""
 
 from .afternoon_run import AfternoonRunHandler
 from .driver_assignment import AssignmentEventHandler, DriverAssignmentHandler
-from .driver_messages import AlertReceiptHandler, DriverMessageHandler, MessageReceiptHandler
+from .driver_messages import (
+    AlertReceiptHandler,
+    DriverAlertHandler,
+    DriverMessageHandler,
+    MessageReceiptHandler,
+)
 from .incident import CaseEventHandler, IncidentHandler
 from .morning_run import MorningRunHandler
 from .rider_assignment import RiderAssignmentEventHandler, RiderAssignmentHandler
@@ -35,5 +40,6 @@ HANDLERS = [
     CaseEventHandler(),
     DriverMessageHandler(),
     MessageReceiptHandler(),
+    DriverAlertHandler(),
     AlertReceiptHandler(),
 ]
