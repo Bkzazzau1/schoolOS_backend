@@ -7,6 +7,17 @@ from .test_daily_run import DailyRunTestCase, assignment, route
 
 
 class IncidentTestCase(DailyRunTestCase):
+    def alert_id(self, who=None, epoch="1758790000000000"):
+        return f"LOCAL-{(who or self.admin).id}-{epoch}"
+
+    def alert(self, **over):
+        body = {
+            "title": "Road closure", "body": "Market Road closed; use the bypass.",
+            "priority": "important", "scopeLabel": "All Routes",
+        }
+        body.update(over)
+        return body
+
     def incident_id(self, epoch="1758790000000000"):
         return f"{self.driver.id}:incident:{self.today}:{epoch}"
 
@@ -217,6 +228,62 @@ class DriverMessageTests(IncidentTestCase):
         self.rejected(self.push(c.DRIVER_MESSAGE, self.message_id(), operation="delete", who=self.driver), "never changed")
 
 
+class DriverAlertTests(IncidentTestCase):
+    """A real, school-wide operational notice from Transport Control to every real Driver
+    (apps/transport/driver_messages.py: DriverAlertHandler) - broadcast, not a per-driver thread."""
+
+    def setUp(self):
+        super().setUp()
+        other_user = get_user_model().objects.create_user("alert-other-driver@school.ng", "a-long-test-password-1")
+        self.other_driver = Membership.objects.create(user=other_user, school=self.school, role=Role.DRIVER)
+
+    def test_transport_control_can_send_and_every_real_driver_sees_it(self):
+        aid = self.alert_id()
+        self.ok(self.push(c.DRIVER_ALERT, aid, self.alert(), who=self.admin))
+        stored = self.stored(c.DRIVER_ALERT, aid).payload
+        self.assertEqual(
+            (stored["title"], stored["priority"], stored["senderMembershipId"]),
+            ("Road closure", "important", str(self.admin.id)),
+        )
+
+        def seen(who):
+            self.client.force_authenticate(who.user)
+            found = self.client.get("/api/v1/sync/pull/", {"school": str(self.school.id)}).json()["records"]
+            return {r["entityId"] for r in found if r["entityType"] == c.DRIVER_ALERT}
+
+        for who in (self.driver, self.other_driver, self.owner, self.admin, self.members["principal"]):
+            self.assertIn(aid, seen(who), who.role)
+        for role in ("teacher", "parent", "staff", "accountant"):
+            self.assertNotIn(aid, seen(self.members[role]), role)
+
+    def test_a_driver_cannot_send_an_alert(self):
+        self.rejected(self.push(c.DRIVER_ALERT, self.alert_id(who=self.driver), self.alert(), who=self.driver), "role may not")
+
+    def test_an_unrelated_role_cannot_send_an_alert(self):
+        teacher = self.members["teacher"]
+        self.rejected(self.push(c.DRIVER_ALERT, self.alert_id(who=teacher), self.alert(), who=teacher), "role may not")
+
+    def test_priority_must_be_real(self):
+        self.rejected(self.push(c.DRIVER_ALERT, self.alert_id(), self.alert(priority="catastrophic"), who=self.admin), "priority")
+
+    def test_scope_label_defaults_when_not_given(self):
+        aid = self.alert_id()
+        payload = self.alert()
+        del payload["scopeLabel"]
+        self.ok(self.push(c.DRIVER_ALERT, aid, payload, who=self.admin))
+        self.assertEqual(self.stored(c.DRIVER_ALERT, aid).payload["scopeLabel"], "All Routes")
+
+    def test_it_is_never_changed_or_removed_once_sent(self):
+        aid = self.alert_id()
+        self.ok(self.push(c.DRIVER_ALERT, aid, self.alert(), who=self.admin))
+        self.rejected(self.push(c.DRIVER_ALERT, aid, self.alert(), operation="update", who=self.admin), "never changed")
+        self.rejected(self.push(c.DRIVER_ALERT, aid, operation="delete", who=self.admin), "never changed")
+
+    def test_an_alert_id_that_does_not_belong_to_the_sender_is_refused(self):
+        theirs = f"LOCAL-{self.driver.id}-1758790000000000"
+        self.rejected(self.push(c.DRIVER_ALERT, theirs, self.alert(), who=self.admin), "active sender")
+
+
 class DriverReceiptTests(IncidentTestCase):
     def thread_id(self, driver=None):
         return f"driver-thread-{(driver or self.driver).id}"
@@ -244,12 +311,36 @@ class DriverReceiptTests(IncidentTestCase):
         body = {"id": rid, "threadId": "driver-thread-someone-else", "seenAt": ""}
         self.rejected(self.push(c.DRIVER_MESSAGE_RECEIPT, rid, body, who=self.driver), "own channel")
 
-    def test_an_alert_read_receipt_and_a_forged_subject_is_refused(self):
-        rid = f"{self.driver.id}:alert-read:driver-alert-001:1758790000000000"
-        body = {"id": rid, "alertId": "driver-alert-001", "routeId": "BUS-01", "readAt": "2026-09-25T06:47:00Z"}
+    def test_an_alert_read_receipt_requires_a_real_alert(self):
+        aid = self.alert_id()
+        self.ok(self.push(c.DRIVER_ALERT, aid, self.alert(), who=self.admin))
+
+        rid = f"{self.driver.id}:alert-read:{aid}:1758790000000000"
+        body = {"id": rid, "alertId": aid, "routeId": "BUS-01", "readAt": "2026-09-25T06:47:00Z"}
         self.ok(self.push(c.DRIVER_ALERT_RECEIPT, rid, body, who=self.driver))
-        forged = f"{self.driver.id}:alert-read:driver-alert-002:1758790000000001"
-        self.rejected(self.push(c.DRIVER_ALERT_RECEIPT, forged, {**body, "id": forged}, who=self.driver), "alertId")
+        stored = self.stored(c.DRIVER_ALERT_RECEIPT, rid).payload
+        self.assertEqual((stored["alertId"], stored["membershipId"]), (aid, str(self.driver.id)))
+
+        ghost = f"{self.driver.id}:alert-read:driver-alert-ghost:1758790000000001"
+        self.rejected(
+            self.push(c.DRIVER_ALERT_RECEIPT, ghost, {**body, "id": ghost, "alertId": "driver-alert-ghost"}, who=self.driver),
+            "real operational alert",
+        )
+
+    def test_a_forged_alert_subject_is_refused(self):
+        rid = f"{self.driver.id}:alert-read:driver-alert-ghost:1758790000000000"
+        body = {"id": rid, "alertId": "driver-alert-ghost", "routeId": "BUS-01", "readAt": "2026-09-25T06:47:00Z"}
+        self.rejected(self.push(c.DRIVER_ALERT_RECEIPT, rid, body, who=self.driver), "real operational alert")
+
+    def test_the_receipts_own_alert_id_must_match_its_payload(self):
+        aid = self.alert_id()
+        self.ok(self.push(c.DRIVER_ALERT, aid, self.alert(), who=self.admin))
+        other_aid = self.alert_id(epoch="1758790000000002")
+        self.ok(self.push(c.DRIVER_ALERT, other_aid, self.alert(), who=self.admin))
+
+        rid = f"{self.driver.id}:alert-read:{other_aid}:1758790000000000"
+        body = {"id": rid, "alertId": aid, "routeId": "BUS-01", "readAt": "2026-09-25T06:47:00Z"}
+        self.rejected(self.push(c.DRIVER_ALERT_RECEIPT, rid, body, who=self.driver), "alertId must match")
 
     def test_someone_elses_receipt_is_refused(self):
         rid = "someone-else:thread-seen:t1:1758790000000000"
