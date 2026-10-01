@@ -13,6 +13,8 @@ from apps.schools.models import Role
 from .models import (
     AlumniEvent,
     AlumniEventRsvp,
+    AlumniOpportunity,
+    AlumniOpportunityStatus,
     AlumniPledge,
     AlumniPledgeStatus,
     AlumniProfile,
@@ -23,6 +25,8 @@ from .serializers import (
     AlumniEventCreateSerializer,
     AlumniEventRsvpSerializer,
     AlumniEventSerializer,
+    AlumniOpportunityCreateSerializer,
+    AlumniOpportunitySerializer,
     AlumniPledgeCreateSerializer,
     AlumniPledgeSerializer,
     AlumniPledgeStatusSerializer,
@@ -250,6 +254,65 @@ class AlumniPledgeStatusView(APIView):
         return Response({"pledge": AlumniPledgeSerializer(pledge).data})
 
 
+class AlumniOpportunityListView(APIView):
+    """A real posting board: any real alumnus may post, and every real alumnus sees every real
+    posting for their school - not just their own, unlike Give Back's self-only pledges."""
+
+    def get(self, request, school_id):
+        _self_membership(request, school_id, activity="alumni.opportunities")
+        opportunities = AlumniOpportunity.objects.filter(school_id=school_id).select_related(
+            "posted_by__user"
+        )
+        return Response(
+            {"opportunities": [AlumniOpportunitySerializer(item).data for item in opportunities]}
+        )
+
+    @_alumni_error
+    def post(self, request, school_id):
+        membership = _self_membership(request, school_id, activity="alumni.opportunities")
+        body = AlumniOpportunityCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        opportunity = AlumniOpportunity.objects.create(
+            school=membership.school,
+            posted_by=membership,
+            title=body.validated_data["title"],
+            organisation=body.validated_data["organisation"],
+            opportunity_type=body.validated_data["opportunityType"],
+            location_text=body.validated_data.get("locationText", ""),
+            description=body.validated_data["description"],
+            contact_info=body.validated_data.get("contactInfo", ""),
+        )
+        return Response(
+            {"opportunity": AlumniOpportunitySerializer(opportunity).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AlumniOpportunityCloseView(APIView):
+    """Closing follows the same 'author or moderator' shape `PostHandler.authorize` already
+    established for Community posts - the real poster's own Alumni membership, or school
+    management via `require_alumni_manager`, never anyone else's Alumni membership."""
+
+    def post(self, request, school_id, opportunity_id):
+        opportunity = get_object_or_404(AlumniOpportunity, id=opportunity_id, school_id=school_id)
+
+        acting_alumnus = None
+        try:
+            acting_alumnus = _self_membership(request, school_id, activity="alumni.opportunities")
+        except PermissionDenied:
+            pass
+
+        if acting_alumnus is not None:
+            if acting_alumnus.id != opportunity.posted_by_id:
+                raise PermissionDenied("You can only close your own posting.")
+        else:
+            require_alumni_manager(request, school_id)
+
+        opportunity.status = AlumniOpportunityStatus.CLOSED
+        opportunity.save(update_fields=["status", "updated_at"])
+        return Response({"opportunity": AlumniOpportunitySerializer(opportunity).data})
+
+
 class AlumniManagementView(APIView):
     def get(self, request, school_id):
         manager = require_alumni_manager(request, school_id)
@@ -264,6 +327,9 @@ class AlumniManagementView(APIView):
 
         candidates = transition_candidates(manager.school)
         pledges = AlumniPledge.objects.filter(school=manager.school).select_related("membership__user")
+        opportunities = AlumniOpportunity.objects.filter(school=manager.school).select_related(
+            "posted_by__user"
+        )
         return Response(
             {
                 "profiles": [AlumniProfileSerializer(profile).data for profile in profiles],
@@ -276,6 +342,7 @@ class AlumniManagementView(APIView):
                     for candidate in candidates
                 ],
                 "pledges": [AlumniPledgeSerializer(pledge).data for pledge in pledges],
+                "opportunities": [AlumniOpportunitySerializer(item).data for item in opportunities],
             }
         )
 

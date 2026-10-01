@@ -5,6 +5,8 @@ from .views import (
     AlumniEventListView,
     AlumniEventRsvpView,
     AlumniManagementView,
+    AlumniOpportunityCloseView,
+    AlumniOpportunityListView,
     AlumniPledgeListView,
     AlumniPledgeStatusView,
     AlumniPledgeWithdrawView,
@@ -50,6 +52,16 @@ urlpatterns = [
         "schools/<uuid:school_id>/give-back/<uuid:pledge_id>/status/",
         AlumniPledgeStatusView.as_view(),
         name="alumni-give-back-status",
+    ),
+    path(
+        "schools/<uuid:school_id>/opportunities/",
+        AlumniOpportunityListView.as_view(),
+        name="alumni-opportunities",
+    ),
+    path(
+        "schools/<uuid:school_id>/opportunities/<uuid:opportunity_id>/close/",
+        AlumniOpportunityCloseView.as_view(),
+        name="alumni-opportunity-close",
     ),
     path(
         "schools/<uuid:school_id>/management/",

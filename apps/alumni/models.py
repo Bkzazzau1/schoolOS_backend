@@ -240,3 +240,54 @@ class AlumniPledge(models.Model):
 
     def __str__(self):
         return f"{self.membership_id} · {self.category} · {self.status}"
+
+
+class AlumniOpportunityType(models.TextChoices):
+    FULL_TIME = "full_time", "Full-time"
+    PART_TIME = "part_time", "Part-time"
+    INTERNSHIP = "internship", "Internship"
+    CONTRACT = "contract", "Contract"
+    OTHER = "other", "Other"
+
+
+class AlumniOpportunityStatus(models.TextChoices):
+    OPEN = "open", "Open"
+    CLOSED = "closed", "Closed"
+
+
+class AlumniOpportunity(models.Model):
+    """A real job/opportunity posting from a real alumnus to fellow alumni - a posting board, not
+    a curated school listing: any real alumnus may post, and its own poster (or school management,
+    for moderation) may close it. Interested alumni follow up directly through `contact_info`; this
+    is not an application-tracking system."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="alumni_opportunities")
+    posted_by = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="alumni_opportunities")
+    title = models.CharField(max_length=200)
+    organisation = models.CharField(max_length=200)
+    opportunity_type = models.CharField(max_length=20, choices=AlumniOpportunityType.choices)
+    location_text = models.CharField(max_length=160, blank=True)
+    description = models.TextField()
+    contact_info = models.CharField(max_length=200, blank=True)
+    status = models.CharField(
+        max_length=10, choices=AlumniOpportunityStatus.choices, default=AlumniOpportunityStatus.OPEN
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def clean(self):
+        if self.posted_by_id and self.posted_by.role != Role.ALUMNI:
+            raise ValidationError("Only an Alumni membership may post an opportunity.")
+        if self.posted_by_id and self.posted_by.school_id != self.school_id:
+            raise ValidationError("The opportunity and its poster must belong to the same school.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.title} · {self.organisation} · {self.status}"

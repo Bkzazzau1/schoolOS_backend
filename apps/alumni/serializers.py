@@ -2,7 +2,15 @@ from datetime import date
 
 from rest_framework import serializers
 
-from .models import AlumniEvent, AlumniPledge, AlumniPledgeCategory, AlumniPledgeStatus, AlumniProfile
+from .models import (
+    AlumniEvent,
+    AlumniOpportunity,
+    AlumniOpportunityType,
+    AlumniPledge,
+    AlumniPledgeCategory,
+    AlumniPledgeStatus,
+    AlumniProfile,
+)
 
 
 class AlumniProfileSerializer(serializers.ModelSerializer):
@@ -189,3 +197,53 @@ class AlumniPledgeStatusSerializer(serializers.Serializer):
         choices=[AlumniPledgeStatus.ACKNOWLEDGED, AlumniPledgeStatus.FULFILLED]
     )
     schoolNote = serializers.CharField(max_length=500, required=False, allow_blank=True)
+
+
+class AlumniOpportunitySerializer(serializers.ModelSerializer):
+    """A real posting board entry. `postedByName` is included for every viewer - the whole point
+    is other alumni know who posted it - so the same serializer serves both the general list and
+    Alumni Management's oversight bundle."""
+
+    id = serializers.UUIDField(read_only=True)
+    postedByMembershipId = serializers.UUIDField(source="posted_by_id", read_only=True)
+    postedByName = serializers.SerializerMethodField()
+    opportunityType = serializers.CharField(source="opportunity_type", read_only=True)
+    locationText = serializers.CharField(source="location_text", read_only=True)
+    contactInfo = serializers.CharField(source="contact_info", read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = AlumniOpportunity
+        fields = [
+            "id",
+            "postedByMembershipId",
+            "postedByName",
+            "title",
+            "organisation",
+            "opportunityType",
+            "locationText",
+            "description",
+            "contactInfo",
+            "status",
+            "createdAt",
+        ]
+        read_only_fields = fields
+
+    def get_postedByName(self, obj):
+        return obj.posted_by.user.get_full_name() or obj.posted_by.user.email
+
+
+class AlumniOpportunityCreateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=200)
+    organisation = serializers.CharField(max_length=200)
+    opportunityType = serializers.ChoiceField(choices=AlumniOpportunityType.choices)
+    locationText = serializers.CharField(max_length=160, required=False, allow_blank=True)
+    description = serializers.CharField(max_length=4000, min_length=5)
+    contactInfo = serializers.CharField(max_length=200, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if not attrs.get("contactInfo", "").strip() and len(attrs["description"].strip()) < 20:
+            raise serializers.ValidationError(
+                "Add a contact method, or describe how an interested alumnus can follow up."
+            )
+        return attrs
