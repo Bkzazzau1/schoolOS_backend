@@ -201,3 +201,45 @@ class ReportTests(CommunityTestCase):
         self.ok(self.report(self.teacher))
         for role, sees in (("teacher", True), ("principal", True), ("proprietor", True), ("parent", False), ("staff", False)):
             self.assertEqual((REPORT, "REP-1") in self.pulled(self.members[role]), sees, role)
+
+
+class AlumniCommunityTests(CommunityTestCase):
+    """Alumni get their own real corner of Community - `alumniOnly` - never general in-school
+    chatter, and nobody outside Alumni may post or read it."""
+
+    def setUp(self):
+        super().setUp()
+        self.alumnus = self.members["alumni"]
+
+    def test_an_alumnus_can_post_to_alumni_only_and_nowhere_else(self):
+        self.make_post(self.alumnus, id="A1", audience="alumniOnly")
+        self.rejected(self.send(self.alumnus, POST, "A2", post("A2", audience="wholeSchool")), "alumni only")
+        # staffOnly's own guard fires first here, since an alumnus also isn't on the staff side -
+        # either rejection reason correctly refuses the post.
+        self.rejected(self.send(self.alumnus, POST, "A3", post("A3", audience="staffOnly")), "staff")
+
+    def test_a_non_alumnus_cannot_post_to_alumni_only(self):
+        self.rejected(self.send(self.teacher, POST, "A1", post("A1", audience="alumniOnly")), "Only alumni")
+        self.rejected(self.send(self.principal, POST, "A2", post("A2", audience="alumniOnly")), "Only alumni")
+
+    def test_only_alumni_and_moderators_read_an_alumni_only_post(self):
+        self.make_post(self.alumnus, id="A1", audience="alumniOnly")
+        seen = lambda role: {i for t, i in self.pulled(self.members[role]) if t == POST}  # noqa: E731
+        self.assertEqual(seen("alumni"), {"A1"})
+        for moderator in ("proprietor", "principal", "administrator"):
+            self.assertEqual(seen(moderator), {"A1"}, moderator)
+        for outsider in ("teacher", "parent", "staff", "student", "accountant"):
+            self.assertEqual(seen(outsider), set(), outsider)
+
+    def test_an_alumnus_does_not_see_general_in_school_posts(self):
+        self.make_post(self.teacher, id="P1", audience="wholeSchool")
+        self.assertEqual({i for t, i in self.pulled(self.alumnus) if t == POST}, set())
+
+    def test_a_non_alumnus_can_still_comment_and_react_only_through_an_alumni_only_post_they_can_see(self):
+        self.make_post(self.alumnus, id="A1", audience="alumniOnly")
+        self.ok(self.send(self.alumnus, COMMENT, "C-1", {"id": "C-1", "postId": "A1", "text": "Welcome!"}))
+        self.rejected(
+            self.send(self.teacher, COMMENT, "C-2", {"id": "C-2", "postId": "A1", "text": "Hi"}),
+            "does not exist",
+        )
+        self.ok(self.send(self.principal, COMMENT, "C-3", {"id": "C-3", "postId": "A1", "text": "Noted"}))
