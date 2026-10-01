@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    AlumniDirectoryView,
     AlumniManagementView,
     AlumniRejectView,
     AlumniTransitionView,
@@ -14,6 +15,11 @@ urlpatterns = [
         "schools/<uuid:school_id>/me/",
         MyAlumniProfileView.as_view(),
         name="alumni-me",
+    ),
+    path(
+        "schools/<uuid:school_id>/directory/",
+        AlumniDirectoryView.as_view(),
+        name="alumni-directory",
     ),
     path(
         "schools/<uuid:school_id>/management/",

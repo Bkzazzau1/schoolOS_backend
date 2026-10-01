@@ -38,6 +38,10 @@ class PostHandler(EntityHandler):
         visibility = choice(p.get("visibility"), VISIBILITIES, "visibility")
         if audience == "staffOnly" and membership.role not in STAFF_SIDE:
             raise Rejected("Only staff can post to staff only.")
+        if audience == "alumniOnly" and membership.role != "alumni":
+            raise Rejected("Only alumni can post to alumni only.")
+        if membership.role == "alumni" and audience != "alumniOnly":
+            raise Rejected("Alumni may only post to alumni only.")
         if visibility == "publicShowcase" and (old or {}).get("visibility") != visibility and membership.role not in LEADERS:
             raise Rejected("Only the owner or principal can put a post on the public showcase.")
         return {

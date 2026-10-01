@@ -42,6 +42,35 @@ class AlumniProfileSerializer(serializers.ModelSerializer):
         return obj.membership.user.get_full_name() or obj.membership.user.email
 
 
+class AlumniDirectoryEntrySerializer(serializers.ModelSerializer):
+    """A deliberately narrow, public-facing subset of an alumnus's profile - never the private
+    fields (admission number, original student reference, email) `AlumniProfileSerializer` carries
+    for the person's own self-view."""
+
+    membershipId = serializers.UUIDField(source="membership_id", read_only=True)
+    name = serializers.SerializerMethodField()
+    graduationYear = serializers.IntegerField(source="graduation_year", read_only=True)
+    graduationSet = serializers.CharField(source="graduation_set", read_only=True)
+    locationText = serializers.CharField(source="location_text", read_only=True)
+
+    class Meta:
+        model = AlumniProfile
+        fields = [
+            "membershipId",
+            "name",
+            "graduationYear",
+            "graduationSet",
+            "profession",
+            "organisation",
+            "locationText",
+            "bio",
+        ]
+        read_only_fields = fields
+
+    def get_name(self, obj):
+        return obj.membership.user.get_full_name() or obj.membership.user.email
+
+
 class AlumniSelfProfileWriteSerializer(serializers.Serializer):
     original_student_reference = serializers.CharField(max_length=120, required=False, allow_blank=True)
     admission_number = serializers.CharField(max_length=80, required=False, allow_blank=True)

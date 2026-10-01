@@ -1,5 +1,6 @@
 from functools import wraps
 
+from django.db import models
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -10,6 +11,7 @@ from apps.schools.models import Role
 
 from .models import AlumniProfile, AlumniVerificationStatus
 from .serializers import (
+    AlumniDirectoryEntrySerializer,
     AlumniProfileSerializer,
     AlumniRejectSerializer,
     AlumniReviewSerializer,
@@ -41,11 +43,11 @@ def _alumni_error(view):
     return wrapped
 
 
-def _self_membership(request, school_id):
+def _self_membership(request, school_id, activity="alumni.profile"):
     membership = require_activity(
         request.user,
         school_id,
-        "alumni.profile",
+        activity,
         membership_id=request.query_params.get("membership"),
     )
     if membership.role != Role.ALUMNI:
@@ -90,6 +92,41 @@ class MyAlumniProfileView(APIView):
         body.is_valid(raise_exception=True)
         profile = save_self_profile(membership, body.validated_data)
         return Response({"profile": AlumniProfileSerializer(profile).data})
+
+
+class AlumniDirectoryView(APIView):
+    """Every real, verified alumnus who has chosen to be directory-visible - a deliberately narrow,
+    public-facing subset of their profile (never admission number, original student reference or
+    email). Any real Alumni membership of this school may browse it."""
+
+    def get(self, request, school_id):
+        _self_membership(request, school_id, activity="alumni.directory")
+        profiles = (
+            AlumniProfile.objects.filter(
+                school_id=school_id,
+                verification_status=AlumniVerificationStatus.VERIFIED,
+                directory_visible=True,
+            )
+            .select_related("membership__user")
+            .order_by("-graduation_year", "membership__user__email")
+        )
+
+        query = request.query_params.get("q", "").strip()
+        if query:
+            profiles = profiles.filter(
+                models.Q(membership__user__first_name__icontains=query)
+                | models.Q(membership__user__last_name__icontains=query)
+                | models.Q(profession__icontains=query)
+                | models.Q(organisation__icontains=query)
+            )
+
+        graduation_year = request.query_params.get("graduationYear", "").strip()
+        if graduation_year.isdigit():
+            profiles = profiles.filter(graduation_year=int(graduation_year))
+
+        return Response(
+            {"entries": [AlumniDirectoryEntrySerializer(profile).data for profile in profiles]}
+        )
 
 
 class AlumniManagementView(APIView):

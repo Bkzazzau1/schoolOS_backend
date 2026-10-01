@@ -15,10 +15,15 @@ COMMENT = "community_comment"
 REACTION = "community_reaction"
 REPORT = "community_report"
 
+#: Alumni are not in the shared, in-school `framework.EVERYONE` set (several other Specs default
+#: their own read permission to it, so widening it would silently hand alumni access no one asked
+#: for) - this module adds them locally instead, scoped to Community alone.
+READERS = EVERYONE | {"alumni"}
+
 #: Children read the community but do not post to it, until the school decides otherwise.
-WRITERS = EVERYONE - {"student"}
+WRITERS = READERS - {"student"}
 MODERATORS = MANAGERS
-AUDIENCES = ("wholeSchool", "earlyYears", "primary", "secondary", "staffOnly", "parentsOnly", "jss2A")
+AUDIENCES = ("wholeSchool", "earlyYears", "primary", "secondary", "staffOnly", "parentsOnly", "jss2A", "alumniOnly")
 VISIBILITIES = ("schoolOnly", "publicShowcase")
 
 MAX_TEXT = 2000
@@ -37,13 +42,19 @@ def may_see_post(membership, post: dict) -> bool:
     """Whether this person may see a post: its author and the moderators always can."""
     if membership.role in MODERATORS or post.get("authorMembershipId") == str(membership.id):
         return True
-    if membership.role not in EVERYONE:
+    if membership.role not in READERS:
         return False
     audience = post.get("audience")
+    if membership.role == "alumni":
+        # A real reader, but scoped to their own corner of Community - not general in-school
+        # chatter meant for a currently enrolled section or staff.
+        return audience == "alumniOnly"
     if audience == "staffOnly":
         return membership.role in STAFF_SIDE
     if audience == "parentsOnly":
         return membership.role == "parent"
+    if audience == "alumniOnly":
+        return False
     return True
 
 
