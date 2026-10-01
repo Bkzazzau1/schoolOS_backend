@@ -10,12 +10,22 @@ from rest_framework.views import APIView
 from apps.access.permissions import require_activity
 from apps.schools.models import Role
 
-from .models import AlumniEvent, AlumniEventRsvp, AlumniProfile, AlumniVerificationStatus
+from .models import (
+    AlumniEvent,
+    AlumniEventRsvp,
+    AlumniPledge,
+    AlumniPledgeStatus,
+    AlumniProfile,
+    AlumniVerificationStatus,
+)
 from .serializers import (
     AlumniDirectoryEntrySerializer,
     AlumniEventCreateSerializer,
     AlumniEventRsvpSerializer,
     AlumniEventSerializer,
+    AlumniPledgeCreateSerializer,
+    AlumniPledgeSerializer,
+    AlumniPledgeStatusSerializer,
     AlumniProfileSerializer,
     AlumniRejectSerializer,
     AlumniReviewSerializer,
@@ -189,6 +199,57 @@ class AlumniEventRsvpView(APIView):
         )
 
 
+class AlumniPledgeListView(APIView):
+    """A real alumnus's own non-monetary offers of help - never a public board of everyone's
+    pledges, only the acting membership's own."""
+
+    def get(self, request, school_id):
+        membership = _self_membership(request, school_id, activity="alumni.give-back")
+        pledges = AlumniPledge.objects.filter(school_id=school_id, membership=membership).select_related(
+            "membership__user"
+        )
+        return Response({"pledges": [AlumniPledgeSerializer(pledge).data for pledge in pledges]})
+
+    @_alumni_error
+    def post(self, request, school_id):
+        membership = _self_membership(request, school_id, activity="alumni.give-back")
+        body = AlumniPledgeCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        pledge = AlumniPledge.objects.create(
+            school=membership.school,
+            membership=membership,
+            category=body.validated_data["category"],
+            description=body.validated_data["description"],
+        )
+        return Response(
+            {"pledge": AlumniPledgeSerializer(pledge).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AlumniPledgeWithdrawView(APIView):
+    def post(self, request, school_id, pledge_id):
+        membership = _self_membership(request, school_id, activity="alumni.give-back")
+        pledge = get_object_or_404(AlumniPledge, id=pledge_id, school_id=school_id, membership=membership)
+        pledge.status = AlumniPledgeStatus.WITHDRAWN
+        pledge.save(update_fields=["status", "updated_at"])
+        return Response({"pledge": AlumniPledgeSerializer(pledge).data})
+
+
+class AlumniPledgeStatusView(APIView):
+    @_alumni_error
+    def post(self, request, school_id, pledge_id):
+        manager = require_alumni_manager(request, school_id)
+        pledge = get_object_or_404(AlumniPledge, id=pledge_id, school_id=school_id)
+        body = AlumniPledgeStatusSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        pledge.status = body.validated_data["status"]
+        if "schoolNote" in body.validated_data:
+            pledge.school_note = body.validated_data["schoolNote"]
+        pledge.save(update_fields=["status", "school_note", "updated_at"])
+        return Response({"pledge": AlumniPledgeSerializer(pledge).data})
+
+
 class AlumniManagementView(APIView):
     def get(self, request, school_id):
         manager = require_alumni_manager(request, school_id)
@@ -202,6 +263,7 @@ class AlumniManagementView(APIView):
             profiles = profiles.filter(verification_status=wanted)
 
         candidates = transition_candidates(manager.school)
+        pledges = AlumniPledge.objects.filter(school=manager.school).select_related("membership__user")
         return Response(
             {
                 "profiles": [AlumniProfileSerializer(profile).data for profile in profiles],
@@ -213,6 +275,7 @@ class AlumniManagementView(APIView):
                     }
                     for candidate in candidates
                 ],
+                "pledges": [AlumniPledgeSerializer(pledge).data for pledge in pledges],
             }
         )
 

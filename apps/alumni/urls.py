@@ -5,6 +5,9 @@ from .views import (
     AlumniEventListView,
     AlumniEventRsvpView,
     AlumniManagementView,
+    AlumniPledgeListView,
+    AlumniPledgeStatusView,
+    AlumniPledgeWithdrawView,
     AlumniRejectView,
     AlumniTransitionView,
     AlumniVerifyView,
@@ -32,6 +35,21 @@ urlpatterns = [
         "schools/<uuid:school_id>/events/<uuid:event_id>/rsvp/",
         AlumniEventRsvpView.as_view(),
         name="alumni-event-rsvp",
+    ),
+    path(
+        "schools/<uuid:school_id>/give-back/",
+        AlumniPledgeListView.as_view(),
+        name="alumni-give-back",
+    ),
+    path(
+        "schools/<uuid:school_id>/give-back/<uuid:pledge_id>/withdraw/",
+        AlumniPledgeWithdrawView.as_view(),
+        name="alumni-give-back-withdraw",
+    ),
+    path(
+        "schools/<uuid:school_id>/give-back/<uuid:pledge_id>/status/",
+        AlumniPledgeStatusView.as_view(),
+        name="alumni-give-back-status",
     ),
     path(
         "schools/<uuid:school_id>/management/",

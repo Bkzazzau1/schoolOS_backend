@@ -2,7 +2,7 @@ from datetime import date
 
 from rest_framework import serializers
 
-from .models import AlumniEvent, AlumniProfile
+from .models import AlumniEvent, AlumniPledge, AlumniPledgeCategory, AlumniPledgeStatus, AlumniProfile
 
 
 class AlumniProfileSerializer(serializers.ModelSerializer):
@@ -146,3 +146,46 @@ class AlumniEventCreateSerializer(serializers.Serializer):
 
 class AlumniEventRsvpSerializer(serializers.Serializer):
     attending = serializers.BooleanField()
+
+
+class AlumniPledgeSerializer(serializers.ModelSerializer):
+    """One real, non-monetary offer of help. `alumniName` is included even on the alumnus's own
+    self-view - no privacy concern in reflecting back your own name - so the same serializer
+    serves both the self-service list and Alumni Management's oversight bundle."""
+
+    id = serializers.UUIDField(read_only=True)
+    alumniMembershipId = serializers.UUIDField(source="membership_id", read_only=True)
+    alumniName = serializers.SerializerMethodField()
+    schoolNote = serializers.CharField(source="school_note", read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
+
+    class Meta:
+        model = AlumniPledge
+        fields = [
+            "id",
+            "alumniMembershipId",
+            "alumniName",
+            "category",
+            "description",
+            "status",
+            "schoolNote",
+            "createdAt",
+            "updatedAt",
+        ]
+        read_only_fields = fields
+
+    def get_alumniName(self, obj):
+        return obj.membership.user.get_full_name() or obj.membership.user.email
+
+
+class AlumniPledgeCreateSerializer(serializers.Serializer):
+    category = serializers.ChoiceField(choices=AlumniPledgeCategory.choices)
+    description = serializers.CharField(max_length=2000, min_length=5)
+
+
+class AlumniPledgeStatusSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=[AlumniPledgeStatus.ACKNOWLEDGED, AlumniPledgeStatus.FULFILLED]
+    )
+    schoolNote = serializers.CharField(max_length=500, required=False, allow_blank=True)

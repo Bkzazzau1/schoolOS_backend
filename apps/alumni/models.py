@@ -191,3 +191,52 @@ class AlumniEventRsvp(models.Model):
 
     def __str__(self):
         return f"{self.event_id} · {self.membership_id} · {'attending' if self.attending else 'not attending'}"
+
+
+class AlumniPledgeCategory(models.TextChoices):
+    VOLUNTEERING = "volunteering", "Volunteering"
+    MENTORING = "mentoring", "Mentoring"
+    SUPPLIES = "supplies", "Supplies & Materials"
+    SPEAKING = "speaking", "Guest Speaking"
+    OTHER = "other", "Other"
+
+
+class AlumniPledgeStatus(models.TextChoices):
+    OFFERED = "offered", "Offered"
+    ACKNOWLEDGED = "acknowledged", "Acknowledged"
+    FULFILLED = "fulfilled", "Fulfilled"
+    WITHDRAWN = "withdrawn", "Withdrawn"
+
+
+class AlumniPledge(models.Model):
+    """A real, non-monetary offer of help from a real Alumni membership - volunteering,
+    mentoring, supplies, guest speaking. One-sided: an alumnus puts this forward, school
+    management reviews it. Never real money; that stays a separate, unbuilt concern."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="alumni_pledges")
+    membership = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="alumni_pledges")
+    category = models.CharField(max_length=20, choices=AlumniPledgeCategory.choices)
+    description = models.TextField()
+    status = models.CharField(
+        max_length=20, choices=AlumniPledgeStatus.choices, default=AlumniPledgeStatus.OFFERED
+    )
+    school_note = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def clean(self):
+        if self.membership_id and self.membership.role != Role.ALUMNI:
+            raise ValidationError("Only an Alumni membership may make a pledge.")
+        if self.membership_id and self.membership.school_id != self.school_id:
+            raise ValidationError("The pledge and the alumnus must belong to the same school.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.membership_id} · {self.category} · {self.status}"
