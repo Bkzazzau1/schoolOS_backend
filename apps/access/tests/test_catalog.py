@@ -9,38 +9,45 @@ from apps.access import catalog
 APP_SCREENS = {
     "owner": [
         "overview", "finance", "enrollment", "staff", "jobs", "staff-profiles", "payroll", "reports",
-        "campuses", "ai", "structure", "appearance", "school-life",
+        "campuses", "ai", "structure", "appearance", "school-life", "collections", "mandates", "alumni",
         "finance-approvals",  # a screen inside Owner Finance
     ],
     "principal": [
         "dashboard", "teachers", "staff-profiles", "assignments", "academics", "students", "attendance",
         "approvals", "results", "timetable", "communication", "incidents", "ai", "performance", "profile",
+        "excursions", "gallery", "alumni", "community", "my-duties",
     ],
     "administrator": [
         "dashboard", "admissions", "website", "registration", "students", "staff", "staff-profiles",
         "staff-attendance", "records", "lifecycle", "attendance", "operations", "notices",
+        "academics", "curriculum", "timetable", "alumni", "community", "my-duties",
     ],
     "finance": [
         "dashboard", "fee-structure", "scholarships", "collections", "reminders", "store", "mandates",
         "debt-aging", "receipts", "accounts", "reconciliation", "expenses", "payroll", "reports", "ai",
+        "community",
     ],
     "driver": [
-        "dashboard", "morning", "afternoon", "riders", "route", "vehicle-check", "incidents", "messages", "history",
+        "dashboard", "morning", "afternoon", "riders", "route", "vehicle-check", "incidents", "messages",
+        "history", "community", "my-duties",
     ],
     "teacher": [
         "dashboard", "timetable", "classes", "attendance", "lesson-plans", "weekly-progress", "syllabus",
         "assignments", "assessments", "cbt", "learning-progress", "students", "messages", "family-messages", "ai",
-        "performance", "profile",
+        "performance", "profile", "excursions", "gallery", "community", "my-duties",
     ],
     "parent": [
         "dashboard", "children", "progress", "weekly-learning", "attendance", "finance", "messages",
-        "school-life", "documents", "ai",
+        "school-life", "documents", "ai", "assignments", "community", "transferverify",
+    ],
+    "alumni": [
+        "dashboard", "profile", "directory", "community", "events", "mentorship", "opportunities", "give-back",
     ],
     "schoollife": [
         "community", "noticeboard", "activities", "events", "houses", "gallery", "excursions", "transport",
         "meals", "boarding", "assembly", "visitors", "lost-found", "service", "awards", "teaching-models",
     ],
-    "general": ["dashboard", "students", "attendance", "academics", "messages"],
+    "general": ["dashboard", "students", "attendance", "academics", "messages", "my-duties"],
 }
 
 
@@ -62,7 +69,7 @@ class CatalogShapeTests(SimpleTestCase):
             if workspace == "owner":
                 expected.add("owner.access")  # new: the screen for managing this feature
             self.assertEqual(keys(workspace), expected, workspace)
-        self.assertEqual(len(catalog.ACTIVITIES), 116)
+        self.assertEqual(len(catalog.ACTIVITIES), 148)
 
     def test_every_workspace_has_a_landing_screen_that_cannot_be_removed(self):
         for workspace in ["owner", "principal", "administrator", "finance", "teacher", "driver", "parent", "general"]:
@@ -70,7 +77,12 @@ class CatalogShapeTests(SimpleTestCase):
             self.assertEqual(len(landing), 1, workspace)
 
     def test_only_the_screen_that_manages_access_is_owner_only(self):
-        self.assertEqual({k for k, a in catalog.ACTIVITIES.items() if not a.grantable}, {"owner.access"})
+        # Alumni has no manager role at all (self-service throughout, see apps.alumni), so none of
+        # its screens are something the owner grants to someone else the way other workspaces work.
+        self.assertEqual(
+            {k for k, a in catalog.ACTIVITIES.items() if not a.grantable},
+            {"owner.access"} | keys("alumni"),
+        )
 
     def test_screens_that_show_money_or_personal_data_are_marked_sensitive(self):
         for key in ["owner.payroll", "owner.finance", "owner.staff-profiles", "finance.payroll",
@@ -90,7 +102,7 @@ class DefaultsByRoleTests(SimpleTestCase):
     def test_staff_and_students_get_the_generic_dashboard_like_the_app_does_plus_school_life(self):
         self.assertEqual(
             catalog.default_keys("staff"),
-            {"general.dashboard", "general.students", "general.messages"} | keys("schoollife"),
+            {"general.dashboard", "general.students", "general.messages", "general.my-duties"} | keys("schoollife"),
         )
         self.assertEqual(
             catalog.default_keys("student"),

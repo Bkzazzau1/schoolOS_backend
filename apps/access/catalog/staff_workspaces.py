@@ -15,6 +15,10 @@ DRIVER = workspace(
         ("messages", "Messages & Alerts"),
         ("history", "Trip History & Profile"),
         ("community", "Community"),
+        # Lets a holder of a job-assignment duty (e.g. preparing a direct-debit batch) reach the
+        # real hub that duty unlocks, even though it lives outside the Driver workspace. Empty of
+        # content for anyone the owner has not actually given such a duty to.
+        ("my-duties", "My Duties", "sensitive"),
     ],
 )
 
@@ -46,6 +50,7 @@ PRINCIPAL = workspace(
         ("performance", "School Performance"),
         ("profile", "Profile"),
         ("community", "Community"),
+        ("my-duties", "My Duties", "sensitive"),
     ],
 )
 
@@ -72,6 +77,7 @@ ADMINISTRATOR = workspace(
         ("operations", "Operations"),
         ("notices", "Notices"),
         ("community", "Community"),
+        ("my-duties", "My Duties", "sensitive"),
     ],
 )
 
@@ -124,5 +130,6 @@ TEACHER = workspace(
         ("performance", "My Performance"),
         ("profile", "Profile", "sensitive"),
         ("community", "Community"),
+        ("my-duties", "My Duties", "sensitive"),
     ],
 )

@@ -71,4 +71,7 @@ GENERAL = [
     Activity("general.attendance", "Attendance", "General", frozenset()),
     Activity("general.academics", "Academics", "General", frozenset({"student"})),
     Activity("general.messages", "Messages", "General", frozenset({"staff", "student"})),
+    # Staff has no workspace of its own, so this is where a job-assignment duty holder (e.g.
+    # preparing a direct-debit batch) reaches the hub that duty unlocks. Never for students.
+    Activity("general.my-duties", "My Duties", "General", frozenset({"staff"}), sensitive=True),
 ]
