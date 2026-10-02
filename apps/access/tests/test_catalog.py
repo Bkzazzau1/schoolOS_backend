@@ -13,9 +13,9 @@ APP_SCREENS = {
         "finance-approvals",  # a screen inside Owner Finance
     ],
     "principal": [
-        "dashboard", "teachers", "staff-profiles", "assignments", "academics", "students", "attendance",
-        "approvals", "results", "timetable", "communication", "incidents", "ai", "performance", "profile",
-        "excursions", "gallery", "alumni", "community", "my-duties",
+        "dashboard", "teachers", "staff-profiles", "assignments", "class-teachers", "academics", "students",
+        "attendance", "approvals", "results", "timetable", "communication", "incidents", "ai", "performance",
+        "profile", "excursions", "gallery", "alumni", "community", "my-duties",
     ],
     "administrator": [
         "dashboard", "admissions", "website", "registration", "students", "staff", "staff-profiles",
@@ -33,8 +33,8 @@ APP_SCREENS = {
     ],
     "teacher": [
         "dashboard", "timetable", "classes", "attendance", "lesson-plans", "weekly-progress", "syllabus",
-        "assignments", "assessments", "cbt", "learning-progress", "students", "messages", "family-messages", "ai",
-        "performance", "profile", "excursions", "gallery", "community", "my-duties",
+        "assignments", "assessments", "class-teacher", "cbt", "learning-progress", "students", "messages",
+        "family-messages", "ai", "performance", "profile", "excursions", "gallery", "community", "my-duties",
     ],
     "parent": [
         "dashboard", "children", "progress", "weekly-learning", "attendance", "finance", "messages",
@@ -69,7 +69,7 @@ class CatalogShapeTests(SimpleTestCase):
             if workspace == "owner":
                 expected.add("owner.access")  # new: the screen for managing this feature
             self.assertEqual(keys(workspace), expected, workspace)
-        self.assertEqual(len(catalog.ACTIVITIES), 148)
+        self.assertEqual(len(catalog.ACTIVITIES), 150)
 
     def test_every_workspace_has_a_landing_screen_that_cannot_be_removed(self):
         for workspace in ["owner", "principal", "administrator", "finance", "teacher", "driver", "parent", "general"]:
