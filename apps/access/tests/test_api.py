@@ -80,7 +80,7 @@ class CatalogAndRolesApiTests(AccessTestCase):
             ["Owner", "Principal", "Administrator", "Finance office", "Teacher", "Driver", "Parent", "Alumni", "School life", "General"],
         )
         every = [a for g in body["groups"] for a in g["activities"]]
-        self.assertEqual(len(every), 150)
+        self.assertEqual(len(every), 154)
         payroll = next(a for a in every if a["key"] == "finance.payroll")
         self.assertEqual(
             payroll,

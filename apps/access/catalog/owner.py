@@ -14,6 +14,7 @@ OWNER = workspace(
         ("enrollment", "Enrollment & Admissions"),
         ("alumni", "Alumni Management", "sensitive"),
         ("staff", "Staff & HR"),
+        ("staffing", "Staffing"),
         ("jobs", "Jobs & Delegation", "sensitive"),
         ("staff-profiles", "Staff Profiles", "sensitive"),
         ("payroll", "Payroll & Salaries", "sensitive"),
@@ -23,6 +24,10 @@ OWNER = workspace(
         ("structure", "Structure & Leadership"),
         ("appearance", "School Appearance"),
         ("school-life", "School Life"),
+        ("transferverify", "TransferVerify", "sensitive"),
+        ("subscriptions", "Subscriptions", "sensitive"),
+        # A hub for administrative setup screens (currently just Jobs & Delegation).
+        ("settings", "Settings"),
         # Decides who sees what, so it can never be handed to anyone else.
         ("access", "Access & Activities", "owner-only", "sensitive"),
     ],

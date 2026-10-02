@@ -8,8 +8,9 @@ from apps.access import catalog
 # a screen, update the catalog and this list together.
 APP_SCREENS = {
     "owner": [
-        "overview", "finance", "enrollment", "staff", "jobs", "staff-profiles", "payroll", "reports",
+        "overview", "finance", "enrollment", "staff", "staffing", "jobs", "staff-profiles", "payroll", "reports",
         "campuses", "ai", "structure", "appearance", "school-life", "collections", "mandates", "alumni",
+        "transferverify", "subscriptions", "settings",
         "finance-approvals",  # a screen inside Owner Finance
     ],
     "principal": [
@@ -69,7 +70,7 @@ class CatalogShapeTests(SimpleTestCase):
             if workspace == "owner":
                 expected.add("owner.access")  # new: the screen for managing this feature
             self.assertEqual(keys(workspace), expected, workspace)
-        self.assertEqual(len(catalog.ACTIVITIES), 150)
+        self.assertEqual(len(catalog.ACTIVITIES), 154)
 
     def test_every_workspace_has_a_landing_screen_that_cannot_be_removed(self):
         for workspace in ["owner", "principal", "administrator", "finance", "teacher", "driver", "parent", "general"]:
