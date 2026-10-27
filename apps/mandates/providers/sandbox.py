@@ -92,7 +92,7 @@ def _view(row: SandboxMandate) -> ProviderMandate:
     if status == MandateStatus.PENDING_PROVIDER_SETUP and ready and ready <= dj_timezone.now():
         status = MandateStatus.ACTIVE
     return ProviderMandate(
-        provider_ref=row.provider_ref, status=status, provider_status=f"sandbox:{row.status}", provider_status_code=row.status,
+        provider_ref=row.provider_ref, status=status, provider_status=f"sandbox:{row.status}", provider_status_code=row.status[:20],
         mandate_code=f"SBM/{row.provider_ref}", is_active=status == MandateStatus.ACTIVE, debit_ready_at=ready,
         activated_at=ready, activation={"method": "sandbox", "otp": "Use the sandbox one-time password."},
         activation_deadline=row.created_at + timedelta(hours=72),

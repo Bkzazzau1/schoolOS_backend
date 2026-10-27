@@ -99,7 +99,10 @@ def _verdict_for(row: BankTransaction, directory: matching.Directory):
 def _apply(row: BankTransaction, verdict, original) -> BankTransaction | None:
     """Write one verdict. Returns the updated payment, or None if someone else got there first."""
     with transaction.atomic():
-        fresh = BankTransaction.objects.select_for_update().select_related("connection").get(id=row.id)
+        # No select_related("connection") here: it is a nullable FK, so joining it would make this a
+        # LEFT OUTER JOIN, and Postgres refuses FOR UPDATE on the nullable side of one. `connection` is
+        # read lazily below, on the one branch that needs it.
+        fresh = BankTransaction.objects.select_for_update().get(id=row.id)
         if fresh.engine_version or fresh.reconciliation_status != ReconStatus.UNMATCHED:
             return None
         fresh.reconciliation_status = verdict.status

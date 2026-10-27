@@ -264,7 +264,9 @@ def _reset_user_password(*, user, temporary_password: str) -> None:
 
 @transaction.atomic
 def reset_student_credentials(*, student: Student, actor: Membership) -> dict:
-    student = Student.objects.select_for_update().select_related("account_user").get(pk=student.pk)
+    # No select_related("account_user") here: it is a nullable FK, so joining it would make this
+    # a LEFT OUTER JOIN, and Postgres refuses FOR UPDATE on the nullable side of one.
+    student = Student.objects.select_for_update().get(pk=student.pk)
     if student.account_user_id is None:
         raise CredentialManagementError("The Student login account has not been provisioned yet.")
     user = student.account_user

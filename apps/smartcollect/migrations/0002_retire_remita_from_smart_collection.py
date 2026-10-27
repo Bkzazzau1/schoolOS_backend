@@ -76,7 +76,7 @@ def retire_remita(apps, schema_editor):
         account.close_reason = WHY[:200]
         account.grace_until, account.after_grace = None, ""
         account.save(update_fields=["status", "status_changed_at", "closed_at", "close_reason", "grace_until", "after_grace"])
-        audit(account.school_id, "collection_account_retired_provider_removed", "FamilyCollectionAccount", account.id, family=str(account.family_id), why=WHY)
+        audit(account.school_id, "account_retired_provider_removed", "FamilyCollectionAccount", account.id, family=str(account.family_id), why=WHY)
 
 
 class Migration(migrations.Migration):

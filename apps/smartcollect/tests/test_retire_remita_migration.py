@@ -145,7 +145,7 @@ class RetireRemitaMigrationTests(TransactionTestCase):
             kinds,
             sorted([
                 "provider_switch_cancelled", "batch_cancelled_provider_removed", "batch_stopped_provider_removed",
-                "collection_account_retired_provider_removed", "collection_account_retired_provider_removed",
+                "account_retired_provider_removed", "account_retired_provider_removed",
             ]),
         )
         self.assertEqual(Bank.objects.filter(kind="provider_retired").count(), 2)  # both Remita connections, the disconnected one included

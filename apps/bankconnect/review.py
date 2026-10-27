@@ -131,8 +131,11 @@ def decide(
         raise BankRejected("Say why: a note is needed for this.", "note_required")
 
     with transaction.atomic():
+        # No select_related("connection") here: it is a nullable FK, so joining it would make this a
+        # LEFT OUTER JOIN, and Postgres refuses FOR UPDATE on the nullable side of one. `connection` is
+        # read lazily wherever it is used below (_plan_allocations).
         row = (
-            BankTransaction.objects.select_for_update().select_related("connection")
+            BankTransaction.objects.select_for_update()
             .filter(school=membership.school, id=transaction_id).first()
         )
         if row is None:

@@ -347,9 +347,9 @@ def issue_latest_usage_invoice(organization: Organization) -> BillingInvoice:
     """
 
     subscription = ensure_organization_subscription(organization)
-    subscription = OrganizationSubscription.objects.select_for_update().select_related("plan").get(
-        pk=subscription.pk
-    )
+    # No select_related("plan") here: it is a nullable FK, so joining it would make this a LEFT
+    # OUTER JOIN, and Postgres refuses FOR UPDATE on the nullable side of one.
+    subscription = OrganizationSubscription.objects.select_for_update().get(pk=subscription.pk)
     plan = subscription.plan
     if plan is None:
         raise ValidationError({"message": "This organization does not have a billing plan."})
