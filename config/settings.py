@@ -113,6 +113,19 @@ DATABASES = {
     "default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
 }
 
+# With no REDIS_URL, Django's default local-memory cache is used: fine for one process (local
+# development, a single-worker deployment), but the DRF rate-limit throttles below share it, so
+# with N gunicorn workers each has its own copy and the real ceiling is N times looser than
+# configured. Set REDIS_URL in production to share it across every worker.
+_redis_url = env("REDIS_URL", default="")
+if _redis_url:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _redis_url,
+        }
+    }
+
 AUTH_USER_MODEL = "accounts.User"
 
 if "test" in sys.argv:

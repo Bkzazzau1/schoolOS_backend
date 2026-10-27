@@ -208,5 +208,9 @@ default; turn it off only if this process receives TLS directly). Run
 (not the SQLite file a plain local run uses) — a parity check, not a production
 topology; a real deployment supplies its own managed `DATABASE_URL` instead.
 
+Set `REDIS_URL` so every `web` worker shares one rate-limit cache instead of
+each tracking it alone (see `.env.example`); with none set, the app still
+runs correctly, just with a looser real ceiling under more than one worker.
+
 No backup strategy is wired up yet: set one up on whichever database host is
 chosen before real school data lives there.

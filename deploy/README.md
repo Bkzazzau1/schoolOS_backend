@@ -20,7 +20,8 @@ TGCG's `tgcg-api.service`, or the `tgcg` Postgres role/database.
 | App process | `skulgen-api.service` (systemd), gunicorn bound to `127.0.0.1:8001` |
 | Static files | `/opt/skulgen/backend/staticfiles` (nginx serves `/static/` directly) |
 | nginx | `/etc/nginx/conf.d/skulgen.conf` |
-| TLS | `/etc/letsencrypt/live/skulgen.com/` (one cert covering skulgen.com, www, api, admin, app) |
+| TLS | `/etc/letsencrypt/live/skulgen.com/` (one cert covering skulgen.com, www, api, admin, app); certbot's own systemd timer renews it |
+| Cache | Valkey (Redis-compatible), `valkey.service`, `127.0.0.1:6379`, password in `/opt/skulgen/backend/.env`'s `REDIS_URL` — shared with nothing else on this box |
 
 ## Postgres authentication
 
@@ -50,12 +51,11 @@ skulgen-api.service` for logs.
 
 ## nginx
 
-`/etc/nginx/conf.d/skulgen.conf` currently has the HTTP (port 80) block
-serving the ACME challenge and redirecting everything else to HTTPS. The
+`/etc/nginx/conf.d/skulgen.conf` has the HTTP (port 80) block serving the
+ACME challenge and redirecting everything else to HTTPS, followed by the
 HTTPS server blocks for `api.skulgen.com` and `admin.skulgen.com` (proxying
-to `127.0.0.1:8001`) are in `deploy/nginx-skulgen-https.conf` in this repo,
-ready to append to `/etc/nginx/conf.d/skulgen.conf` once the Let's Encrypt
-cert exists — not deployed yet pending that cert.
+to `127.0.0.1:8001`) — also kept here as `deploy/nginx-skulgen-https.conf`,
+the exact text appended to the live file.
 
 `skulgen.com`, `www.skulgen.com` and `app.skulgen.com` have DNS and will be
 covered by the TLS cert, but have no nginx server block yet: there is no
