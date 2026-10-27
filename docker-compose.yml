@@ -1,0 +1,43 @@
+# Local parity check, not a production topology: brings up the backend against
+# a real Postgres instead of the SQLite file every local run otherwise uses, so
+# "Postgres is supported but has not been exercised" (README.md) can actually be
+# tried before a real host is chosen.
+#
+#   docker compose up --build
+#   docker compose exec web python manage.py createsuperuser
+#
+# A real deployment supplies its own DATABASE_URL (a managed Postgres), its own
+# SECRET_KEY/ALLOWED_HOSTS, and runs the `release` step from Procfile once
+# before new web containers start; it does not use this file.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: schoolos
+      POSTGRES_USER: schoolos
+      POSTGRES_PASSWORD: schoolos
+    volumes:
+      - schoolos_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U schoolos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+    ports:
+      - "8000:8000"
+    environment:
+      DEBUG: "True"
+      DATABASE_URL: postgres://schoolos:schoolos@db:5432/schoolos
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  schoolos_pg_data:

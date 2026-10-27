@@ -185,4 +185,28 @@ See the build order in [docs/architecture.md](docs/architecture.md). In short:
 Set `DEBUG=False`, a real `SECRET_KEY`, `ALLOWED_HOSTS` and `DATABASE_URL`. The
 app refuses to start without a secret key when `DEBUG` is off. Serve it behind
 HTTPS: `SECURE_SSL_REDIRECT`, secure cookies and HSTS are on when `DEBUG` is
-off. Run `python manage.py check --deploy` before deploying.
+off, trusting `X-Forwarded-Proto` from the TLS-terminating proxy or load
+balancer every real deployment sits behind (`TRUST_PROXY_SSL_HEADER`, on by
+default; turn it off only if this process receives TLS directly). Run
+`python manage.py check --deploy` before deploying.
+
+**Process types** (`Dockerfile`, `Procfile`): one image, several commands.
+
+- `web`: `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3`
+- `release`, run once before new `web` containers start, never inline in `web`'s
+  own startup (so N replicas never race each other's migrations):
+  `python manage.py migrate --noinput`
+- Workers, one long-running process each, draining their own queue
+  (`worker_media`, `worker_mandates`, `worker_collection` in `Procfile`):
+  `python manage.py run_media_jobs --loop`,
+  `run_mandate_jobs --loop`, `run_collection_jobs --loop`
+- Scheduled (run periodically from the platform's own scheduler or cron, not a
+  long-running process): `run_billing_cycles` (daily), `expire_transferverify_alerts`
+  (daily)
+
+`docker compose up --build` runs the web process against a real local Postgres
+(not the SQLite file a plain local run uses) — a parity check, not a production
+topology; a real deployment supplies its own managed `DATABASE_URL` instead.
+
+No backup strategy is wired up yet: set one up on whichever database host is
+chosen before real school data lives there.
