@@ -16,7 +16,7 @@ FEE_COLLECTION = "fee collection"
 
 
 def _member(request, school_id, roles):
-    member = membership_from_request(request, school_id)
+    member = membership_from_request(request, school_id, allow_when_restricted=True)
     if member.role not in roles:
         raise PermissionDenied("You do not have access to this dashboard.")
     return member

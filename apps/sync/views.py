@@ -49,6 +49,8 @@ class PullView(APIView):
         query = PullQuery(data=request.query_params)
         query.is_valid(raise_exception=True)
         q = query.validated_data
-        membership = require_membership(request.user, q["school"], membership_id=q.get("membership"))
+        membership = require_membership(
+            request.user, q["school"], membership_id=q.get("membership"), allow_when_restricted=True
+        )
         page = pulling.pull(membership, q["since"], q["limit"])
         return Response({"records": page.records, "cursor": page.cursor, "hasMore": page.has_more})

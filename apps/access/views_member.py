@@ -34,7 +34,8 @@ class MyAccessView(APIView):
     """
 
     def get(self, request, school_id):
-        return Response(_access_json(membership_from_request(request, school_id)))
+        membership = membership_from_request(request, school_id, bypass_subscription_check=True)
+        return Response(_access_json(membership))
 
 
 class AcknowledgeView(APIView):
@@ -46,7 +47,7 @@ class AcknowledgeView(APIView):
     """
 
     def post(self, request, school_id):
-        membership = membership_from_request(request, school_id)
+        membership = membership_from_request(request, school_id, bypass_subscription_check=True)
         body = AcknowledgeSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         acknowledge(membership, body.validated_data["activities"])

@@ -22,7 +22,7 @@ class InboxView(APIView):
     """
 
     def get(self, request, school_id):
-        me = membership_from_request(request, school_id)
+        me = membership_from_request(request, school_id, allow_when_restricted=True)
         mine = Notification.objects.filter(recipient=me)
         unread = mine.filter(read_at__isnull=True)
         try:
