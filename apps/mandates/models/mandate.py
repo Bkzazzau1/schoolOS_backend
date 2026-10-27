@@ -44,7 +44,7 @@ class DirectDebitMandate(models.Model):
     mandate_code = models.CharField(max_length=120, blank=True)
     #: The payer's id in the provider's own system, for a provider that needs one before it will make a mandate.
     provider_customer_ref = models.CharField(max_length=60, blank=True)
-    #: SchoolOS's own reference for the setup call. The same on every retry of one mandate, so a retry never makes a second one.
+    #: SkulGen's own reference for the setup call. The same on every retry of one mandate, so a retry never makes a second one.
     request_ref = models.CharField(max_length=40)
 
     bank_code = models.CharField(max_length=12)
@@ -56,7 +56,7 @@ class DirectDebitMandate(models.Model):
     account_details_removed_at = models.DateTimeField(null=True, blank=True)
 
     status = models.CharField(max_length=24, choices=MandateStatus.choices, default=MandateStatus.DRAFT)
-    #: The provider's own word and code, kept so its truth is never lost in SchoolOS's simpler states.
+    #: The provider's own word and code, kept so its truth is never lost in SkulGen's simpler states.
     provider_status = models.CharField(max_length=120, blank=True)
     provider_status_code = models.CharField(max_length=20, blank=True)
     consent_route = models.CharField(max_length=10, choices=ConsentRoute.choices, default=ConsentRoute.PAYER_APP)
@@ -133,7 +133,7 @@ class DirectDebitMandate(models.Model):
 class MandateConsent(models.Model):
     """The payer's consent to a mandate: durable, first-class, and never given by a member of staff on the payer's behalf.
 
-    Either the payer, signed in as themselves, reviewed and authorised the mandate in the SchoolOS app (`payer_app`: the version and a hash of
+    Either the payer, signed in as themselves, reviewed and authorised the mandate in the SkulGen app (`payer_app`: the version and a hash of
     the exact words they saw are kept), or the provider's own authorisation is the evidence (`provider_hosted`: the provider's reference is
     kept, not a copy of what the payer did). Never edited: a withdrawal is recorded on it, and the mandate is stopped.
     """

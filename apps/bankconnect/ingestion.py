@@ -1,4 +1,4 @@
-"""Taking a provider's transaction into SchoolOS - exactly once, however many times it is delivered.
+"""Taking a provider's transaction into SkulGen - exactly once, however many times it is delivered.
 
 Every way in (a webhook, a scheduled poll, "Sync now") comes through `ingest`. It is idempotent by
 construction: the database refuses a second row for the same external id on a connection, and for

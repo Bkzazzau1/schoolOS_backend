@@ -346,7 +346,7 @@ class ProviderJob(models.Model):
 
 class ProviderSwitch(models.Model):
     """A change of the school's active collection provider. It is scheduled, becomes READY when its date has come and nothing stands in
-    the way, and is applied only by a person's explicit act: SchoolOS never switches a school's provider on its own."""
+    the way, and is applied only by a person's explicit act: SkulGen never switches a school's provider on its own."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="+")

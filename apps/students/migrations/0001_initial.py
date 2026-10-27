@@ -1,4 +1,4 @@
-# Canonical SchoolOS student roster, admissions and enrollment domain.
+# Canonical SkulGen student roster, admissions and enrollment domain.
 
 import uuid
 

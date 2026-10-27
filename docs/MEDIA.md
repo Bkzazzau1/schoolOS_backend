@@ -1,4 +1,4 @@
-# SchoolOS Media & Files (backend)
+# SkulGen Media & Files (backend)
 
 One canonical file/attachment service (`apps/media`), reused by every module that needs a real file, instead of a
 new upload system per feature. This file says what is real, what is pending, and how the pieces fit.
@@ -88,7 +88,7 @@ an endpoint that has already checked the requester may see the file.
 A category (`apps/media/constants.CATEGORIES`) fixes a media type, which fixes the mime types accepted and a byte
 ceiling; a category may set a smaller ceiling of its own, never a larger one. The declared mime type must match
 the category; the bytes' own magic-byte signature must match the declared mime type for every image and document
-type SchoolOS knows how to sniff (PNG, JPEG, GIF, WEBP, PDF, the ISO-base-media family covering MP4/MOV/M4A,
+type SkulGen knows how to sniff (PNG, JPEG, GIF, WEBP, PDF, the ISO-base-media family covering MP4/MOV/M4A,
 WEBM, OGG, MP3, WAV, and the zip signature docx/xlsx/pptx share) - a renamed file is refused, not trusted. The
 filename is a label only: what is stored is always a fresh random id plus a server-chosen extension, never
 anything derived from what the device called it or from its own claimed extension.

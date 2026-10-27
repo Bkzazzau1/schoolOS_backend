@@ -1,8 +1,8 @@
-# SchoolOS Account Recovery & Credential Management
+# SkulGen Account Recovery & Credential Management
 
 ## Purpose
 
-SchoolOS automatically provisions Student and Parent accounts from canonical registration. This layer provides safe recovery and school-office credential management without making admission IDs or phone numbers sufficient to reset a password anonymously.
+SkulGen automatically provisions Student and Parent accounts from canonical registration. This layer provides safe recovery and school-office credential management without making admission IDs or phone numbers sufficient to reset a password anonymously.
 
 ## Login identities
 
@@ -15,7 +15,7 @@ SchoolOS automatically provisions Student and Parent accounts from canonical reg
 
 `POST /api/v1/credentials/recovery/request/`
 
-The public endpoint always returns the same accepted response. It does not disclose whether an account exists. For a valid Student admission ID or Parent phone identity, SchoolOS creates a pending recovery request for the linked school office(s).
+The public endpoint always returns the same accepted response. It does not disclose whether an account exists. For a valid Student admission ID or Parent phone identity, SkulGen creates a pending recovery request for the linked school office(s).
 
 Recovery requests are rate-limited both per opaque identifier and by a broad network ceiling suitable for shared school networks.
 
@@ -41,13 +41,13 @@ Available actions:
 - Change a Parent login phone when that Parent identity belongs only to the current school.
 - Review or dismiss pending recovery requests.
 
-A password reset sets `must_change_password = true`. The user must create a private password before normal SchoolOS APIs are available again.
+A password reset sets `must_change_password = true`. The user must create a private password before normal SkulGen APIs are available again.
 
 ## Session revocation
 
-`accounts.User.credential_version` is embedded in SchoolOS JWTs as `cv`.
+`accounts.User.credential_version` is embedded in SkulGen JWTs as `cv`.
 
-Credential-sensitive administrative changes increment the user credential version. Tokens issued under an older version are rejected by `SchoolOSJWTAuthentication`, including access tokens derived from an older refresh token.
+Credential-sensitive administrative changes increment the user credential version. Tokens issued under an older version are rejected by `SkulGenJWTAuthentication`, including access tokens derived from an older refresh token.
 
 The first-login change from temporary password to private password does not increment the credential version because the currently authenticated bootstrap session is the session completing that required transition.
 
@@ -69,7 +69,7 @@ Password reset remains available for a cross-school Parent identity because othe
 
 ## Credential handoff privacy
 
-SchoolOS never stores or displays a private permanent password.
+SkulGen never stores or displays a private permanent password.
 
 The credential handoff API returns a temporary password only while `must_change_password` is still true. Once the user has created a private password, the school sees only the login ID and that a private password has been set.
 

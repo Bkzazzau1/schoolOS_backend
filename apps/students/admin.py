@@ -12,7 +12,7 @@ from .models import (
 
 
 class _CanonicalReadOnlyAdmin(admin.ModelAdmin):
-    """Canonical roster changes go through SchoolOS workflows, not raw admin edits."""
+    """Canonical roster changes go through SkulGen workflows, not raw admin edits."""
 
     def has_add_permission(self, request):
         return False

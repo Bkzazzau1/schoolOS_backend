@@ -124,7 +124,7 @@ class SettlementTests(MandateTestCase):
         execution.start(self.maker, batch.id)
         jobs.run_next()
         jobs.run_next()
-        self.pay_manually(self.bello, 100_000)  # the family also paid another way, before SchoolOS found out
+        self.pay_manually(self.bello, 100_000)  # the family also paid another way, before SkulGen found out
         jobs.drain(now_fn=lambda: timezone.now() + timedelta(hours=1))
         self.assertEqual(self.owed(self.bello), 0)
         credit = sum(e.amount_minor for e in FamilyCreditEntry.objects.filter(family=self.bello, kind="overpayment"))

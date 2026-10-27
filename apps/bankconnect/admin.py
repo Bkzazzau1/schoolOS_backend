@@ -5,7 +5,7 @@ from .models import BankAuditEvent, BankTransaction, CollectionProviderConnectio
 
 @admin.register(CollectionProviderConnection)
 class CollectionProviderConnectionAdmin(admin.ModelAdmin):
-    """Read-only, and without the sealed credential: nobody - not a SchoolOS operator either - should read or edit a school's provider
+    """Read-only, and without the sealed credential: nobody - not a SkulGen operator either - should read or edit a school's provider
     secret here."""
 
     list_display = ("school", "provider", "environment", "status", "is_active_provider", "webhook_status", "last_verified_at")

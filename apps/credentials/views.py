@@ -87,7 +87,7 @@ class PublicRecoveryRequestView(APIView):
             {
                 "accepted": True,
                 "message": (
-                    "If that login ID belongs to a SchoolOS Student or Parent account, "
+                    "If that login ID belongs to a SkulGen Student or Parent account, "
                     "the school office can now review the recovery request."
                 ),
             },
@@ -113,7 +113,7 @@ class PasswordResetRequestView(APIView):
             {
                 "accepted": True,
                 "message": (
-                    "If that email belongs to a SchoolOS staff or proprietor account, "
+                    "If that email belongs to a SkulGen staff or proprietor account, "
                     "a reset code has been sent to it."
                 ),
             },

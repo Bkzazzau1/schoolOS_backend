@@ -27,8 +27,8 @@ from .providers import PaymentProviderError, provider_for
 
 BASELINE_PLAN_CODE = "standard"
 BASELINE_PLAN_DEFAULTS = {
-    "name": "SchoolOS Standard",
-    "description": "Baseline SchoolOS plan for organization-managed schools.",
+    "name": "SkulGen Standard",
+    "description": "Baseline SkulGen plan for organization-managed schools.",
     "currency": "NGN",
     "billing_interval": "",
     "base_amount_minor": 0,
@@ -143,13 +143,13 @@ def require_entitlement(
     mode = access_mode(subscription)
     if mode != "full":
         raise PermissionDenied(
-            "Your SchoolOS subscription currently restricts account changes. Existing school data remains available."
+            "Your SkulGen subscription currently restricts account changes. Existing school data remains available."
         )
 
     entitlement = _plan_entitlement_map(subscription).get(code)
     if entitlement is None or not entitlement.enabled:
         raise PermissionDenied(
-            "Your current SchoolOS plan does not include this account capability."
+            "Your current SkulGen plan does not include this account capability."
         )
     if (
         current_value is not None
@@ -157,7 +157,7 @@ def require_entitlement(
         and current_value >= entitlement.limit_value
     ):
         raise PermissionDenied(
-            "Your current SchoolOS plan has reached the limit for this capability."
+            "Your current SkulGen plan has reached the limit for this capability."
         )
     return subscription
 

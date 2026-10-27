@@ -1,13 +1,13 @@
-# SchoolOS School-Fee Receivables
+# SkulGen School-Fee Receivables
 
 ## Purpose
 
 What a **school charges its families**: fee schedules, what each student owes, what each family has paid, what it is
 owed back, and the account a family pays into. Code: `apps/receivables/`.
 
-This is **not** `apps/billing`. `apps/billing` is what SchoolOS charges *schools* (plans, subscriptions, usage). Nothing
+This is **not** `apps/billing`. `apps/billing` is what SkulGen charges *schools* (plans, subscriptions, usage). Nothing
 in `apps/receivables` imports or reuses a billing model, and the names never overlap: a school's charge to a family is a
-*receivable*, a *fee schedule* and a *statement*; SchoolOS's charge to a school is an *invoice*.
+*receivable*, a *fee schedule* and a *statement*; SkulGen's charge to a school is an *invoice*.
 
 It is also not `apps/bankconnect`, which reads what the school's own bank accounts receive. The two meet in one place
 (`apps/receivables/payments.py`): bankconnect decides who a payment is for, receivables turns that into money against
@@ -247,13 +247,13 @@ reference, a sort code) - and a family may hold accounts with several banks at o
 number is withheld (`canPay: false`), so a family is never sent to pay one that may not receive. Provider internals are never shown.
 
 **School fees are the school's money.** Every account here is the school's own provider account under one of its connections;
-SchoolOS does not receive, hold or settle it. What schools pay SchoolOS (the SaaS subscription) is a separate matter
-(`apps/billing`), and no school-fee path uses SchoolOS's own payment provider.
+SkulGen does not receive, hold or settle it. What schools pay SkulGen (the SaaS subscription) is a separate matter
+(`apps/billing`), and no school-fee path uses SkulGen's own payment provider.
 
 **Lifecycle.** Provider-agnostic. After **every** ledger change: family owes something -> the account is **ACTIVE**; owes nothing ->
 **DORMANT**. A dormant account is not closed or deleted: it keeps its provider identity and the **same** account is active
 again when new fees are published. Accounts that are still being set up, suspended by a person, or closed are never changed
-by a settled bill. How dormant is enforced (the provider refusing transfers, or SchoolOS only flagging what arrives) is for
+by a settled bill. How dormant is enforced (the provider refusing transfers, or SkulGen only flagging what arrives) is for
 a provider adapter; this core only holds the status and the receiving identifier.
 
 ## How bank payments are matched

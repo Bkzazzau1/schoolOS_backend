@@ -11,8 +11,8 @@ def seed_standard_plan(apps, schema_editor):
     plan, _ = Plan.objects.get_or_create(
         code="standard",
         defaults={
-            "name": "SchoolOS Standard",
-            "description": "Baseline SchoolOS plan for organization-managed schools.",
+            "name": "SkulGen Standard",
+            "description": "Baseline SkulGen plan for organization-managed schools.",
             "currency": "NGN",
             "billing_interval": "",
             "base_amount_minor": 0,

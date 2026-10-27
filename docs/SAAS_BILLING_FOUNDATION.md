@@ -1,13 +1,13 @@
-# SchoolOS SaaS billing foundation
+# SkulGen SaaS billing foundation
 
-This document defines the commercial account layer above SchoolOS school tenants.
+This document defines the commercial account layer above SkulGen school tenants.
 
 ## Boundary
 
-School finance and SchoolOS SaaS billing are different domains.
+School finance and SkulGen SaaS billing are different domains.
 
 ```text
-SchoolOS platform
+SkulGen platform
   -> Organization (commercial customer account)
        -> OrganizationSubscription
             -> Plan
@@ -23,7 +23,7 @@ never be used as a substitute for school-role authorization.
 
 ## Baseline plan
 
-The initial catalog contains `standard` / `SchoolOS Standard`.
+The initial catalog contains `standard` / `SkulGen Standard`.
 
 - Currency: NGN
 - Base amount: 0
@@ -91,7 +91,7 @@ School provisioning currently checks:
 
 It contains active school count and an optional `billable_student_count`.
 The student count is intentionally **not** calculated from Student login
-memberships because a school may have enrolled students without SchoolOS login
+memberships because a school may have enrolled students without SkulGen login
 accounts. A future meter must capture the authoritative enrolled/billable student
 population from school data and write a snapshot for the billing period.
 
@@ -129,7 +129,7 @@ Shape:
   "accessMode": "full",
   "plan": {
     "code": "standard",
-    "name": "SchoolOS Standard",
+    "name": "SkulGen Standard",
     "currency": "NGN",
     "billingInterval": null,
     "baseAmountMinor": 0,

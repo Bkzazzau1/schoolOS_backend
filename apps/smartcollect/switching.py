@@ -3,7 +3,7 @@
     SCHEDULED  ->  READY_TO_SWITCH  ->  APPLIED          (or CANCELLED / FAILED)
 
 * SCHEDULED: a change of provider is planned for a date. Nothing has happened.
-* READY_TO_SWITCH: the date has come and nothing stands in the way. STILL nothing has happened: SchoolOS never switches a school's provider on
+* READY_TO_SWITCH: the date has come and nothing stands in the way. STILL nothing has happened: SkulGen never switches a school's provider on
   its own. A person with authority over the providers reviews it (the current and target provider, the families and accounts affected, what
   is owed, whether the new provider is ready) and applies it.
 * APPLIED: the target became the ONE active provider, in a single transaction, so the school never has two or none. Batches prepared for

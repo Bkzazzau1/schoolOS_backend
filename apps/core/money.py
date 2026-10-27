@@ -1,4 +1,4 @@
-"""Writing money the way people read it. Amounts are whole minor units (kobo) everywhere in SchoolOS."""
+"""Writing money the way people read it. Amounts are whole minor units (kobo) everywhere in SkulGen."""
 
 
 def format_money(amount_minor: int, currency: str = "NGN") -> str:

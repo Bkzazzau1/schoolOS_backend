@@ -1,5 +1,5 @@
 """Telling people about what happens to a family's account, through the same in-app notifications the
-rest of SchoolOS uses. Nobody is told everything: the finance side hears about what needs them (fees
+rest of SkulGen uses. Nobody is told everything: the finance side hears about what needs them (fees
 published, an overpayment held as credit, a collection account waking up), and a family hears about its
 own account (new fees, a payment received, fees settled).
 """

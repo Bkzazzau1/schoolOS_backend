@@ -8,7 +8,7 @@ The current class is the class on the single active enrollment. Historical enrol
 
 ## Progression workflows
 
-SchoolOS distinguishes these outcomes:
+SkulGen distinguishes these outcomes:
 
 - **Promotion** — academic decision; requires an approver and a different destination class. The previous enrollment closes and a new active enrollment opens in the destination class.
 - **Repeat** — academic decision; requires an approver and keeps the same class. The previous enrollment closes and a new active enrollment opens in that same class, preserving the fact that a new progression period began.

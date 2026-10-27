@@ -55,10 +55,10 @@ def _is_email_login_account(user: User) -> bool:
 
 
 def _send_code_email(user: User, code: str) -> bool:
-    subject = "Reset your SchoolOS password"
+    subject = "Reset your SkulGen password"
     body = (
         f"Hello {user.first_name or 'there'},\n\n"
-        f"Your SchoolOS password reset code is: {code}\n\n"
+        f"Your SkulGen password reset code is: {code}\n\n"
         "The code expires in 15 minutes. If you did not request this, you can "
         "ignore this email; your password will not change.\n"
     )

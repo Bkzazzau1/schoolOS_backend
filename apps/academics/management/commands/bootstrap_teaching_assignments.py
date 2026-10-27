@@ -112,7 +112,7 @@ class Command(BaseCommand):
                     "classSubjectId": str(class_subject.id),
                     "teacherId": str(teacher.id),
                     "periodsPerWeek": class_subject.periods_per_week,
-                    "handoverReason": "Legacy SchoolOS assignment materialization",
+                    "handoverReason": "Legacy SkulGen assignment materialization",
                 },
             )
             assignment = TeachingAssignment.objects.select_related(

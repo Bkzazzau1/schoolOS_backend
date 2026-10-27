@@ -1,9 +1,9 @@
 """The payer's consent to a mandate. It is never given by a member of staff: it is the payer themselves, signed in as themselves, reviewing the exact
 words below (`payer_app`), or the provider's own authorisation - a bank one-time password, a signed form, an activation transfer from the payer's
-account - which SchoolOS keeps a reference to (`provider_hosted`).
+account - which SkulGen keeps a reference to (`provider_hosted`).
 
 The wording is versioned and its hash is stored with the consent, so what the payer agreed to can be proved later. Its exact legal wording, and any
-notice a payer must be given before a debit, are for the school and its advisers: SchoolOS has not verified either, and the words here say only what
+notice a payer must be given before a debit, are for the school and its advisers: SkulGen has not verified either, and the words here say only what
 the mandate is.
 """
 

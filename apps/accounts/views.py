@@ -45,7 +45,7 @@ class InitialPasswordChangeView(APIView):
 
 
 class ProprietorRegisterView(APIView):
-    """Create a new SchoolOS account and its first organization.
+    """Create a new SkulGen account and its first organization.
 
     This endpoint is intentionally public and rate-limited. It does not create a
     school tenant; the signed-in owner proceeds to Account Home and provisions

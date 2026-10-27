@@ -303,7 +303,7 @@ class RegisteringAccountsTests(CreditTestCase):
         self.assertIsNone(find(self.school, "monnify", "0000000000"))
         collection_accounts.close(account, actor=self.owner, reason="Retired")
         # A closed account still identifies its family: a number belongs to one family for good, and a payment the provider confirmed
-        # into it is that family's whatever state SchoolOS holds the account in.
+        # into it is that family's whatever state SkulGen holds the account in.
         self.assertEqual(find(self.school, "monnify", "8012345678"), account)
 
     def test_the_database_holds_the_line_on_a_shared_number(self):

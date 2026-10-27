@@ -1,4 +1,4 @@
-"""SchoolOS backend settings.
+"""SkulGen backend settings.
 
 Everything environment-specific comes from environment variables (or a local
 .env file, which is never committed). See .env.example.
@@ -184,9 +184,9 @@ if _email_url:
     vars().update(env.email_url_config(_email_url))
 else:
     EMAIL_BACKEND = "apps.invitations.mail.NotConfiguredBackend"
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="SchoolOS <no-reply@localhost>")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="SkulGen <no-reply@skulgen.com>")
 
-# SchoolOS SaaS payment collection. Secret keys are server-only; native/web
+# SkulGen SaaS payment collection. Secret keys are server-only; native/web
 # clients receive only provider checkout URLs/access codes created by this API.
 PAYSTACK_SECRET_KEY = env("PAYSTACK_SECRET_KEY", default="")
 PAYSTACK_API_BASE_URL = env("PAYSTACK_API_BASE_URL", default="https://api.paystack.co")
@@ -210,11 +210,11 @@ SMART_COLLECTION_INLINE_SECONDS = env.int("SMART_COLLECTION_INLINE_SECONDS", def
 # The sandbox mandate provider is synthetic and never on unless asked for.
 MANDATES_ENABLE_SANDBOX = env.bool("MANDATES_ENABLE_SANDBOX", default=DEBUG)
 # Lendsqr's Developer APIs say a live account needs the organisation to be licensed as a lender (or otherwise legally entitled) and to have
-# passed Lendsqr's KYC. SchoolOS never claims a school is eligible: a LIVE Lendsqr connection is refused until an operator has confirmed
+# passed Lendsqr's KYC. SkulGen never claims a school is eligible: a LIVE Lendsqr connection is refused until an operator has confirmed
 # the provider, commercial and compliance position and switched this on. Test mode is unaffected.
 MANDATES_LENDSQR_LIVE_ENABLED = env.bool("MANDATES_LENDSQR_LIVE_ENABLED", default=False)
 # Lendsqr publishes how long a payer has to activate a mandate (currently 168 hours) and how long NIBSS takes to make it debit-ready
-# (currently "up to 2 hours"). These are Lendsqr's rules, kept here (not in SchoolOS's business code) so a change at Lendsqr is a setting.
+# (currently "up to 2 hours"). These are Lendsqr's rules, kept here (not in SkulGen's business code) so a change at Lendsqr is a setting.
 # The provider's own answer is used whenever it gives one.
 MANDATES_LENDSQR_ACTIVATION_WINDOW_HOURS = env.int("MANDATES_LENDSQR_ACTIVATION_WINDOW_HOURS", default=168)
 MANDATES_LENDSQR_DEBIT_SETUP_MINUTES = env.int("MANDATES_LENDSQR_DEBIT_SETUP_MINUTES", default=120)
@@ -228,7 +228,7 @@ MANDATES_REMITA_LIVE_FORM_BASE_URL = env("MANDATES_REMITA_LIVE_FORM_BASE_URL", d
 MANDATES_INLINE_JOBS = env.bool("MANDATES_INLINE_JOBS", default=True)
 MANDATES_INLINE_SECONDS = env.int("MANDATES_INLINE_SECONDS", default=8)
 
-# SchoolOS Media & Files (apps.media): the one canonical file/attachment service every feature reuses (student
+# SkulGen Media & Files (apps.media): the one canonical file/attachment service every feature reuses (student
 # and staff documents, profile photos, the school logo, Gallery, Community, excursion and incident evidence,
 # generated receipts, future messaging attachments). "local" writes to MEDIA_LOCAL_ROOT and is for development
 # and tests only; "s3" talks to any S3-compatible object store (Wasabi included) through MEDIA_S3_ENDPOINT_URL,

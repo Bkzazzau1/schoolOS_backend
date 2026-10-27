@@ -1,4 +1,4 @@
-"""Self-service creation of a SchoolOS proprietor account.
+"""Self-service creation of a SkulGen proprietor account.
 
 Registration deliberately creates only the person and the commercial account.
 The first school is provisioned afterwards through the organization school

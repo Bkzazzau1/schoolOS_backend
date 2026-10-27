@@ -69,7 +69,7 @@ def _require_same_parent(user: User, guardian_name: str) -> None:
     supplied = _normalized_person_name(guardian_name)
     if stored and supplied and stored != supplied:
         raise Rejected(
-            "This phone number already belongs to a different SchoolOS parent account. "
+            "This phone number already belongs to a different SkulGen parent account. "
             "Verify the guardian name or phone number before completing registration."
         )
 

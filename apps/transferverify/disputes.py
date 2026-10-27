@@ -270,5 +270,5 @@ def verify_clearance(token: str) -> dict:
         return {"valid": False, "message": "No verification code was given."}
     clearance = TransferClearance.objects.filter(verification_token=cleaned).first()
     if clearance is None or not clearance.is_active:
-        return {"valid": False, "message": "This is not a valid SchoolOS Transfer Clearance."}
-    return {"valid": True, "message": "Valid SchoolOS Transfer Clearance."}
+        return {"valid": False, "message": "This is not a valid SkulGen Transfer Clearance."}
+    return {"valid": True, "message": "Valid SkulGen Transfer Clearance."}

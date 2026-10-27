@@ -158,7 +158,7 @@ class ProgressionBatchHandler(EntityHandler):
 
     def clean(self, ctx: MutationContext) -> dict[str, Any]:
         p = ctx.payload
-        # Native SchoolOS creates UUID-form identifiers. Keeping this bounded also
+        # Native SkulGen creates UUID-form identifiers. Keeping this bounded also
         # keeps derived StudentLifecycleEvent and SyncRecord ids below 128 chars.
         external_id = text(p, "id", max_len=36)
         if external_id != ctx.entity_id:

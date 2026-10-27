@@ -1,8 +1,8 @@
-# SchoolOS SaaS account layer
+# SkulGen SaaS account layer
 
 ## Purpose
 
-SchoolOS keeps **school tenancy** and **commercial/account ownership** separate.
+SkulGen keeps **school tenancy** and **commercial/account ownership** separate.
 
 - `organizations.Organization` is the customer/account above one or more schools.
 - `organizations.OrganizationMembership` says who can administer that account.

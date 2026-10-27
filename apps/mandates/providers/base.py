@@ -2,16 +2,16 @@
 
 Mandates & Direct Debit works with the SCHOOL'S OWN relationship with a direct-debit provider (Remita, Lendsqr): the school enters the credentials
 the provider issued to it, a payer authorises a mandate on their own bank account, and the school may then send debit instructions on it. The
-provider executes the debit and moves the money; SchoolOS never holds it.
+provider executes the debit and moves the money; SkulGen never holds it.
 
 Providers do not behave alike (how a payer activates, how long it takes before a debit works, whether a debit can be started through the API at
-all), so a connector states what it really does in `MandateCapabilities` and the rest of SchoolOS reads the flags instead of assuming. Calling
-something a connector does not offer raises `NotSupported`; something the provider may offer but whose documentation SchoolOS has not been able
+all), so a connector states what it really does in `MandateCapabilities` and the rest of SkulGen reads the flags instead of assuming. Calling
+something a connector does not offer raises `NotSupported`; something the provider may offer but whose documentation SkulGen has not been able
 to verify raises `PendingDocumentation`, which fails safely and is never guessed around. Everything provider-specific - endpoints, hashes, field
 names, status codes - stays inside the adapter and is written only against the provider's own published documentation.
 
 `secret` is what the vault opened, plus a `connection_id` the service adds at call time (never stored). A connector never logs, returns or puts a
-secret, a bank account number or a raw provider message in an error: messages are written by SchoolOS.
+secret, a bank account number or a raw provider message in an error: messages are written by SkulGen.
 """
 
 from dataclasses import dataclass, field
@@ -41,13 +41,13 @@ from ..constants import DebitOutcome, MandateStatus
 
 
 class PendingDocumentation(NotSupported):
-    """The provider may offer this, but SchoolOS has not been able to verify it in the provider's published documentation. It is refused
+    """The provider may offer this, but SkulGen has not been able to verify it in the provider's published documentation. It is refused
     rather than guessed."""
 
     def __init__(self, what: str, provider: str = "This provider"):
         ConnectorError.__init__(
             self, "pending_documentation",
-            f"{provider}'s published documentation does not describe {what} in enough detail for SchoolOS to offer it yet.",
+            f"{provider}'s published documentation does not describe {what} in enough detail for SkulGen to offer it yet.",
         )
 
 
@@ -56,7 +56,7 @@ class MandateCapabilities:
     """What a provider really does. The app only offers what is switched on."""
 
     supports_bank_verification: bool = False
-    #: The payer can authorise inside SchoolOS (a bank OTP entered in the app) rather than only at the provider.
+    #: The payer can authorise inside SkulGen (a bank OTP entered in the app) rather than only at the provider.
     supports_provider_hosted_consent: bool = False
     supports_remote_cancellation: bool = False
     supports_suspension: bool = False
@@ -65,20 +65,20 @@ class MandateCapabilities:
     supports_variable_amount_mandate: bool = False
     #: A debit instruction can be sent through the API on demand.
     supports_manual_debit: bool = False
-    #: The provider debits on a schedule by itself (SchoolOS Version 1 never asks it to).
+    #: The provider debits on a schedule by itself (SkulGen Version 1 never asks it to).
     supports_scheduled_debit: bool = False
     supports_webhooks: bool = False
     supports_status_requery: bool = False
     #: A debit's status can be asked for by its reference.
     supports_debit_status: bool = False
     supports_balance_lookup: bool = False
-    #: The payer activates by entering a bank OTP in SchoolOS (`request_activation` / `confirm_activation`).
+    #: The payer activates by entering a bank OTP in SkulGen (`request_activation` / `confirm_activation`).
     supports_otp_activation: bool = False
     #: The payer activates by printing and signing a mandate form for their bank.
     supports_form_activation: bool = False
     #: The payer activates by an activation transfer from the account.
     supports_transfer_activation: bool = False
-    #: The provider needs the payer's full account number again on every debit (SchoolOS then keeps it sealed for as long as the mandate lives).
+    #: The provider needs the payer's full account number again on every debit (SkulGen then keeps it sealed for as long as the mandate lives).
     requires_account_number_for_debit: bool = False
     #: The provider needs an id of the payer in ITS own system before a mandate can be made (Lendsqr's customer id).
     requires_provider_customer: bool = False
@@ -127,7 +127,7 @@ class BankInfo:
 
     code: str
     name: str
-    #: The payer can activate in SchoolOS with an OTP (where the provider says so).
+    #: The payer can activate in SkulGen with an OTP (where the provider says so).
     self_activation: bool = False
     #: What activating costs the payer or how it works at this bank, in the provider's words, when the provider says.
     activation_amount_minor: int | None = None
@@ -165,7 +165,7 @@ class CreateMandateRequest:
 
 @dataclass(frozen=True)
 class ProviderMandate:
-    """What the provider says about a mandate, in SchoolOS's words plus the provider's own."""
+    """What the provider says about a mandate, in SkulGen's words plus the provider's own."""
 
     provider_ref: str
     #: One of `PROVIDER_REPORTED`.
@@ -175,7 +175,7 @@ class ProviderMandate:
     #: The mandate code / number the provider quotes when it debits.
     mandate_code: str = ""
     activated_at: datetime | None = None
-    #: When debits become possible, if the provider says (or SchoolOS's adapter configuration says) so. Empty until it is known.
+    #: When debits become possible, if the provider says (or SkulGen's adapter configuration says) so. Empty until it is known.
     debit_ready_at: datetime | None = None
     #: The last moment the payer can activate, when the provider says so.
     activation_deadline: datetime | None = None
@@ -213,7 +213,7 @@ class DebitRequest:
 
 @dataclass(frozen=True)
 class DebitResult:
-    """What the provider says about one debit, in SchoolOS's words plus the provider's own. Only `success` ever settles anything."""
+    """What the provider says about one debit, in SkulGen's words plus the provider's own. Only `success` ever settles anything."""
 
     #: One of `DebitOutcome`.
     outcome: str
@@ -238,14 +238,14 @@ class ProviderEvent:
     kind: str  # "mandate" | "debit"
     #: The provider's own reference for the mandate.
     mandate_ref: str = ""
-    #: SchoolOS's reference for the debit, when the provider quotes it.
+    #: SkulGen's reference for the debit, when the provider quotes it.
     request_ref: str = ""
 
 
 @dataclass(frozen=True)
 class WebhookOutcome:
     events: list = field(default_factory=list)
-    #: Something the provider sent that means nothing to SchoolOS: acknowledged, not processed.
+    #: Something the provider sent that means nothing to SkulGen: acknowledged, not processed.
     ignored: bool = False
 
 
@@ -320,7 +320,7 @@ class MandateConnector:
 
 
 def mandate_status_from(value: str) -> str:
-    """Guard: an adapter must only ever report a status SchoolOS knows."""
+    """Guard: an adapter must only ever report a status SkulGen knows."""
     if value not in MandateStatus.values:
         raise ProviderRejected("provider_unreadable", "The provider's answer could not be understood.")
     return value

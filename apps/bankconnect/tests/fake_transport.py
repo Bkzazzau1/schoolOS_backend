@@ -1,5 +1,5 @@
 """A provider's server for the tests: it answers exactly as the provider's own documentation says the provider does, and remembers every
-call so a test can check what SchoolOS actually sent (the path, the headers, the body) and that no secret went anywhere it should not."""
+call so a test can check what SkulGen actually sent (the path, the headers, the body) and that no secret went anywhere it should not."""
 
 from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlparse

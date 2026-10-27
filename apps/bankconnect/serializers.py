@@ -146,7 +146,7 @@ def serialize_decision(d) -> dict:
         "note": d.note,
         "actorMembershipId": str(d.actor_id) if d.actor_id else None,
         "actorRole": d.actor.role if d.actor_id else None,
-        "actorName": (user.get_full_name() or user.email) if user else "SchoolOS matching",
+        "actorName": (user.get_full_name() or user.email) if user else "SkulGen matching",
         "before": d.before,
         "after": d.after,
         "at": _iso(d.at),

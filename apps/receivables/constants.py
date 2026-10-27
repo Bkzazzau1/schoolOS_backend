@@ -1,7 +1,7 @@
-"""Words the school-fee receivables domain shares with the rest of SchoolOS.
+"""Words the school-fee receivables domain shares with the rest of SkulGen.
 
 This is what a SCHOOL charges its families: fee schedules, what each student owes, what each family
-has paid and what it is owed back. It is not `apps.billing`, which is what SchoolOS charges schools
+has paid and what it is owed back. It is not `apps.billing`, which is what SkulGen charges schools
 (plans, subscriptions, usage). Nothing here imports or reuses those models.
 """
 

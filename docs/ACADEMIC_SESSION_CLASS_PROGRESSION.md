@@ -2,7 +2,7 @@
 
 ## Canonical authority
 
-SchoolOS treats the server academic domain as the authority for school-year context. A class name on a device is not enough to determine academic progression.
+SkulGen treats the server academic domain as the authority for school-year context. A class name on a device is not enough to determine academic progression.
 
 The canonical chain is:
 

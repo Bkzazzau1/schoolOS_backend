@@ -25,7 +25,7 @@ def normalize_parent_phone(value: str | None) -> str | None:
 
 def normalize_student_admission(value: str | None) -> str:
     raw = (value or "").strip()
-    # SchoolOS has one sign-in field. Admission IDs therefore cannot be
+    # SkulGen has one sign-in field. Admission IDs therefore cannot be
     # indistinguishable from the other supported login identities.
     if not raw or "@" in raw or normalize_parent_phone(raw) is not None:
         return ""

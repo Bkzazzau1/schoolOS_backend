@@ -22,11 +22,11 @@ class SchoolOSJWTAuthentication(JWTAuthentication):
         token_version = int(validated_token.get("cv", 1))
         if token_version != user.credential_version:
             raise AuthenticationFailed(
-                "This SchoolOS session was replaced. Sign in again with your current credentials."
+                "This SkulGen session was replaced. Sign in again with your current credentials."
             )
 
         if user.must_change_password and request.path not in self._BOOTSTRAP_PATHS:
             raise AuthenticationFailed(
-                "Create a private password before using this SchoolOS account."
+                "Create a private password before using this SkulGen account."
             )
         return user, validated_token

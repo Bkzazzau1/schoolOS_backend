@@ -12,7 +12,7 @@ A debit is the most sensitive thing in this app: it takes money from a person's 
   leaves the outcome UNKNOWN: the debit may have happened. It is then ASKED ABOUT until the provider says - it is never simply sent again. Only a
   provider's own "I have no record of that request" makes it safe to send again, with the same reference;
 * only a debit the provider confirms is settled into the ledger (see settlement.py), and only once;
-* a debit that failed for a reason outside SchoolOS (insufficient funds) can be retried under the same approval, but only if nothing that was approved
+* a debit that failed for a reason outside SkulGen (insufficient funds) can be retried under the same approval, but only if nothing that was approved
   has changed; if it has, it needs a fresh maker and checker.
 """
 
@@ -54,7 +54,7 @@ FAILURE_WORDS = {
     "not_sent": "The provider never received the debit.",
     "provider_failed": "The provider could not carry out the debit.",
     "reversed": "The provider reversed the debit.",
-    "pending_documentation": "This provider's debit instructions are not available through SchoolOS yet.",
+    "pending_documentation": "This provider's debit instructions are not available through SkulGen yet.",
     "vault_error": "The stored details could not be opened.",
 }
 #: A failure that a retry under the same approval can never fix: the world changed, so a fresh approval is needed.
@@ -277,7 +277,7 @@ def _record(instruction_id, result: DebitResult | None, *, unknown: bool = False
             item.save()
             audit.record(item.school, "debit_failed", obj=item, batch=str(item.batch_id), code=code)
             transaction.on_commit(lambda: notifications.debit_failed(item, _words(code)))
-        else:  # unknown: the provider did not answer, or answered something SchoolOS does not understand. It MAY have happened.
+        else:  # unknown: the provider did not answer, or answered something SkulGen does not understand. It MAY have happened.
             tx.status = DebitOutcome.UNKNOWN
             item.status = InstructionStatus.UNKNOWN
             tx.save()

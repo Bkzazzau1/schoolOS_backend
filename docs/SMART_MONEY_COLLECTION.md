@@ -1,17 +1,17 @@
 # Smart Money Collection (backend)
 
-How a school collects fees from families through **its own** Paystack or Monnify account, and how SchoolOS finds out what
-was paid. This file says what is real, what is pending and how to run it. School fees are the **school's** money: SchoolOS never
-receives, holds or settles it. (What schools pay SchoolOS - the SaaS subscription - is `apps/billing`, a different thing entirely.)
+How a school collects fees from families through **its own** Paystack or Monnify account, and how SkulGen finds out what
+was paid. This file says what is real, what is pending and how to run it. School fees are the **school's** money: SkulGen never
+receives, holds or settles it. (What schools pay SkulGen - the SaaS subscription - is `apps/billing`, a different thing entirely.)
 
 > **Smart Money Collection currently supports Paystack and Monnify for family collection accounts** (Family Payment Details).
-> **Remita is reserved for SchoolOS Mandates / Direct Debit and is not a Smart Money Collection provider.** The two are separate
+> **Remita is reserved for SkulGen Mandates / Direct Debit and is not a Smart Money Collection provider.** The two are separate
 > domains and are never mixed: see [Remita and Mandates](#remita-and-mandates-not-part-of-smart-money-collection) at the end.
 
 ```
-School's own provider account -> school's own credentials -> SchoolOS connector -> ONE active provider
+School's own provider account -> school's own credentials -> SkulGen connector -> ONE active provider
    -> a family's collection account -> the provider moves the money -> signed provider event
-   -> SchoolOS reconciliation -> the family receivables ledger (canonical)
+   -> SkulGen reconciliation -> the family receivables ledger (canonical)
 ```
 
 ## What lives where
@@ -33,7 +33,7 @@ merchant name and masked reference, status, webhook status and when it was last 
   fingerprint and no "is this your school's account?" question.
 * Credentials are sealed by the vault (`vault.py`, MultiFernet, `BANKCONNECT_SECRET_KEYS`, bound to school and connection so a
   copied ciphertext does not open). No serializer, log line, error message, audit detail or admin field can carry one; a provider's
-  own error text is never copied, only SchoolOS's words.
+  own error text is never copied, only SkulGen's words.
 * A school may connect both providers (one live connection per provider per school, enforced by the database) but has exactly
   **one active collection provider** (also a database rule). Only Paystack or Monnify (or the development sandbox) can be the active
   one: the database refuses anything else, so it does not depend on the screen hiding it. It is chosen once with `activate`; any later change is a reviewed
@@ -46,7 +46,7 @@ merchant name and masked reference, status, webhook status and when it was last 
 
 | Duty | Authority |
 |---|---|
-| `finance.collection_provider_manage` | connect, replace, test, disable providers; webhook; active provider; provider switches. The only authority that can put a provider secret into SchoolOS |
+| `finance.collection_provider_manage` | connect, replace, test, disable providers; webhook; active provider; provider switches. The only authority that can put a provider secret into SkulGen |
 | `finance.collection_policy_manage` | the school's collection policy and its overrides |
 | `finance.collection_prepare` | the **maker** of a collection batch |
 | `finance.collection_approve` | the **checker** of a collection batch |
@@ -58,7 +58,7 @@ earlier `finance.bank_connections` duty is honoured as provider authority only, 
 
 One interface (`CollectionConnector`): `validate_credentials`, `get_merchant_profile`, `provision_family_collection_account`,
 `get_collection_account`, `deactivate/reactivate/close_collection_account`, `verify_transaction`, `requery_transaction`,
-`handle_webhook`. Each adapter declares its real capabilities and the rest of SchoolOS reads the flags; calling what a provider
+`handle_webhook`. Each adapter declares its real capabilities and the rest of SkulGen reads the flags; calling what a provider
 does not do raises `NotSupported`. Every adapter is written only against the provider's published documentation and tested with
 the documented request and response shapes through a fake transport (`tests/fake_transport.py`).
 
@@ -81,11 +81,11 @@ own authenticity check runs **before** anything is trusted or stored, the delive
 never processed twice, and the record and the payments it carried are one database transaction. No provider is called while a
 transaction is open.
 
-A payment is matched to a family by **the account it was paid into** - deterministically. An account SchoolOS has no record of is
+A payment is matched to a family by **the account it was paid into** - deterministically. An account SkulGen has no record of is
 kept, unmatched, for a person; it is never attached to a family by guessing from a narration or a sender's name. (The fuzzy
 student-matching engine still serves payments from connections made by the earlier bank-account model; Smart Money Collection
 payments never use it.) A payment into a settled, dormant or closed account that the provider confirms goes through the normal
-pipeline; SchoolOS invents no rule about it, and anything beyond what is owed becomes family credit.
+pipeline; SkulGen invents no rule about it, and anything beyond what is owed becomes family credit.
 
 ## Legacy data
 
@@ -144,7 +144,7 @@ worker runs.
 
 The settlement action in the policy decides. `close` and `wait then close` start **closing** the account: it stays the family's live
 account and keeps receiving while a queued call retires it at the provider (Paystack deactivates the dedicated account, Monnify
-deallocates the reserved account). `dormant` and `settled` are SchoolOS states and call no provider. Nothing is
+deallocates the reserved account). `dormant` and `settled` are SkulGen states and call no provider. Nothing is
 ever deleted, and a payment the provider confirms into an account in **any** state goes through the normal pipeline (anything beyond what
 is owed becomes family credit; nothing is sent to review for the state alone).
 
@@ -169,7 +169,7 @@ date". No response carries a credential or an identity number.
 ### Pending (nothing invented)
 
 * Monnify's contract code is only proven when the first account is made, and is not claimed as verified before.
-* Whether a provider-side account is "dormant" is SchoolOS's own flag; no provider documents a way to refuse transfers to a reserved
+* Whether a provider-side account is "dormant" is SkulGen's own flag; no provider documents a way to refuse transfers to a reserved
   account without closing it, so none is called for it.
 * A parent-facing way to supply a BVN/NIN; today the school records it (write-only) for the payer.
 
@@ -212,7 +212,7 @@ over a copy first if a school ever used Remita):
 | Left behind | What the migration does |
 |---|---|
 | a Remita connection | disconnected; its sealed credential and callback address are dropped; it stops being the active provider. No other provider is switched on in its place: the school chooses |
-| a family's Remita account | closed (or marked failed if it never had a reference), so the family can be given a Paystack or Monnify account. Nothing is asked of Remita: an RRR it already issued is not cancelled by SchoolOS |
+| a family's Remita account | closed (or marked failed if it never had a reference), so the family can be given a Paystack or Monnify account. Nothing is asked of Remita: an RRR it already issued is not cancelled by SkulGen |
 | a batch that had not made accounts | cancelled; a batch that was generating stops and keeps the families that succeeded; finished batches stay as they were |
 | a planned switch involving Remita, and queued Remita calls | the switch is cancelled and the calls are failed |
 | payments and audit rows | untouched |

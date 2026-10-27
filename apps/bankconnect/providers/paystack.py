@@ -1,5 +1,5 @@
-"""Paystack, through the SCHOOL'S OWN Paystack account and secret key (never SchoolOS's own Paystack, which is only for what
-schools pay SchoolOS).
+"""Paystack, through the SCHOOL'S OWN Paystack account and secret key (never SkulGen's own Paystack, which is only for what
+schools pay SkulGen).
 
 Written only against Paystack's published API (its official OpenAPI, github.com/PaystackOSS/openapi, and the Dedicated Virtual
 Account and Webhooks guides at docs-v2.paystack.com):

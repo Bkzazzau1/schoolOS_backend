@@ -5,7 +5,7 @@ class TimetableConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.timetable"
     label = "timetable"
-    verbose_name = "SchoolOS Timetable"
+    verbose_name = "SkulGen Timetable"
 
     def ready(self):
         from apps.sync import registry

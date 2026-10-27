@@ -194,7 +194,7 @@ class MandateDebitInstruction(models.Model):
 
 
 class MandateTransaction(models.Model):
-    """One debit as the provider reports it, in SchoolOS's own shape - whichever provider it came from.
+    """One debit as the provider reports it, in SkulGen's own shape - whichever provider it came from.
 
     It is the bridge to the receivables ledger: only a confirmed (`success`) debit is ever put towards the family's charges, and only once
     (`payment` is set exactly when that happened). A reversal or refund does not delete anything: it takes the payment back out of the ledger

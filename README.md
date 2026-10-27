@@ -1,6 +1,6 @@
-# SchoolOS backend
+# SkulGen backend
 
-Django + Django REST Framework backend for the SchoolOS Flutter app
+Django + Django REST Framework backend for the SkulGen Flutter app
 (`schoolOS-app`). The app is offline first: it saves changes on the device and
 queues them, and this backend is where those queued changes are checked, stored
 and shared between devices.

@@ -84,7 +84,7 @@ LIVE_MANDATE = (
     MandateStatus.PENDING_PROVIDER_SETUP, MandateStatus.ACTIVE, MandateStatus.SUSPENDED,
 )
 ENDED_MANDATE = (MandateStatus.CANCELLED, MandateStatus.EXPIRED, MandateStatus.FAILED)
-#: What the provider may report about a mandate, in SchoolOS's words (a subset of `MandateStatus`).
+#: What the provider may report about a mandate, in SkulGen's words (a subset of `MandateStatus`).
 PROVIDER_REPORTED = (
     MandateStatus.PENDING_ACTIVATION, MandateStatus.ACTIVATING, MandateStatus.PENDING_PROVIDER_SETUP, MandateStatus.ACTIVE,
     MandateStatus.SUSPENDED, MandateStatus.CANCELLED, MandateStatus.EXPIRED, MandateStatus.FAILED,
@@ -92,17 +92,17 @@ PROVIDER_REPORTED = (
 
 
 class ConsentChannel(models.TextChoices):
-    #: The payer, signed in as themselves, reviewed and authorised the mandate in the SchoolOS app.
+    #: The payer, signed in as themselves, reviewed and authorised the mandate in the SkulGen app.
     PAYER_APP = "payer_app", "Authorised by the payer in the app"
     #: The provider's own authorisation (the bank's OTP, a signed mandate form, an activation transfer from the payer's account) is
-    #: the evidence; SchoolOS keeps the provider's reference rather than a copy of it.
+    #: the evidence; SkulGen keeps the provider's reference rather than a copy of it.
     PROVIDER_HOSTED = "provider_hosted", "Authorised with the provider"
 
 
 class ConsentRoute(models.TextChoices):
     """How the payer is to authorise, chosen when the mandate is started."""
 
-    PAYER_APP = "payer_app", "In the SchoolOS app"
+    PAYER_APP = "payer_app", "In the SkulGen app"
     PROVIDER = "provider", "With the provider"
 
 
@@ -155,7 +155,7 @@ class Eligibility(models.TextChoices):
     PROVIDER_CANNOT_DEBIT = "provider_cannot_debit", "Provider cannot debit yet"
 
 
-#: What the provider reports about a debit, in SchoolOS's words. Only SUCCESS ever settles a family's charges.
+#: What the provider reports about a debit, in SkulGen's words. Only SUCCESS ever settles a family's charges.
 class DebitOutcome(models.TextChoices):
     PENDING = "pending", "Pending"
     SUCCESS = "success", "Successful"

@@ -87,7 +87,7 @@ class AssignTests(ReviewTestCase):
         self.assertEqual([(a["studentName"], a["purpose"], a["amountMinor"], a["source"]) for a in body["allocations"]],
                          [("Bilal Bello", "tuition", 5_000_000, "manual")])
         engine, person = body["decisions"]
-        self.assertEqual((engine["action"], engine["actorName"]), ("engine_review", "SchoolOS matching"))
+        self.assertEqual((engine["action"], engine["actorName"]), ("engine_review", "SkulGen matching"))
         self.assertEqual((person["action"], person["actorRole"], person["note"]), ("assign", "proprietor", "Father confirmed it is for Bilal"))
         self.assertEqual(person["before"]["status"], "requires_review")
         self.assertEqual(person["after"]["status"], "matched")

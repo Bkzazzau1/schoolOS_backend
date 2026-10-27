@@ -152,7 +152,7 @@ class VerifyClearanceTests(DisputeTestCase):
         services.resolve(membership=self.owner, external_id=self.published.external_id, note="Paid in full.")
         clearance = disputes.issue_clearance(membership=self.owner, external_id=self.published.external_id)
         result = disputes.verify_clearance(clearance.verification_token)
-        self.assertEqual(result, {"valid": True, "message": "Valid SchoolOS Transfer Clearance."})
+        self.assertEqual(result, {"valid": True, "message": "Valid SkulGen Transfer Clearance."})
 
     def test_a_revoked_token_is_not_valid(self):
         services.resolve(membership=self.owner, external_id=self.published.external_id, note="Paid in full.")

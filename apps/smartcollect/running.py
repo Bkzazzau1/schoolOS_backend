@@ -24,7 +24,7 @@ def generation_key(batch, family_id) -> str:
 
 
 def provider_reference(item) -> str:
-    """The reference SchoolOS gives the provider for this family's account. Deterministic, so a repeat finds the same account."""
+    """The reference SkulGen gives the provider for this family's account. Deterministic, so a repeat finds the same account."""
     return "SOS-" + item.idempotency_key.removeprefix("gen-")[:24].upper()
 
 

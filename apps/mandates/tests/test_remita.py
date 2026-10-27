@@ -1,4 +1,4 @@
-"""Remita Direct Debit, against the shapes Remita's own documentation gives (Direct Debit for Non-Financial Institutions): the requests SchoolOS makes
+"""Remita Direct Debit, against the shapes Remita's own documentation gives (Direct Debit for Non-Financial Institutions): the requests SkulGen makes
 carry exactly the documented hashes and headers, and its status codes are understood as documented. The real Remita is never called: a scripted
 transport answers as the documentation says it does."""
 
@@ -309,7 +309,7 @@ class RemitaAdapterTests(MandateTestCase):
 
 
 class RemitaEndToEndTests(MandateTestCase):
-    """The whole path through SchoolOS with Remita's documented server scripted: connect, a payer's mandate, activation, an approved debit, settlement."""
+    """The whole path through SkulGen with Remita's documented server scripted: connect, a payer's mandate, activation, an approved debit, settlement."""
 
     def setUp(self):
         super().setUp()

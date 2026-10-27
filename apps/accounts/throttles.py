@@ -6,7 +6,7 @@ from .identity import normalize_parent_phone, normalize_student_admission
 
 
 class LoginIdentifierThrottle(SimpleRateThrottle):
-    """Bound password guessing per SchoolOS login identity.
+    """Bound password guessing per SkulGen login identity.
 
     Schools commonly place a whole lab behind one public IP. Keying the main
     brute-force limit by a hashed normalized login ID protects each account

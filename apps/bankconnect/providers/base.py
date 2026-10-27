@@ -1,18 +1,18 @@
 """The one interface every collection-provider connector implements, and the one shape their payments are translated into.
 
 Smart Money Collection works with the SCHOOL'S OWN account at a payment provider (Paystack or Monnify): the school
-onboards with the provider directly, receives its own credentials and enters them into SchoolOS. A connector uses those
+onboards with the provider directly, receives its own credentials and enters them into SkulGen. A connector uses those
 credentials to create the collection account a family pays into, to verify and read the provider's payment events, and to
-retire an account. The provider moves and settles the money; SchoolOS never receives or holds it.
+retire an account. The provider moves and settles the money; SkulGen never receives or holds it.
 
 Providers do not behave alike, so a connector states what it really does in its `CollectionCapabilities` and the rest of
-SchoolOS reads the flags instead of assuming. Calling something a connector does not support raises `NotSupported`. Everything
+SkulGen reads the flags instead of assuming. Calling something a connector does not support raises `NotSupported`. Everything
 provider-specific - endpoints, field names, signatures - stays inside the adapter, and is written only against the provider's
 own published documentation, never guessed.
 
 `secret` is what the vault opened, plus a `connection_id` the service adds at call time (never stored) for connectors that
 need to know which connection they are serving. A connector never logs, returns or puts a secret in an error message: messages
-are written by SchoolOS, never copied from the provider, because those can echo what was sent.
+are written by SkulGen, never copied from the provider, because those can echo what was sent.
 """
 
 from dataclasses import dataclass, field
@@ -22,7 +22,7 @@ from datetime import date, datetime
 
 
 class ConnectorError(Exception):
-    """A provider call failed. `code` is a short, stable word the app can show; `message` is SchoolOS's own."""
+    """A provider call failed. `code` is a short, stable word the app can show; `message` is SkulGen's own."""
 
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -116,12 +116,12 @@ class SettingField:
 
 @dataclass(frozen=True)
 class WebhookSetup:
-    #: "dashboard": the school pastes SchoolOS's address into the provider's dashboard (no API sets it). "api": SchoolOS sets it.
+    #: "dashboard": the school pastes SkulGen's address into the provider's dashboard (no API sets it). "api": SkulGen sets it.
     mode: str = "dashboard"
     #: Where in the provider's dashboard it goes.
     where: str = ""
-    #: "hmac_sha512": the provider signs the body and SchoolOS verifies it. "requery": the provider does not sign, so
-    #: SchoolOS confirms every event by asking the provider directly.
+    #: "hmac_sha512": the provider signs the body and SkulGen verifies it. "requery": the provider does not sign, so
+    #: SkulGen confirms every event by asking the provider directly.
     verification: str = "hmac_sha512"
     events: tuple = ()
     note: str = ""
@@ -201,7 +201,7 @@ class CustomerDetails:
 class ProvisionRequest:
     #: The same value on every retry of one account: what makes generation idempotent.
     idempotency_key: str
-    #: A reference SchoolOS chooses and the provider stores against the account (where it accepts one).
+    #: A reference SkulGen chooses and the provider stores against the account (where it accepts one).
     account_reference: str
     family_code: str
     family_name: str
@@ -293,7 +293,7 @@ class AccountEvent:
 class WebhookOutcome:
     transactions: list = field(default_factory=list)
     account_events: list = field(default_factory=list)
-    #: Something the provider sent that means nothing to SchoolOS (another event type): acknowledged, not processed.
+    #: Something the provider sent that means nothing to SkulGen (another event type): acknowledged, not processed.
     ignored: bool = False
 
 

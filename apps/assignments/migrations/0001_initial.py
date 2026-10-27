@@ -1,4 +1,4 @@
-# Generated manually for the canonical SchoolOS assignment authority.
+# Generated manually for the canonical SkulGen assignment authority.
 import uuid
 
 from django.db import migrations, models

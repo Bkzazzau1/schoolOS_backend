@@ -1,6 +1,6 @@
 """Where a provider credential and a payer's bank account rest: sealed before they reach the database, opened only inside the server, never
-handed to a client. The same key ring as the rest of SchoolOS's sealed secrets (`BANKCONNECT_SECRET_KEYS`), with a context of its own, so a
-blob copied from one row to another - or from another part of SchoolOS to a mandate - will not open."""
+handed to a client. The same key ring as the rest of SkulGen's sealed secrets (`BANKCONNECT_SECRET_KEYS`), with a context of its own, so a
+blob copied from one row to another - or from another part of SkulGen to a mandate - will not open."""
 
 from apps.bankconnect.vault import SecretVault, VaultError, VaultNotConfigured, get_vault  # noqa: F401 - re-exported
 

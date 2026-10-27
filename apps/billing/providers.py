@@ -1,4 +1,4 @@
-"""Payment-provider boundary for SchoolOS SaaS billing.
+"""Payment-provider boundary for SkulGen SaaS billing.
 
 Provider secrets never leave the backend. The app receives only a hosted checkout
 URL/access code created by the server for a specific immutable invoice amount.

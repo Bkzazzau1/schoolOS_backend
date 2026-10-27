@@ -1,5 +1,5 @@
 """What a file is, who may see it, and where it stands in its own lifecycle - shared by every module that stores a
-real file through SchoolOS (student and staff documents, admission documents, profile photos, the school's own
+real file through SkulGen (student and staff documents, admission documents, profile photos, the school's own
 logo, Gallery photos and videos, Community attachments, excursion and incident evidence, generated receipts and
 reports, and messaging attachments once that exists). One canonical file model, reused everywhere, rather than a
 new upload system per feature.
@@ -13,7 +13,7 @@ class MediaType(models.TextChoices):
     VIDEO = "video", "Video"
     AUDIO = "audio", "Audio"
     DOCUMENT = "document", "Document"
-    #: A PDF or spreadsheet SchoolOS itself generated (a receipt, a report), not something a person uploaded.
+    #: A PDF or spreadsheet SkulGen itself generated (a receipt, a report), not something a person uploaded.
     GENERATED_DOCUMENT = "generated_document", "Generated document"
     OTHER = "other", "Other"
 
@@ -40,7 +40,7 @@ class Status(models.TextChoices):
     AVAILABLE = "available", "Available"
     #: The upload or its verification failed (a mismatch, a rejected type, a storage error).
     FAILED = "failed", "Failed"
-    #: Held back from view pending a check SchoolOS cannot yet perform itself (reserved for future malware
+    #: Held back from view pending a check SkulGen cannot yet perform itself (reserved for future malware
     #: scanning; nothing sets this today, but the state exists so scanning can be added without a new status).
     QUARANTINED = "quarantined", "Quarantined"
     #: Soft-deleted. The row and its audit trail stay; the bytes may be reclaimed later under a retention policy.
@@ -92,7 +92,7 @@ CATEGORY_MAX_BYTES = {
     "school_logo": 2 * 1024 * 1024,
 }
 
-#: The mime types a media type accepts, each mapped to the file extension SchoolOS stores it under (never the
+#: The mime types a media type accepts, each mapped to the file extension SkulGen stores it under (never the
 #: extension the device sent - see validation.py). A mime type not listed here is refused outright.
 ALLOWED_MIME_TYPES = {
     MediaType.IMAGE: {
@@ -150,7 +150,7 @@ CATEGORIES = {
     # School life evidence
     "excursion_evidence": MediaType.IMAGE,
     "incident_evidence": MediaType.IMAGE,
-    # SchoolOS-generated
+    # SkulGen-generated
     "receipt": MediaType.GENERATED_DOCUMENT,
     "generated_report": MediaType.GENERATED_DOCUMENT,
     # Messaging (registered ahead of the feature that will use it, per the brief's "ready for... Messaging")

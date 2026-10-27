@@ -1,5 +1,5 @@
 """What the API sends back - plain functions returning dicts, the same style as apps/mandates/serializers.py.
-camelCase throughout, to match every other SchoolOS endpoint the app already reads. A credential, a storage key or
+camelCase throughout, to match every other SkulGen endpoint the app already reads. A credential, a storage key or
 a raw filesystem path never appears in any of these."""
 
 

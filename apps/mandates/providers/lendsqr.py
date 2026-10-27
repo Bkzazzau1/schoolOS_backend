@@ -2,30 +2,30 @@
 
 Written only against Lendsqr's published documentation: the Developer APIs pages at docs.lendsqr.com (Getting started, Authentication, Test and Live
 mode, Direct Debit APIs) and the Adjutor API reference they point to (api.adjutor.io, the published "Adjutor API Service" collection). What it says,
-and what SchoolOS therefore does:
+and what SkulGen therefore does:
 
 * every call is `https://adjutor.lendsqr.com/v2/...` with `Authorization: Bearer <the app's API key>`. Test and Live mode use the SAME key and
-  base URL: the mode is a toggle on the app in the Lendsqr admin console, so SchoolOS cannot see which one a key is in;
+  base URL: the mode is a toggle on the app in the Lendsqr admin console, so SkulGen cannot see which one a key is in;
 * `GET /direct-debit/banks` lists the banks a mandate can be made on, each with its activation amount and the NIBSS account the payer transfers
   it to (in the response's `meta`);
 * `POST /customers/direct-debit-mandates` makes a mandate for a Lendsqr CUSTOMER (`user_id`), a bank account and a maximum amount that can be
   debited at one time. **The payer therefore has to exist as a customer in the school's own Lendsqr organisation first**: creating one needs
-  BVN, date of birth, address and documents (lender KYC), which SchoolOS neither collects nor sends. The payer's Lendsqr customer id is
+  BVN, date of birth, address and documents (lender KYC), which SkulGen neither collects nor sends. The payer's Lendsqr customer id is
   recorded against the payer, and without it no mandate is made;
 * the payer activates it by transferring the activation amount (documented: 168 hours, after which it is cancelled) to the bank's NIBSS account;
-  the mandate is then activated but "isn't yet available for debit": NIBSS's own setup follows and takes "up to 2 hours". SchoolOS therefore keeps
-  ACTIVATED and DEBIT-READY apart: the window and the setup time are Lendsqr's rules and live in configuration, never in SchoolOS's business code,
+  the mandate is then activated but "isn't yet available for debit": NIBSS's own setup follows and takes "up to 2 hours". SkulGen therefore keeps
+  ACTIVATED and DEBIT-READY apart: the window and the setup time are Lendsqr's rules and live in configuration, never in SkulGen's business code,
   and the provider's own dates are used whenever it gives them;
 * `GET /customers/:id/direct-debit-mandates` is how a mandate's status is asked for; `PATCH .../activate`, `.../deactivate` and `.../cancel`
   change it (deactivate is a temporary stop and only an active mandate can be deactivated).
 
 **What Lendsqr's published API does NOT document: sending a debit instruction on a mandate, or asking about one.** Lendsqr's help pages show a
 "Trigger debit" action in the admin console, and its API reference has "Repay customer loan" (which debits against a loan booked in Lendsqr's own
-lending ledger). Neither is a way for SchoolOS to send an approved school-fee debit without creating a second ledger. So `create_debit` and
-`get_debit_status` are refused with `pending_documentation` and nothing is guessed: a Lendsqr mandate can be made, activated and watched, but SchoolOS
+lending ledger). Neither is a way for SkulGen to send an approved school-fee debit without creating a second ledger. So `create_debit` and
+`get_debit_status` are refused with `pending_documentation` and nothing is guessed: a Lendsqr mandate can be made, activated and watched, but SkulGen
 does not debit it until Lendsqr documents how. Lendsqr also documents no callback events, so none are accepted.
 
-Lendsqr states that live use needs the organisation to be licensed as a lender (or otherwise legally entitled) and to have completed its KYC. SchoolOS
+Lendsqr states that live use needs the organisation to be licensed as a lender (or otherwise legally entitled) and to have completed its KYC. SkulGen
 never claims a school is eligible: a live connection is refused until an operator has switched `MANDATES_LENDSQR_LIVE_ENABLED` on.
 """
 
@@ -68,7 +68,7 @@ def _call(secret: dict, environment: str, method: str, path: str, *, body: dict 
     if environment == ENV_LIVE and not getattr(django_settings, "MANDATES_LENDSQR_LIVE_ENABLED", False):
         raise ProviderRejected(
             "live_not_enabled",
-            "Live Lendsqr mandates are not switched on for this SchoolOS server. Lendsqr needs to confirm that your organisation is licensed as a lender "
+            "Live Lendsqr mandates are not switched on for this SkulGen server. Lendsqr needs to confirm that your organisation is licensed as a lender "
             "or otherwise entitled to use it. Use test mode until then.",
         )
     result = get_transport().request(method, BASE + path, headers={"Authorization": f"Bearer {secret['api_key']}"}, json_body=body)
@@ -159,7 +159,7 @@ class LendsqrMandateConnector(MandateConnector):
             "Create an app under Developer > Apps in your school's own Lendsqr admin console, choose the direct debit scope, and enter its API key. "
             "Each payer must already be a customer in your Lendsqr organisation: enter their Lendsqr customer id when you start their mandate."
         ),
-        description="Direct debit mandates activated by the payer's transfer to a NIBSS account. SchoolOS can make, activate and watch them.",
+        description="Direct debit mandates activated by the payer's transfer to a NIBSS account. SkulGen can make, activate and watch them.",
         live_note=(
             "Lendsqr requires the organisation to be licensed as a lender (or otherwise legally entitled) and to have passed its KYC before live use. "
             "Live is switched on by whoever runs this server, after that is confirmed. Test mode is always available."

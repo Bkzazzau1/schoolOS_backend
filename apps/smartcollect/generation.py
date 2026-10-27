@@ -203,7 +203,7 @@ def _succeed_existing(item, account) -> Outcome:
 
 
 def record_unexpected_failure(item_id, *, attempt: int) -> None:
-    """Something in SchoolOS itself went wrong (not the provider). The item is tried again, and after the last attempt is failed for a
+    """Something in SkulGen itself went wrong (not the provider). The item is tried again, and after the last attempt is failed for a
     person to look at; the error text is never kept, only that it happened."""
     item = CollectionGenerationBatchItem.objects.filter(pk=item_id).first()
     if item is None or item.generation_status == GenerationStatus.SUCCESS:

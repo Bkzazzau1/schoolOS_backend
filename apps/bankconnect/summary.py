@@ -1,4 +1,4 @@
-"""What the school has actually collected, worked out from the payments SchoolOS has received.
+"""What the school has actually collected, worked out from the payments SkulGen has received.
 
 Only real money is counted. Test (sandbox) payments are left out unless asked for, and how many were
 left out is said, so a demo can never look like the school's income. Money that was reversed or

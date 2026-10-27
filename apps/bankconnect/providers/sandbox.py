@@ -123,7 +123,7 @@ class SandboxConnector(CollectionConnector):
         )
         return ProvisionedAccount(
             account_number=account.account_number, provider_account_ref=request.account_reference, lookup_ref=account.account_number,
-            account_name=f"TEST {request.family_name}"[:200], bank_name="SchoolOS Test Bank", number_label=self.info.account_label,
+            account_name=f"TEST {request.family_name}"[:200], bank_name="SkulGen Test Bank", number_label=self.info.account_label,
             public_details=[{"label": "Test only", "value": "Not a real bank account"}], provider_meta={"test": True}, ready=True,
         )
 

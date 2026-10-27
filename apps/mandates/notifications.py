@@ -3,7 +3,7 @@ bank account number or a credential.
 
 Two audiences: the PAYER (the guardian whose mandate it is, if they have a signed-in account) is told what they must do and what was done to their
 account; the people who manage mandates are told what needs a person. Whether a payer must be given notice before a debit, and how long before, is a
-legal and provider matter SchoolOS has not verified, so no notice period is assumed here: what is sent is a plain statement of what happened.
+legal and provider matter SkulGen has not verified, so no notice period is assumed here: what is sent is a plain statement of what happened.
 """
 
 import logging

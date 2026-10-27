@@ -4,7 +4,7 @@ from apps.billing.cycle import run_billing_cycles
 
 
 class Command(BaseCommand):
-    help = "Run idempotent SchoolOS SaaS billing cycles for every active organization."
+    help = "Run idempotent SkulGen SaaS billing cycles for every active organization."
 
     def handle(self, *args, **options):
         summary = run_billing_cycles()

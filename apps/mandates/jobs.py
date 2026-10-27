@@ -90,7 +90,7 @@ def run_next(now=None) -> MandateProviderJob | None:
             outcome = execution.execute_instruction(job.instruction_id, attempt=job.attempts)
         else:
             outcome = execution.requery_instruction(job.instruction_id, attempt=job.attempts)
-    except Exception:  # noqa: BLE001 - a bug in SchoolOS must not kill the worker or lose the job
+    except Exception:  # noqa: BLE001 - a bug in SkulGen must not kill the worker or lose the job
         # Only that it happened is logged: never the text, which could carry a family's details.
         logger.exception("Mandate job %s (%s) failed unexpectedly", job.id, job.kind)
         if job.attempts >= MAX_ATTEMPTS:

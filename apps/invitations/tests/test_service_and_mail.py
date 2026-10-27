@@ -139,7 +139,7 @@ class EmailTests(InviteTestCase):
         self.school.official_email = ""
         self.school.save()
         self.staff_with_link()
-        self.assertEqual(mail.outbox[-1].from_email, "SchoolOS <no-reply@localhost>")
+        self.assertEqual(mail.outbox[-1].from_email, "SkulGen <no-reply@skulgen.com>")
 
     def test_a_sent_email_is_recorded(self):
         staff_id, _ = self.staff_with_link()

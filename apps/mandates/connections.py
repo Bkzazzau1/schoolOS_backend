@@ -1,7 +1,7 @@
 """The life of a school's mandate-provider connection: connect, test, replace credentials, disable, enable and disconnect. Every change is audited,
 and none of them ever returns or logs a credential.
 
-The school onboards with Remita or Lendsqr DIRECTLY and enters the credentials that provider issued to it. SchoolOS verifies them with the provider,
+The school onboards with Remita or Lendsqr DIRECTLY and enters the credentials that provider issued to it. SkulGen verifies them with the provider,
 seals them (see vault.py) and keeps only safe facts: the provider, the environment, the merchant's name and a masked identifier, the callback's state
 and when it was last verified.
 
@@ -231,7 +231,7 @@ def live_mandate_count(connection) -> int:
 
 
 def disable(membership, connection_id) -> MandateProviderConnection:
-    """Stop using this provider for now. Only where that is safe: not one whose mandates are still live (SchoolOS would stop hearing about them
+    """Stop using this provider for now. Only where that is safe: not one whose mandates are still live (SkulGen would stop hearing about them
     and could not stop or debit them)."""
     _require_manager(membership)
     with transaction.atomic():
@@ -297,7 +297,7 @@ def replace_credentials(membership, connection_id, *, credentials=None) -> Manda
 
 def disconnect(membership, connection_id) -> MandateProviderConnection:
     """Wipe the credential and revoke the connection. Refused while any mandate on it is still live. The history stays. (The school revokes its
-    own keys in the provider's dashboard: SchoolOS holds none of the provider's side.)"""
+    own keys in the provider's dashboard: SkulGen holds none of the provider's side.)"""
     _require_manager(membership)
     with transaction.atomic():
         connection = get_connection(membership, connection_id, lock=True)
@@ -337,7 +337,7 @@ def webhook_setup(membership, connection_id) -> dict:
     if connection.status not in NOT_CLOSED_CONNECTION:
         raise MandateRefused("A disconnected provider has no callback.", "closed")
     if not info.capabilities.supports_webhooks:
-        raise MandateRefused(f"{info.display_name} does not send callbacks. SchoolOS asks it instead.", "no_webhooks")
+        raise MandateRefused(f"{info.display_name} does not send callbacks. SkulGen asks it instead.", "no_webhooks")
     try:
         token = open_secret(connection).get(WEBHOOK_KEY, "")
     except VaultError:

@@ -10,7 +10,7 @@ from . import constants
 
 
 class MediaAsset(models.Model):
-    """One file SchoolOS knows about: a profile photo, a Gallery photo, a staff document, a generated receipt.
+    """One file SkulGen knows about: a profile photo, a Gallery photo, a staff document, a generated receipt.
 
     The bytes themselves live in whatever `storage_provider` says (never in this row, and never in Postgres);
     this is the canonical metadata record every feature that shows or lists files reads from. `owner_type` and

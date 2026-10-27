@@ -15,9 +15,9 @@ from ..constants import (
 
 
 class MandateProviderConnection(models.Model):
-    """The SCHOOL'S OWN relationship with a direct-debit provider (Remita or Lendsqr), as SchoolOS holds it.
+    """The SCHOOL'S OWN relationship with a direct-debit provider (Remita or Lendsqr), as SkulGen holds it.
 
-    The school onboards with the provider directly, receives its own credentials and enters them here. SchoolOS uses them to make mandates
+    The school onboards with the provider directly, receives its own credentials and enters them here. SkulGen uses them to make mandates
     for payers, to send approved debit instructions and to read the provider's answers; the provider executes the debit and moves the money.
 
     A school may connect BOTH providers at once. There is no "active provider": each mandate records the connection it was made under for

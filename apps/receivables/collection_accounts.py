@@ -15,8 +15,8 @@ fees are published and the family owes again. A school can choose a different be
 collection policy (see apps.smartcollect.lifecycle). Only ACTIVE and DORMANT follow the debt automatically here; an account that is
 still being set up, was suspended by a person, or is closing or closed stays as it is.
 
-How "dormant" is enforced - the provider refusing transfers, or SchoolOS only flagging what arrives - is for a provider adapter to
-decide. If a payment arrives at a dormant or closed account and the provider confirms it, SchoolOS records that outcome and reconciles
+How "dormant" is enforced - the provider refusing transfers, or SkulGen only flagging what arrives - is for a provider adapter to
+decide. If a payment arrives at a dormant or closed account and the provider confirms it, SkulGen records that outcome and reconciles
 it like any other: it invents no rule of its own about the money.
 """
 
@@ -215,7 +215,7 @@ def mark_provisioned(account: FamilyCollectionAccount, *, actor) -> FamilyCollec
 @transaction.atomic
 def on_provider_account_event(connection, event) -> None:
     """The provider says an account it was asked to make is ready or could not be made (a Paystack dedicated-account event). Matched to the
-    account SchoolOS is waiting on by the provider's own reference or number; anything that matches nothing is ignored, never guessed."""
+    account SkulGen is waiting on by the provider's own reference or number; anything that matches nothing is ignored, never guessed."""
     waiting = FamilyCollectionAccount.objects.select_for_update().filter(connection=connection, status=AccountStatus.PROVISIONING)
     account = None
     for candidate in waiting:
@@ -300,7 +300,7 @@ def mark_closed(account: FamilyCollectionAccount, *, actor, reason: str) -> Fami
 def find_by_receiving_reference(school, provider: str, reference: str) -> FamilyCollectionAccount | None:
     """The family account a payment was made into, from the account reference the provider reported. A closed, dormant or failed account
     still identifies its family: an account number belongs to one family for good, and a payment the provider confirmed into it is that
-    family's whatever state SchoolOS holds the account in."""
+    family's whatever state SkulGen holds the account in."""
     reference = str(reference or "").strip()
     if not reference:
         return None

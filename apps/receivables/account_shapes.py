@@ -2,9 +2,9 @@
 
 Nigerian banks and collection providers do not all give the same kind of identifier: one gives a ten-digit
 account number, another a wallet or payment code, another a reference to quote alongside a shared account.
-So nothing in SchoolOS assumes an account is "ten digits". Each provider has a SHAPE that says what it calls
+So nothing in SkulGen assumes an account is "ten digits". Each provider has a SHAPE that says what it calls
 the identifier, what one may look like, and what else a payer must be told (a payment reference, a sort code,
-how to pay). A provider with no shape of its own gets the broad default below: SchoolOS only narrows it for a
+how to pay). A provider with no shape of its own gets the broad default below: SkulGen only narrows it for a
 provider that has documented its format, and never guesses one.
 
 A family may hold accounts with several providers at once (each with its own shape), and the account belongs
@@ -62,7 +62,7 @@ def _connector(provider: str):
 
 
 def label_for(provider: str) -> str:
-    """What a provider calls the number a payer uses ("Account number"). A provider SchoolOS does not
+    """What a provider calls the number a payer uses ("Account number"). A provider SkulGen does not
     know gets the plain word."""
     connector = _connector(provider)
     return connector.info.account_label if connector else GENERIC.number_label

@@ -5,7 +5,7 @@ class TransferverifyConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.transferverify"
     label = "transferverify"
-    verbose_name = "SchoolOS TransferVerify"
+    verbose_name = "SkulGen TransferVerify"
 
     def ready(self):
         from apps.sync import registry

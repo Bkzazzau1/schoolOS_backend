@@ -58,13 +58,13 @@ def sanitize_filename(name: str) -> str:
 
 
 def check_intent(*, category: str, declared_mime_type: str, declared_byte_size: int, original_filename: str, school_id) -> UploadIntent:
-    """Everything that can be decided before a single byte has arrived: is this a category SchoolOS knows about,
+    """Everything that can be decided before a single byte has arrived: is this a category SkulGen knows about,
     is the declared mime type one that category accepts, and is the declared size within its ceiling. Raises
     `UploadRefused` (never silently narrows or guesses) for anything that does not check out.
     """
     media_type = constants.media_type_for_category(category)
     if media_type is None:
-        raise UploadRefused("unknown_category", "SchoolOS does not know what this kind of file is for.")
+        raise UploadRefused("unknown_category", "SkulGen does not know what this kind of file is for.")
 
     allowed = constants.ALLOWED_MIME_TYPES.get(media_type, {})
     extension = allowed.get(declared_mime_type)

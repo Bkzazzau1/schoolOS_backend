@@ -6,14 +6,14 @@ Canonical student activation is the only authority that creates these school-use
 
 When a registration is accepted as canonical Active:
 
-- SchoolOS creates or confirms the canonical `Student` and active `StudentEnrollment`.
+- SkulGen creates or confirms the canonical `Student` and active `StudentEnrollment`.
 - A Student `User` and `Membership(role=student)` are created automatically.
 - The student's login ID is the permanent **admission number**.
 - The initial password is the student's **first name exactly as registered**.
 - The Student membership receives a private server-generated `student_class_link` record from the canonical active enrollment.
 - The registration sync payload is enriched with `canonicalActive`, `canonicalStudentId`, `credentialsProvisioned`, and `studentLoginId` only after the full transaction succeeds.
 
-An admission ID that looks exactly like an email address or Nigerian phone number is rejected because SchoolOS uses one login field for email, admission ID, and parent phone.
+An admission ID that looks exactly like an email address or Nigerian phone number is rejected because SkulGen uses one login field for email, admission ID, and parent phone.
 
 ## Parent / guardian
 
@@ -26,13 +26,13 @@ The primary guardian is provisioned in the same registration transaction:
 - `GuardianLink.account_user` links the account to the child.
 - A private server-generated `parent_family_link` sync record lists that parent's real children for that school.
 
-If another child is registered with the same verified parent phone/name, SchoolOS reuses the existing Parent user and password and adds the sibling relationship. It never resets an existing account to the first-name password.
+If another child is registered with the same verified parent phone/name, SkulGen reuses the existing Parent user and password and adds the sibling relationship. It never resets an existing account to the first-name password.
 
 A phone already bound to a different parent name is rejected for manual correction rather than silently merging families.
 
-## Existing SchoolOS accounts
+## Existing SkulGen accounts
 
-If the guardian already has a SchoolOS user (for example staff, proprietor, or a Parent from another child), the existing user/password is preserved. SchoolOS adds the Parent membership and phone login identity after identity consistency checks.
+If the guardian already has a SkulGen user (for example staff, proprietor, or a Parent from another child), the existing user/password is preserved. SkulGen adds the Parent membership and phone login identity after identity consistency checks.
 
 ## First-login security
 

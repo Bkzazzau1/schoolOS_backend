@@ -83,7 +83,7 @@ class PaymentsIntoAFamilyAccountTests(BankIntegrationCase):
     def test_a_closed_account_still_identifies_its_family_because_the_provider_confirmed_the_money(self):
         collection_accounts.close(self.account, actor=self.owner, reason="Retired")
         tx = self.into_account(10_000 * N, sender="Nobody", narration="hello")
-        # SchoolOS makes no rule of its own about money paid into a closed account: the provider says it arrived, so it is that family's.
+        # SkulGen makes no rule of its own about money paid into a closed account: the provider says it arrived, so it is that family's.
         self.assertEqual((tx.reconciliation_status, tx.family), ("matched", self.family))
         self.assertEqual(ledger.family_position(self.family).paid, 10_000 * N)
         self.assertLedgerHolds()

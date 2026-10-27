@@ -58,10 +58,10 @@ class AccountMode(models.TextChoices):
 
 class FamilyCollectionAccount(models.Model):
     """The receiving identity ONE FAMILY pays into, underneath the school's collection arrangement with a
-    provider. It is not a `BankConnection` (which is the SCHOOL'S own account being connected to SchoolOS).
+    provider. It is not a `BankConnection` (which is the SCHOOL'S own account being connected to SkulGen).
 
     The core knows nothing about how a provider implements the account. Whether "dormant" means the
-    provider rejects transfers, or SchoolOS simply flags anything that arrives, is a provider adapter's
+    provider rejects transfers, or SkulGen simply flags anything that arrives, is a provider adapter's
     decision; here it is only a status that follows what the family owes.
     """
 

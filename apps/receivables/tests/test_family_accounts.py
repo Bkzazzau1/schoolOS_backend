@@ -2,7 +2,7 @@
 number, and voiding statements.
 
 School fees are the school's own money: every account here belongs to the school's own provider connection. Nothing in this file (or
-the code it tests) involves SchoolOS's own income, which is `apps.billing`. How a family's account is MADE (the active provider, the
+the code it tests) involves SkulGen's own income, which is `apps.billing`. How a family's account is MADE (the active provider, the
 approved batch) is covered by `apps.smartcollect`; this file is about what an account is once it exists.
 """
 
@@ -53,7 +53,7 @@ class ShapeTests(ReceivablesTestCase):
         self.assertEqual(account_shapes.label_for("monnify"), "Account number")
         self.assertEqual(account_shapes.note_for("remita"), "")  # Remita is not a Smart Money Collection provider: it gets the plain word
         self.assertEqual(account_shapes.label_for("remita"), "Account number")
-        self.assertEqual(account_shapes.label_for("some-old-bank"), "Account number")  # a provider SchoolOS no longer knows: the plain word
+        self.assertEqual(account_shapes.label_for("some-old-bank"), "Account number")  # a provider SkulGen no longer knows: the plain word
 
     def test_extra_facts_for_the_payer_are_kept_tidy_and_limited(self):
         self.assertEqual(clean_details([{"label": " Payment  reference ", "value": "BG 0042"}]), [{"label": "Payment reference", "value": "BG 0042"}])

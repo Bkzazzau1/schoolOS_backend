@@ -1,4 +1,4 @@
-"""Every direct-debit provider SchoolOS supports, in one place: names, what each can do, what it needs to connect. UI code and business rules ask
+"""Every direct-debit provider SkulGen supports, in one place: names, what each can do, what it needs to connect. UI code and business rules ask
 here instead of naming providers themselves.
 
 Mandates & Direct Debit supports exactly two providers - Remita and Lendsqr - each connected with the SCHOOL'S OWN credentials, and a school may

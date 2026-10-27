@@ -171,7 +171,7 @@ class MonnifyConnector(CollectionConnector):
         webhook=WebhookSetup(
             mode="dashboard", where="Developers > Webhook URLs in your Monnify dashboard (Transaction Completion)", verification="hmac_sha512",
             events=("SUCCESSFUL_TRANSACTION",),
-            note="Monnify signs live notifications; sandbox notifications are not signed, so SchoolOS confirms each one with Monnify directly.",
+            note="Monnify signs live notifications; sandbox notifications are not signed, so SkulGen confirms each one with Monnify directly.",
         ),
         description="Family payment accounts issued as Monnify Customer Reserved Accounts, on the school's own Monnify account. Monnify requires the payer's BVN or NIN.",
         account_label="Account number",

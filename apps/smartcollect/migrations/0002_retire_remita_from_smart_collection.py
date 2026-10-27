@@ -6,8 +6,8 @@ collection account. This migration takes anything that was made under that idea 
 * (a Remita provider connection is disconnected first, by bankconnect 0005: its credential is dropped and it stops being the school's
   active provider. No other provider is switched on in its place; the school chooses one;)
 * a family's Remita account is closed (or, if the provider never gave it a number, marked failed), so the family is free to be given a
-  Paystack or Monnify account. Nothing is asked of Remita: an RRR it already issued is not cancelled by SchoolOS, and a payment made
-  to one is no longer read by SchoolOS;
+  Paystack or Monnify account. Nothing is asked of Remita: an RRR it already issued is not cancelled by SkulGen, and a payment made
+  to one is no longer read by SkulGen;
 * a collection batch that had not made accounts yet is cancelled; one that was generating stops, keeping the families that succeeded;
 * a planned provider switch that involved Remita is cancelled, and provider calls still queued for Remita are failed;
 * payments already recorded, finished batches, applied switches, and every audit row stay exactly as they were.

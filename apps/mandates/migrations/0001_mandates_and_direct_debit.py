@@ -37,7 +37,7 @@ class Migration(migrations.Migration):
                 ('status', models.CharField(choices=[('draft', 'Draft'), ('pending_consent', "Waiting for the payer's authorisation"), ('pending_activation', 'Waiting for the payer to activate it'), ('activating', 'Being activated'), ('pending_provider_setup', 'Waiting for the provider to finish setting it up'), ('active', 'Active'), ('suspended', 'Suspended'), ('cancelled', 'Cancelled'), ('expired', 'Expired'), ('failed', 'Failed')], default='draft', max_length=24)),
                 ('provider_status', models.CharField(blank=True, max_length=120)),
                 ('provider_status_code', models.CharField(blank=True, max_length=20)),
-                ('consent_route', models.CharField(choices=[('payer_app', 'In the SchoolOS app'), ('provider', 'With the provider')], default='payer_app', max_length=10)),
+                ('consent_route', models.CharField(choices=[('payer_app', 'In the SkulGen app'), ('provider', 'With the provider')], default='payer_app', max_length=10)),
                 ('maximum_amount_minor', models.BigIntegerField(blank=True, null=True)),
                 ('max_debits', models.PositiveSmallIntegerField(blank=True, null=True)),
                 ('start_date', models.DateField(blank=True, null=True)),

@@ -103,7 +103,7 @@ def _primary_guardian(student: Student) -> GuardianLink:
 
 
 def _require_dedicated_role_account(user, role: str) -> None:
-    """Never overwrite credentials belonging to another SchoolOS role/account."""
+    """Never overwrite credentials belonging to another SkulGen role/account."""
 
     has_other_school_role = Membership.objects.filter(
         user=user,
@@ -116,7 +116,7 @@ def _require_dedicated_role_account(user, role: str) -> None:
     if user.is_staff or user.is_superuser or has_other_school_role or has_account_role:
         label = "Parent" if role == Role.PARENT else "Student"
         raise CredentialManagementError(
-            f"This {label} login is shared with another SchoolOS role or account. "
+            f"This {label} login is shared with another SkulGen role or account. "
             "Do not reset or rename the shared credentials from the Student/Parent recovery workflow."
         )
 
@@ -335,7 +335,7 @@ def change_parent_phone(*, student: Student, actor: Membership, new_phone: str |
     )
     if conflict:
         raise CredentialManagementError(
-            "That phone number already belongs to another SchoolOS Parent account."
+            "That phone number already belongs to another SkulGen Parent account."
         )
 
     identities = list(

@@ -5,7 +5,7 @@ duty (a job assignment):
 
 * **provider manage** (`finance.collection_provider_manage`): the school's own Paystack / Monnify
   credentials, the webhook, the active provider and provider switches. This is the only authority that can put a
-  provider secret into SchoolOS. It is NOT implied by the Finance Office, by an Accountant title, or by billing
+  provider secret into SkulGen. It is NOT implied by the Finance Office, by an Accountant title, or by billing
   authority (`finance.billing_authority`), which decides what families owe and has nothing to do with payment secrets;
 * **policy manage** (`finance.collection_policy_manage`): the school's collection policy and its overrides;
 * **prepare** (`finance.collection_prepare`): the MAKER of a collection batch;

@@ -5,7 +5,7 @@ from django.db import models
 
 
 class Organization(models.Model):
-    """The commercial account above one or more SchoolOS school tenants.
+    """The commercial account above one or more SkulGen school tenants.
 
     An organization may represent an individual proprietor, a school group,
     company, NGO or another entity that owns/manages schools. School operational

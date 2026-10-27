@@ -1,5 +1,5 @@
 """What happens to a family's account when the family has paid everything it owes, as the school's policy says - and retiring an account at the
-provider. Nothing is ever deleted, and SchoolOS invents no rule about money arriving at an account in any state."""
+provider. Nothing is ever deleted, and SkulGen invents no rule about money arriving at an account in any state."""
 
 from datetime import timedelta
 from unittest import mock

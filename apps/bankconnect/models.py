@@ -22,11 +22,11 @@ from .constants import (
 
 
 class CollectionProviderConnection(models.Model):
-    """The SCHOOL'S OWN relationship with a collection provider (Paystack or Monnify), as SchoolOS holds it.
+    """The SCHOOL'S OWN relationship with a collection provider (Paystack or Monnify), as SkulGen holds it.
 
-    The school onboards with the provider directly, receives its own credentials and enters them here. SchoolOS uses them
+    The school onboards with the provider directly, receives its own credentials and enters them here. SkulGen uses them
     to create family collection accounts and to read the provider's signed payment events; the provider moves and settles
-    the money, and SchoolOS never receives or holds it. A school may connect several providers but exactly ONE is the
+    the money, and SkulGen never receives or holds it. A school may connect several providers but exactly ONE is the
     active collection provider (`is_active_provider`) at a time: only that one generates new family accounts.
 
     Everything here is safe to show a signed-in finance user. The credential itself exists only as `sealed_credentials`
@@ -122,7 +122,7 @@ BankConnection = CollectionProviderConnection
 
 
 class BankTransaction(models.Model):
-    """One movement on a connected account, in SchoolOS's own canonical shape - whichever bank
+    """One movement on a connected account, in SkulGen's own canonical shape - whichever bank
     or provider it came from."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

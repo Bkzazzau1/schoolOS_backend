@@ -18,7 +18,7 @@ class SchoolOSTokenSerializer(serializers.Serializer):
     def validate(self, attrs):
         identifier = attrs.get("identifier") or attrs.get("email")
         if not identifier:
-            raise AuthenticationFailed("Enter your SchoolOS login ID.")
+            raise AuthenticationFailed("Enter your SkulGen login ID.")
         user = resolve_login_user(identifier)
         if user is None or not user.is_active or not user.check_password(attrs["password"]):
             raise AuthenticationFailed("The login ID or password is not correct.")

@@ -5,7 +5,7 @@ class AcademicsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.academics"
     label = "academics"
-    verbose_name = "SchoolOS Academics"
+    verbose_name = "SkulGen Academics"
 
     def ready(self):
         from apps.sync import registry

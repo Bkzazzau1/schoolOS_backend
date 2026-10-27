@@ -1,7 +1,7 @@
 """The life of a school's collection-provider connection: connect, test, replace credentials, disable, enable, disconnect and choose
 the active provider. Every change is audited, and none of them ever returns or logs a credential.
 
-The school onboards with Paystack or Monnify DIRECTLY and enters the credentials that provider issued to it. SchoolOS verifies
+The school onboards with Paystack or Monnify DIRECTLY and enters the credentials that provider issued to it. SkulGen verifies
 them with the provider, seals them (see vault.py) and keeps only safe facts: the provider, the environment, the merchant's name and a
 masked identifier, the webhook's state and when it was last verified. It never asks for, or needs, the school's settlement bank account.
 
@@ -286,7 +286,7 @@ def _live_accounts(connection) -> int:
 
 def disable(membership, connection_id) -> CollectionProviderConnection:
     """Stop using this provider for now. Only where that is safe: not the active provider, and not one whose family accounts are still live
-    (SchoolOS would stop hearing about the payments made into them)."""
+    (SkulGen would stop hearing about the payments made into them)."""
     _require_manager(membership)
     with transaction.atomic():
         connection = get_connection(membership, connection_id, lock=True)
@@ -360,7 +360,7 @@ def replace_credentials(membership, connection_id, *, credentials=None, settings
 
 def disconnect(membership, connection_id) -> CollectionProviderConnection:
     """Wipe the credential and revoke the connection. Refused while it is the active provider or its family accounts are still live. The
-    history stays. (The school revokes its own keys in the provider's dashboard: SchoolOS holds none of the provider's side.)"""
+    history stays. (The school revokes its own keys in the provider's dashboard: SkulGen holds none of the provider's side.)"""
     _require_manager(membership)
     with transaction.atomic():
         connection = get_connection(membership, connection_id, lock=True)

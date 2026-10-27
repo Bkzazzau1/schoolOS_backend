@@ -71,7 +71,7 @@ class MeView(APIView):
                         [
                             {
                                 "key": "account_created",
-                                "label": "SchoolOS account created",
+                                "label": "SkulGen account created",
                                 "completed": True,
                             },
                             {

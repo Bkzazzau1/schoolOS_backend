@@ -240,10 +240,10 @@ class TeacherTimetableLinkHandler(EntityHandler):
     roles = frozenset()
 
     def authorize(self, ctx) -> None:
-        raise Rejected("Teacher timetable schedules are managed by the SchoolOS server.")
+        raise Rejected("Teacher timetable schedules are managed by the SkulGen server.")
 
     def clean(self, ctx):
-        raise Rejected("Teacher timetable schedules are managed by the SchoolOS server.")
+        raise Rejected("Teacher timetable schedules are managed by the SkulGen server.")
 
     def visible(self, membership, payload):
         if membership.role != Role.TEACHER:

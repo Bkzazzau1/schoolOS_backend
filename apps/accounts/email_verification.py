@@ -1,4 +1,4 @@
-"""Email verification for SchoolOS accounts.
+"""Email verification for SkulGen accounts.
 
 A short numeric code is convenient across Android, Windows and tablets. Only a
 keyed digest is stored, codes expire quickly, attempts are bounded, and mail
@@ -32,10 +32,10 @@ def _new_code() -> str:
 
 
 def _send_code_email(user, code: str) -> bool:
-    subject = "Verify your SchoolOS email"
+    subject = "Verify your SkulGen email"
     body = (
         f"Hello {user.first_name or 'there'},\n\n"
-        f"Your SchoolOS verification code is: {code}\n\n"
+        f"Your SkulGen verification code is: {code}\n\n"
         "The code expires in 15 minutes. If you did not request this, you can ignore this email.\n"
     )
     try:

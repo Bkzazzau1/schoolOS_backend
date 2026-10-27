@@ -47,7 +47,7 @@ class User(AbstractUser):
     # membership is attached to them.
     must_change_password = models.BooleanField(default=False)
 
-    # Credential-sensitive administrative actions increment this value. SchoolOS
+    # Credential-sensitive administrative actions increment this value. SkulGen
     # JWTs carry the version they were issued under, so a password reset or login
     # phone change can invalidate already-issued Student/Parent sessions.
     credential_version = models.PositiveIntegerField(default=1)
@@ -88,7 +88,7 @@ class LoginIdentityKind(models.TextChoices):
 
 
 class LoginIdentity(models.Model):
-    """A non-email credential name that resolves to one SchoolOS user.
+    """A non-email credential name that resolves to one SkulGen user.
 
     Email remains the normal account identity for proprietors/staff. Canonical
     student activation adds the admission-number identity; guardian provisioning

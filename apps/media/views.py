@@ -14,7 +14,7 @@ from .storage.local import LocalMediaStorage
 from .uploads import MediaError
 
 #: A hard ceiling on a body PUT straight to this app (local storage only - see storage/local.py's module
-#: docstring). Well above the largest category SchoolOS accepts, purely to stop an oversized request being
+#: docstring). Well above the largest category SkulGen accepts, purely to stop an oversized request being
 #: buffered into memory before `receive_body` gets a chance to compare it against the declared size.
 _MAX_DIRECT_BODY_BYTES = 220 * 1024 * 1024
 

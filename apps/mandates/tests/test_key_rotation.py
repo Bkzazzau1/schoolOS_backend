@@ -1,4 +1,4 @@
-"""Mandates & Direct Debit seals its providers' credentials and payers' bank accounts with the same key ring as the rest of SchoolOS, so rotating the key
+"""Mandates & Direct Debit seals its providers' credentials and payers' bank accounts with the same key ring as the rest of SkulGen, so rotating the key
 re-encrypts them too: new key first, run the command, and only then drop the old key."""
 
 from io import StringIO

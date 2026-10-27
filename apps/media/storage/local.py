@@ -1,8 +1,8 @@
 """Local-disk storage: development and tests only, never production (see the module docstring on `base.py`).
 
 There is no external address to hand a device a presigned URL for, so a local upload instead PUTs its bytes to
-SchoolOS's own authenticated endpoint (`views.UploadBodyView`), which calls `write_bytes` here. A download is
-streamed the same way, through SchoolOS's own authenticated endpoint - never a bare filesystem path handed to a
+SkulGen's own authenticated endpoint (`views.UploadBodyView`), which calls `write_bytes` here. A download is
+streamed the same way, through SkulGen's own authenticated endpoint - never a bare filesystem path handed to a
 client.
 """
 

@@ -40,14 +40,14 @@ class BadDebtClassification(models.Model):
     on a BAD_DEBT-status record (a later phase; see the platform-level
     TransferAlert).
 
-    SchoolOS does not decide that a debt is bad - the Proprietor, or someone
+    SkulGen does not decide that a debt is bad - the Proprietor, or someone
     they specifically authorized (see apps.owner.jobs, duty
     "finance.bad_debt_classification"), does. This record exists to make that
     human decision auditable: who classified it, when, why, and what the
     amount was understood to be at the time.
 
     There is currently no canonical Student-finance ledger anywhere in
-    SchoolOS (fee structures/payments/balances are still local-only demo
+    SkulGen (fee structures/payments/balances are still local-only demo
     data on the Flutter client with no backend behind them), so
     outstanding_amount_minor is a snapshot this record owns, not a reference
     to a ledger row that does not yet exist. current_canonical_balance_minor
@@ -443,7 +443,7 @@ class TransferVerificationRequest(models.Model):
 
 # --- The biometric layer -------------------------------------------------
 #
-# No fingerprint capture hardware or vendor SDK is integrated into SchoolOS
+# No fingerprint capture hardware or vendor SDK is integrated into SkulGen
 # today (see apps.transferverify.biometrics for the explicit design decision
 # on this). These models are the real, tenant-aware data path a future
 # capture integration will write to - consent, protected storage, revocation

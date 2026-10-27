@@ -3,7 +3,7 @@
 Four separate responsibilities, each the owner's by default and each delegable to a trusted person through a duty (a job assignment):
 
 * **provider manage** (`finance.mandate_provider_manage`): the school's own Remita / Lendsqr credentials and callbacks. The only authority
-  that can put a provider secret into SchoolOS. It is NOT implied by the Finance Office, an Accountant title, billing authority, or any
+  that can put a provider secret into SkulGen. It is NOT implied by the Finance Office, an Accountant title, billing authority, or any
   Smart Money Collection duty;
 * **manage** (`finance.mandate_manage`): start a mandate for a payer, watch it, resend activation instructions, suspend or cancel it and
   choose a family's primary mandate. It is never the payer's consent: nobody at the school can give that for them;

@@ -1,4 +1,4 @@
-# Generated manually for the SchoolOS automatic billing-cycle slice.
+# Generated manually for the SkulGen automatic billing-cycle slice.
 
 import uuid
 

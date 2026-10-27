@@ -4,7 +4,7 @@ of the brief: confirmed_match requires a fingerprint match AND a phone
 match together - never a fingerprint alone).
 
 Design decision (confirmed with the product owner before building this):
-SchoolOS has no fingerprint capture hardware or vendor biometric SDK
+SkulGen has no fingerprint capture hardware or vendor biometric SDK
 integrated today, and Flutter has no cross-platform API that produces a
 portable fingerprint template - a device's own fingerprint sensor (via
 local_auth) only unlocks that one device, it cannot hand a template to a

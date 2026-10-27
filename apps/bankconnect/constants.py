@@ -21,7 +21,7 @@ SMART_COLLECTION_DUTIES = (DUTY_PROVIDER_MANAGE, DUTY_POLICY_MANAGE, DUTY_PREPAR
 DUTY_MANAGE_CONNECTIONS = "finance.bank_connections"
 
 #: The only providers Smart Money Collection offers. The SCHOOL onboards with the provider directly (KYC),
-#: receives its own credentials and enters them into SchoolOS; the provider moves and settles the money.
+#: receives its own credentials and enters them into SkulGen; the provider moves and settles the money.
 PROVIDER_PAYSTACK = "paystack"
 PROVIDER_MONNIFY = "monnify"
 SMART_PROVIDERS = (PROVIDER_PAYSTACK, PROVIDER_MONNIFY)
@@ -52,7 +52,7 @@ class WebhookStatus(models.TextChoices):
 class ConnectionType(models.TextChoices):
     #: The school holds corporate API credentials issued by its own bank.
     DIRECT_BANK_API = "direct_bank_api", "Direct bank API"
-    #: The school authorises SchoolOS through a token; no internet-banking password is ever held.
+    #: The school authorises SkulGen through a token; no internet-banking password is ever held.
     OPEN_BANKING = "open_banking", "Open banking"
     #: A payment provider (Monnify, Paystack...) that reports collections it processed. This is
     #: *not* access to the school's underlying bank account and is never treated as such.

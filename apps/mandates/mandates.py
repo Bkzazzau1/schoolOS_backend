@@ -108,7 +108,7 @@ def is_debit_ready(mandate, *, today: date | None = None, connection=None) -> tu
         return False, "The school's connection to the provider is not working."
     connector = registry.get_connector(mandate.provider)
     if connector is None or not connector.info.capabilities.supports_manual_debit:
-        return False, f"{connector.info.display_name if connector else mandate.provider} cannot send a debit through SchoolOS yet."
+        return False, f"{connector.info.display_name if connector else mandate.provider} cannot send a debit through SkulGen yet."
     return True, ""
 
 

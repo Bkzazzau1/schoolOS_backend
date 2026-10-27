@@ -19,10 +19,10 @@ class ParentFamilyLinkHandler(EntityHandler):
     roles = frozenset()
 
     def authorize(self, ctx) -> None:
-        raise Rejected("Parent family links are managed by the SchoolOS server.")
+        raise Rejected("Parent family links are managed by the SkulGen server.")
 
     def clean(self, ctx):
-        raise Rejected("Parent family links are managed by the SchoolOS server.")
+        raise Rejected("Parent family links are managed by the SkulGen server.")
 
     def visible(self, membership, payload):
         if membership.role != Role.PARENT:

@@ -1,10 +1,10 @@
 # Subjects, Class Curriculum and Teaching Assignments
 
-This document defines the canonical SchoolOS academic-subject contract introduced after Academic Sessions, Terms, Classes and progression became authoritative.
+This document defines the canonical SkulGen academic-subject contract introduced after Academic Sessions, Terms, Classes and progression became authoritative.
 
 ## Authority chain
 
-SchoolOS treats the academic chain as:
+SkulGen treats the academic chain as:
 
 `Academic Session → Academic Class → ClassSubject → TeachingAssignment → Student Subject Eligibility`
 
@@ -112,7 +112,7 @@ The native `My Classes` screen displays this canonical metadata and derives its 
 
 ## Term changes
 
-When AcademicTerm state changes, SchoolOS republishes:
+When AcademicTerm state changes, SkulGen republishes:
 
 - active Student private profile links;
 - linked Parent family payloads;
@@ -122,7 +122,7 @@ This prevents devices from continuing to show an old current term after the scho
 
 ## Existing-school curriculum bootstrap
 
-SchoolOS does not invent a Nigerian, national or other default curriculum. Existing schools can provide an explicit JSON manifest and run:
+SkulGen does not invent a Nigerian, national or other default curriculum. Existing schools can provide an explicit JSON manifest and run:
 
 `python manage.py bootstrap_curriculum --school <school-slug-or-uuid> --session <session-code-or-uuid> --file curriculum.json`
 
@@ -201,4 +201,4 @@ Subject/catalog/curriculum edits and Principal teaching-assignment changes may b
 
 The server validates session state, school ownership, class/subject identity, Teacher membership authority, elective context and historical immutability before canonical acceptance.
 
-A server rejection remains visible through normal SchoolOS sync handling; the client must never infer authority from a locally queued record.
+A server rejection remains visible through normal SkulGen sync handling; the client must never infer authority from a locally queued record.

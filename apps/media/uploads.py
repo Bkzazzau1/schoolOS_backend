@@ -58,7 +58,7 @@ def initiate(
     if not _checksum_looks_valid(checksum_sha256):
         raise MediaError("invalid_checksum", "The file's checksum was not given properly.")
     if visibility not in Visibility.values:
-        raise MediaError("invalid_visibility", "That is not a visibility SchoolOS knows.")
+        raise MediaError("invalid_visibility", "That is not a visibility SkulGen knows.")
 
     storage = get_storage()
     asset = MediaAsset.objects.create(
@@ -85,7 +85,7 @@ def initiate(
 
 
 def receive_body(asset: MediaAsset, data: bytes) -> None:
-    """Local storage's own upload receiver: the raw bytes PUT to SchoolOS's own endpoint. Never used for
+    """Local storage's own upload receiver: the raw bytes PUT to SkulGen's own endpoint. Never used for
     S3-compatible storage, where the device PUTs straight to the object store instead."""
     if asset.status != Status.PENDING_UPLOAD:
         raise MediaError("not_pending", "This file has already been uploaded.")

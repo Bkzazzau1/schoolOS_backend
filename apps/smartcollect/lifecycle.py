@@ -3,11 +3,11 @@
 The school's policy decides (see `policy.SettlementAction`):
 
     close immediately     the account starts closing: it is retired at the provider through the job queue, then closed
-    dormant immediately   the account becomes DORMANT, straight away (what SchoolOS always did before a school chose otherwise)
+    dormant immediately   the account becomes DORMANT, straight away (what SkulGen always did before a school chose otherwise)
     wait, then dormant    SETTLED then GRACE: it waits the school's own grace period (never a number chosen here), then goes dormant
     wait, then close      the same wait, then it starts closing
     manual                it stays SETTLED until a person acts
-    provider native       it stays SETTLED and SchoolOS asks the provider for nothing: the provider's own rules govern it
+    provider native       it stays SETTLED and SkulGen asks the provider for nothing: the provider's own rules govern it
 
 Nothing is ever deleted: dormant, settled and closed accounts stay on record and still identify their family for any payment the provider
 confirms into them. If the family owes again while an account is dormant, settled or in its grace period, it is simply ACTIVE again.

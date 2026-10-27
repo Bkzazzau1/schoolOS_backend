@@ -1,6 +1,6 @@
 # Canonical Student Roster, Admissions and Enrollment
 
-SchoolOS now has one server-authoritative student domain. The native application remains offline-first, but accepted sync mutations are materialized into canonical relational records inside the same transaction.
+SkulGen now has one server-authoritative student domain. The native application remains offline-first, but accepted sync mutations are materialized into canonical relational records inside the same transaction.
 
 ## Authority model
 
@@ -16,7 +16,7 @@ AdmissionApplication
     -> Student + GuardianLink + active StudentEnrollment
 ```
 
-Only an active, billable `StudentEnrollment` contributes to the SchoolOS SaaS student meter.
+Only an active, billable `StudentEnrollment` contributes to the SkulGen SaaS student meter.
 
 The native app may show an offline registration as locally completed while it is queued. That does not mean the server has activated or billed the student. Canonical activation happens only after the sync mutation is accepted.
 

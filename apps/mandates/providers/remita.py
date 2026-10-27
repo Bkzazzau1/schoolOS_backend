@@ -2,22 +2,22 @@
 
 Written only against Remita's published API documentation (the "Remita APIs" collection at api.remita.net, section "Direct Debit (For
 Non-Financial Institutions)": Generate Mandates, Activate Mandate, Mandate Operations, Check Status and Webhook Notifications, with its Fields and
-Status Codes). Nothing here is guessed. What the documentation says, and what SchoolOS therefore does:
+Status Codes). Nothing here is guessed. What the documentation says, and what SkulGen therefore does:
 
-* a mandate is set up with `mandate/setup`; SchoolOS makes a VARIABLE mandate (`mandateType` "DD": a maximum amount and a maximum number of
+* a mandate is set up with `mandate/setup`; SkulGen makes a VARIABLE mandate (`mandateType` "DD": a maximum amount and a maximum number of
   debits), the kind a debit can be sent on when the school chooses. The hash is SHA-512 of merchantId + serviceTypeId + requestId + amount + apiKey;
-* the payer activates it in one of two ways: with a bank one-time password entered in SchoolOS (`requestAuthorization` and
+* the payer activates it in one of two ways: with a bank one-time password entered in SkulGen (`requestAuthorization` and
   `validateAuthorization`, only for the banks Remita lists, personal accounts only; the headers carry MERCHANT_ID, API_KEY, REQUEST_ID, REQUEST_TS
   and API_DETAILS_HASH = SHA-512 of apiKey + requestId + apiToken), or by printing the mandate form Remita gives and signing it for their bank;
-* `mandate/status` says whether the mandate is active; `mandate/stop` ends it (there is no documented pause, so SchoolOS offers cancel only);
+* `mandate/status` says whether the mandate is active; `mandate/stop` ends it (there is no documented pause, so SkulGen offers cancel only);
 * a debit is `mandate/payment/send` (hash: merchantId + serviceTypeId + requestId + amount + apiKey) with the payer's funding account and bank
   code, and `mandate/payment/status` asks about it by the same request id. Remita's own status code says whether it is paid: only `01` is;
 * Remita posts `ACTIVATION` and `DEBIT` notifications to a listening URL. **No signature is documented on them**, so nothing in a notification body
-  is trusted: SchoolOS asks Remita (mandate status, debit status) and its answer decides.
+  is trusted: SkulGen asks Remita (mandate status, debit status) and its answer decides.
 
 Remita's documentation gives only its demo host. The live host is not in it, so it is taken from the server's configuration
 (`MANDATES_REMITA_LIVE_BASE_URL`) and a live connection is refused until an operator sets it. Remita also requires a UAT with it before go-live.
-Where the documentation is silent or ambiguous, SchoolOS refuses rather than guesses: credentials are checked with a status query for a mandate that
+Where the documentation is silent or ambiguous, SkulGen refuses rather than guesses: credentials are checked with a status query for a mandate that
 cannot exist (documented codes: `013` invalid hash / `020` authentication error mean bad credentials, `074` no record means the hash was accepted).
 """
 
@@ -60,7 +60,7 @@ MANDATE = "/echannelsvc/echannel/mandate"
 DUMMY_MANDATE = "000000000000"
 MAX_NOTIFICATION_ITEMS = 200
 
-#: Banks whose payers can activate in SchoolOS with a one-time password (Remita's list, by name). Others use the printed, signed form.
+#: Banks whose payers can activate in SkulGen with a one-time password (Remita's list, by name). Others use the printed, signed form.
 SELF_ACTIVATION = ("214", "057", "070", "301", "101", "030", "215")
 #: The commercial banks in Remita's published Bank Codes table (General Reference > Bank Codes). The table also lists many microfinance banks.
 BANKS = (
@@ -71,7 +71,7 @@ BANKS = (
     ("301", "Jaiz Bank"), ("459", "Coronation Merchant Bank"), ("480", "Jubilee Bank"),
 )
 
-#: Remita's documented status codes for a debit, in SchoolOS's words: (outcome, failure code).
+#: Remita's documented status codes for a debit, in SkulGen's words: (outcome, failure code).
 DEBIT_CODES = {
     "01": (DebitOutcome.SUCCESS, ""),
     "069": (DebitOutcome.PENDING, ""), "070": (DebitOutcome.PENDING, ""), "071": (DebitOutcome.PENDING, ""), "072": (DebitOutcome.PENDING, ""),
@@ -109,7 +109,7 @@ def _base(environment: str) -> str:
     if not live:
         raise ProviderRejected(
             "live_not_configured",
-            "Remita's live address has not been configured on this SchoolOS server yet, so a live Remita connection cannot be made.",
+            "Remita's live address has not been configured on this SkulGen server yet, so a live Remita connection cannot be made.",
         )
     return live
 
@@ -236,7 +236,7 @@ class RemitaMandateConnector(MandateConnector):
         webhook=WebhookSetup(
             mode="dashboard", where="Give Remita the address below as the listening URL for your Direct Debit notifications", verification="requery",
             events=("ACTIVATION", "DEBIT"),
-            note="Remita does not sign its notifications, so SchoolOS confirms every one with Remita before it counts.",
+            note="Remita does not sign its notifications, so SkulGen confirms every one with Remita before it counts.",
         ),
         description="Direct debit mandates on the payer's bank account, activated with a bank one-time password or a signed form.",
         live_note="Live use needs Remita's live address (set by whoever runs this server) and a UAT with Remita.",
@@ -303,7 +303,7 @@ class RemitaMandateConnector(MandateConnector):
         )
 
     def _form_url(self, secret: dict, environment: str, mandate_ref: str, request_ref: str) -> str:
-        """Where the payer prints the mandate form (Remita's PrintMandate address), when SchoolOS knows the host for this environment."""
+        """Where the payer prints the mandate form (Remita's PrintMandate address), when SkulGen knows the host for this environment."""
         base = _form_base(environment)
         if not base:
             return ""

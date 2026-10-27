@@ -103,7 +103,7 @@ class PlanEntitlement(models.Model):
 
 
 class OrganizationSubscription(models.Model):
-    """The organization's current SchoolOS commercial state."""
+    """The organization's current SkulGen commercial state."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.OneToOneField(
@@ -208,7 +208,7 @@ class UsageSnapshot(models.Model):
 
 
 class BillingInvoice(models.Model):
-    """An immutable-priced SchoolOS SaaS invoice for one usage observation.
+    """An immutable-priced SkulGen SaaS invoice for one usage observation.
 
     Amount inputs are copied onto the invoice at issue time so later plan changes
     cannot rewrite historical charges.
@@ -352,7 +352,7 @@ class ProviderWebhookEvent(models.Model):
 class BillingCyclePolicy(models.Model):
     """Explicit automatic-billing timings for one commercial plan.
 
-    Timing fields are nullable on purpose. SchoolOS will not silently invent a
+    Timing fields are nullable on purpose. SkulGen will not silently invent a
     due date or escalation window; automatic invoicing is ready only when all
     required durations are configured by the platform operator.
     """

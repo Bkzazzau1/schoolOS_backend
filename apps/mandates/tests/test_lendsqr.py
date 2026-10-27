@@ -1,6 +1,6 @@
 """Lendsqr Direct Debit, against the shapes Lendsqr's published documentation gives (the Developer APIs pages and the Adjutor API reference): a mandate
 is made for a Lendsqr customer, the payer activates it with a transfer to a NIBSS account, and it is only debit-ready after the bank has finished
-setting it up. Lendsqr documents no way for SchoolOS to send a debit, so none is guessed. The real Lendsqr is never called."""
+setting it up. Lendsqr documents no way for SkulGen to send a debit, so none is guessed. The real Lendsqr is never called."""
 
 import json
 from datetime import date, datetime, timedelta, timezone
@@ -119,7 +119,7 @@ class LendsqrAdapterTests(MandateTestCase):
         with self.assertRaises(ProviderRejected) as caught:
             self.connector.validate_credentials(environment="live", credentials={"api_key": "x"}, settings={})
         self.assertEqual(caught.exception.code, "live_not_enabled")
-        self.assertIn("licensed", caught.exception.message)  # SchoolOS does not claim a school is eligible
+        self.assertIn("licensed", caught.exception.message)  # SkulGen does not claim a school is eligible
         with override_settings(MANDATES_LENDSQR_LIVE_ENABLED=True):
             self.connector.validate_credentials(environment="live", credentials={"api_key": "x"}, settings={})
 
@@ -272,7 +272,7 @@ class LendsqrThroughSchoolOSTests(MandateTestCase):
         ready = mandate_provider.refresh_mandate(mandate.id)
         self.assertEqual(ready.status, MandateStatus.ACTIVE)
         ok_, why = mandates.is_debit_ready(ready)
-        self.assertEqual(ok_, False)  # debit-ready at the bank, but SchoolOS cannot send a debit through Lendsqr
+        self.assertEqual(ok_, False)  # debit-ready at the bank, but SkulGen cannot send a debit through Lendsqr
         self.assertIn("cannot send a debit", why)
         batch = self.new_batch()
         item = self.item(batch, self.family)

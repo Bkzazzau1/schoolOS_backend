@@ -1,4 +1,4 @@
-"""What happens between SchoolOS and the provider over a mandate's life: asking it to make the mandate, the payer's activation, asking where it
+"""What happens between SkulGen and the provider over a mandate's life: asking it to make the mandate, the payer's activation, asking where it
 stands, and stopping it.
 
 Every provider call is made WITHOUT a transaction open and without a row lock held: the mandate is read (and, where it must be, claimed) in one short
@@ -71,7 +71,7 @@ def _purge_account(mandate, now) -> None:
 
 def apply_provider_state(mandate, provider_mandate: ProviderMandate, *, actor=None, source: str = "provider") -> bool:
     """Bring the mandate into line with what the provider says. Call it inside a transaction that holds the mandate's row. Returns whether the
-    state changed. An ended mandate is never revived, and a suspension SchoolOS made itself (for a provider with no pause) is not undone by the
+    state changed. An ended mandate is never revived, and a suspension SkulGen made itself (for a provider with no pause) is not undone by the
     provider still calling the mandate active."""
     if mandate.status in ENDED_MANDATE:
         return False
@@ -381,7 +381,7 @@ def _stop(mandate_id, membership, *, reason: str, source: str) -> DirectDebitMan
     provider_mandate = None
     if mandate.provider_mandate_reference:
         if not caps.supports_remote_cancellation:
-            raise MandateRefused("This provider cannot cancel a mandate through SchoolOS. Cancel it with the provider.", "provider_cannot_cancel")
+            raise MandateRefused("This provider cannot cancel a mandate through SkulGen. Cancel it with the provider.", "provider_cannot_cancel")
         provider_mandate = _provider_stop(mandate, "cancel_mandate")
     with transaction.atomic():
         mandate = get_locked(mandate_id)
@@ -410,8 +410,8 @@ def payer_cancel(membership, mandate_id, *, reason: str = "") -> DirectDebitMand
 
 
 def suspend(membership, mandate_id) -> DirectDebitMandate:
-    """Stop debits for now. Through the provider where it can pause a mandate; otherwise SchoolOS itself will not debit it (the provider's mandate
-    stays as it is, and SchoolOS says so)."""
+    """Stop debits for now. Through the provider where it can pause a mandate; otherwise SkulGen itself will not debit it (the provider's mandate
+    stays as it is, and SkulGen says so)."""
     if not permissions.can_manage(membership):
         raise MandateRefused("Only the owner, or someone the owner has authorised, can manage mandates.", "not_mandate_manager")
     mandate = get_mandate(membership, mandate_id)

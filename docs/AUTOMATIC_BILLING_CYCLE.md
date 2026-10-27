@@ -1,10 +1,10 @@
-# SchoolOS Automatic Billing Cycle
+# SkulGen Automatic Billing Cycle
 
 ## Purpose
 
 Automatic SaaS billing belongs to the Organization account, not to a school's finance ledger. The engine converts trusted school roster counts into an immutable organization usage snapshot, then into one immutable invoice for the billing period.
 
-The engine never derives billable students from user accounts or `schools.Membership`. A student may exist without a SchoolOS login, so login membership is not a reliable commercial meter.
+The engine never derives billable students from user accounts or `schools.Membership`. A student may exist without a SkulGen login, so login membership is not a reliable commercial meter.
 
 ## Authoritative roster meter
 
@@ -52,7 +52,7 @@ Every plan can have one `BillingCyclePolicy` with:
 - `past_due_days`
 - `grace_days`
 
-The timing values are nullable intentionally. SchoolOS does not invent commercial terms. Automatic billing remains not ready until all values are explicitly configured and the plan has a billing interval.
+The timing values are nullable intentionally. SkulGen does not invent commercial terms. Automatic billing remains not ready until all values are explicitly configured and the plan has a billing interval.
 
 ## Period behaviour
 
@@ -69,7 +69,7 @@ When automatic billing is enabled and no period exists, the cycle runner initial
 
 ### Term / custom
 
-The period dates must be explicitly set on the organization subscription. After the period is invoiced, the dates are cleared and SchoolOS waits for the next explicit term/custom period. This prevents SchoolOS from guessing school calendars.
+The period dates must be explicitly set on the organization subscription. After the period is invoiced, the dates are cleared and SkulGen waits for the next explicit term/custom period. This prevents SkulGen from guessing school calendars.
 
 ## Non-payment lifecycle
 

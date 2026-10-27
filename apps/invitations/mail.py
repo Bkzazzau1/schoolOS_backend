@@ -58,7 +58,7 @@ def _compose(invitation: StaffInvitation, url: str) -> tuple[str, str]:
         f"{school.name} has appointed you as {role}. Please complete your registration: "
         "add your details, your bank account for salary, and the documents we need.\n\n"
         f"Open this link to start:\n{url}\n\n"
-        f"It works until {expires}. If you have the SchoolOS app it opens there; "
+        f"It works until {expires}. If you have the SkulGen app it opens there; "
         "otherwise it opens a page in your browser.\n\n"
         "If you were not expecting this, you can ignore this email.\n"
     )

@@ -22,10 +22,10 @@ class MediaStorageError(Exception):
 @dataclass(frozen=True)
 class UploadInstructions:
     """How a device should get its bytes into storage. `mode` is one of:
-    - "direct": PUT the raw body to `upload_url`, one of SchoolOS's own authenticated endpoints (local storage
+    - "direct": PUT the raw body to `upload_url`, one of SkulGen's own authenticated endpoints (local storage
       only - there is no external endpoint to presign against on a developer's disk).
     - "presigned_put": PUT the raw body straight to `upload_url`, an object-store address good only for this one
-      key, for a short time, with no SchoolOS credential of any kind embedded in it or needed to use it.
+      key, for a short time, with no SkulGen credential of any kind embedded in it or needed to use it.
     """
 
     mode: str
@@ -38,11 +38,11 @@ class UploadInstructions:
 @dataclass(frozen=True)
 class DownloadInstructions:
     """How a device should read a file back. `mode` is one of:
-    - "stream": GET SchoolOS's own download endpoint again; it streams the bytes itself, after checking the
+    - "stream": GET SkulGen's own download endpoint again; it streams the bytes itself, after checking the
       requester may see this file. (Local storage; also anywhere an authenticated stream is preferred to a
       redirect.)
     - "redirect": open `url`, a short-lived presigned address at the object store good for this one file only.
-      SchoolOS's own authorisation already ran before this was issued; the URL itself needs no further token.
+      SkulGen's own authorisation already ran before this was issued; the URL itself needs no further token.
     """
 
     mode: str
@@ -76,7 +76,7 @@ class MediaStorage(ABC):
 
     @abstractmethod
     def write_bytes(self, storage_key: str, data: bytes, *, mime_type: str) -> None:
-        """Store bytes SchoolOS itself produced (a thumbnail; local storage's own upload receiver). Never used for
+        """Store bytes SkulGen itself produced (a thumbnail; local storage's own upload receiver). Never used for
         an original upload of unknown size from a device - that goes straight to the backend, see initiate_upload."""
 
     @abstractmethod

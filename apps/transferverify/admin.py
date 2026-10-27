@@ -31,7 +31,7 @@ admin.site.register(BadDebtEvent)
 
 @admin.register(SchoolProprietorAssociation)
 class SchoolProprietorAssociationAdmin(admin.ModelAdmin):
-    """Associations are created and verified by SchoolOS staff here - a
+    """Associations are created and verified by SkulGen staff here - a
     school only ever joins one afterwards, through the live join-request API
     an association administrator then approves."""
 

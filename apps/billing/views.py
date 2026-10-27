@@ -41,12 +41,12 @@ def _organization_membership(
     if membership is None:
         raise PermissionDenied("You do not have access to this organization.")
     if billing_authority and not can_manage_billing(membership.role):
-        raise PermissionDenied("Your organization role does not manage SchoolOS billing.")
+        raise PermissionDenied("Your organization role does not manage SkulGen billing.")
     return membership
 
 
 class PlanListView(APIView):
-    """Read-only public plan catalog for signed-in SchoolOS accounts."""
+    """Read-only public plan catalog for signed-in SkulGen accounts."""
 
     def get(self, request):
         plans = (
