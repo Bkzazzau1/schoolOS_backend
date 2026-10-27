@@ -250,6 +250,14 @@ ANDROID_CERT_SHA256 = env.list("ANDROID_CERT_SHA256", default=[])
 
 if not DEBUG:
     SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
+    # A real deployment terminates TLS at a reverse proxy or load balancer in front of this
+    # process, so Django itself only ever sees plain HTTP; without this, SECURE_SSL_REDIRECT
+    # treats every request as insecure and redirects it right back to itself. Only safe when
+    # that proxy is trusted to set (or strip any client-supplied) X-Forwarded-Proto itself,
+    # which every standard one (nginx, Caddy, ALB, Cloudflare) does. Set
+    # TRUST_PROXY_SSL_HEADER=False if this process ever receives TLS directly instead.
+    if env.bool("TRUST_PROXY_SSL_HEADER", default=True):
+        SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)
