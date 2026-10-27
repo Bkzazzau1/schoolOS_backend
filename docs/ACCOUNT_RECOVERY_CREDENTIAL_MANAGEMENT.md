@@ -8,16 +8,26 @@ SchoolOS automatically provisions Student and Parent accounts from canonical reg
 
 - Student login ID: permanent admission ID.
 - Parent login ID: normalized Nigerian phone number.
-- Proprietor/staff email login remains unchanged.
+- Proprietor/staff login ID: email address. Recovers itself directly (below); it never routes through a school office.
 - A school-provisioned Student/Parent account starts with the person's first name as a temporary password and must replace it on first sign-in.
 
-## Forgotten password
+## Forgotten password: Student and Parent (school-office mediated)
 
 `POST /api/v1/credentials/recovery/request/`
 
 The public endpoint always returns the same accepted response. It does not disclose whether an account exists. For a valid Student admission ID or Parent phone identity, SchoolOS creates a pending recovery request for the linked school office(s).
 
 Recovery requests are rate-limited both per opaque identifier and by a broad network ceiling suitable for shared school networks.
+
+## Forgotten password: Proprietor and staff (self-service by email)
+
+A Student or Parent account has no verified channel of its own, so its recovery goes through a human at the school office (above). A Proprietor or staff account signs in with its own verified email address, which is a channel on its own — no office needs to be involved.
+
+`POST /api/v1/credentials/password-reset/request/` with `{"email": "..."}`. Always returns the same accepted response, disclosing nothing about whether the account exists. If the email belongs to a real, active account that was never provisioned with a Student admission or Parent phone login identity, a 6-digit code is emailed to it (same shape as email verification: `apps.accounts.email_verification`). Resending is capped by a short cooldown, independent of the broader rate limit.
+
+`POST /api/v1/credentials/password-reset/confirm/` with `{"email": "...", "code": "123456", "newPassword": "..."}`. A wrong code counts against a 5-attempt ceiling before the code is dead outright; an expired or already-used code is refused the same way. A successful reset sets the new password directly (no temporary-password/must-change-password step, since the person chose it deliberately), increments `credential_version` to revoke any other already-issued sessions, and clears the code so it cannot be replayed.
+
+Both endpoints are rate-limited per email address and by a broad network ceiling.
 
 ## School-office management
 
