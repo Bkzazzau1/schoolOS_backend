@@ -23,6 +23,12 @@ Copy-Item .env.example .env              # once; DEBUG=True for local work
 
 - Admin: <http://127.0.0.1:8000/admin/> (create a superuser with
   `manage.py createsuperuser` to use it).
+- Platform-operator console: <http://127.0.0.1:8000/console/> — every
+  organization across the whole platform, their real subscription status and
+  plan, schools, invoices and audit history, with "set status"/"set plan"
+  actions. Gated by the same `is_staff` superuser account as `/admin/`, not by
+  any school or organization role — this is SkulGen's own side, not a
+  school's. See `apps/console/`.
 - Health check: <http://127.0.0.1:8000/api/v1/health/>
 - Android emulator reaches this machine at `http://10.0.2.2:8000`.
 

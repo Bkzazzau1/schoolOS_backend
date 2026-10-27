@@ -177,6 +177,59 @@ def require_school_provisioning(
     return subscription
 
 
+@transaction.atomic
+def admin_set_status(
+    subscription: OrganizationSubscription, new_status: str, *, actor_user, source: str
+) -> OrganizationSubscription:
+    """A platform operator forcing a subscription's status directly (the console; also
+    usable anywhere else an operator-driven change is needed). Audited the same way
+    apps.billing.admin's own save_model already is, so both paths show up in the one
+    SubscriptionEvent history."""
+
+    if new_status not in SubscriptionStatus.values:
+        raise ValidationError({"status": "That is not a real subscription status."})
+    subscription = OrganizationSubscription.objects.select_for_update().get(pk=subscription.pk)
+    previous = subscription.status
+    if previous == new_status:
+        return subscription
+    subscription.status = new_status
+    subscription.save(update_fields=["status", "updated_at"])
+    SubscriptionEvent.objects.create(
+        subscription=subscription,
+        event="admin_status_changed",
+        from_status=previous,
+        to_status=new_status,
+        detail={"adminUserId": str(actor_user.id), "adminEmail": actor_user.email, "source": source},
+    )
+    return subscription
+
+
+@transaction.atomic
+def admin_set_plan(
+    subscription: OrganizationSubscription, new_plan: Plan, *, actor_user, source: str
+) -> OrganizationSubscription:
+    subscription = OrganizationSubscription.objects.select_for_update().get(pk=subscription.pk)
+    previous_plan_id = subscription.plan_id
+    if previous_plan_id == new_plan.id:
+        return subscription
+    subscription.plan = new_plan
+    subscription.save(update_fields=["plan", "updated_at"])
+    SubscriptionEvent.objects.create(
+        subscription=subscription,
+        event="admin_plan_changed",
+        from_status=subscription.status,
+        to_status=subscription.status,
+        detail={
+            "adminUserId": str(actor_user.id),
+            "adminEmail": actor_user.email,
+            "source": source,
+            "fromPlanId": str(previous_plan_id) if previous_plan_id else None,
+            "toPlanId": str(new_plan.id),
+        },
+    )
+    return subscription
+
+
 def can_manage_billing(role: str) -> bool:
     return role in {
         OrganizationRole.OWNER,

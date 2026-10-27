@@ -1,0 +1,44 @@
+{% extends "console/base.html" %}
+{% load console_extras %}
+{% block title %}SkulGen console{% endblock %}
+{% block content %}
+<h1>Platform overview</h1>
+
+<div class="stat-grid">
+  <div class="stat"><div class="n">{{ total_organizations }}</div><div class="label">Organizations</div></div>
+  <div class="stat"><div class="n">{{ total_schools }}</div><div class="label">Schools</div></div>
+</div>
+
+<div class="card" style="margin-top: 1.25rem;">
+  <h2>By subscription status</h2>
+  <div class="stat-grid">
+    {% for row in status_counts %}
+      <div class="stat">
+        <div class="n">{{ row.count }}</div>
+        <div class="label"><span class="pill {{ row.status|status_tone }}">{{ row.label }}</span></div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Needs attention ({{ needs_attention|length }})</h2>
+  {% if needs_attention %}
+    <table>
+      <thead><tr><th>Organization</th><th>Plan</th><th>Status</th><th>Updated</th></tr></thead>
+      <tbody>
+      {% for subscription in needs_attention %}
+        <tr>
+          <td><a class="row-link" href="{% url 'console:organization_detail' subscription.organization_id %}">{{ subscription.organization.name }}</a></td>
+          <td>{{ subscription.plan.name|default:"-" }}</td>
+          <td><span class="pill {{ subscription.status|status_tone }}">{{ subscription.get_status_display }}</span></td>
+          <td class="muted">{{ subscription.updated_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">Nothing needs attention right now.</p>
+  {% endif %}
+</div>
+{% endblock %}

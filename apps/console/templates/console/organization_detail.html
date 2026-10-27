@@ -1,0 +1,102 @@
+{% extends "console/base.html" %}
+{% load console_extras %}
+{% block title %}{{ organization.name }} · SkulGen console{% endblock %}
+{% block content %}
+<p><a class="row-link muted" href="{% url 'console:organizations' %}">&larr; Organizations</a></p>
+<h1>{{ organization.name }}</h1>
+
+<div class="card">
+  <h2>Subscription</h2>
+  <table>
+    <tr><th>Status</th><td><span class="pill {{ subscription.status|status_tone }}">{{ subscription.get_status_display }}</span>
+      &nbsp;<span class="muted">(access: {{ access_mode }})</span></td></tr>
+    <tr><th>Plan</th><td>{{ subscription.plan.name|default:"-" }}</td></tr>
+    <tr><th>Current period</th><td>{{ subscription.current_period_start|date:"Y-m-d"|default:"-" }} to {{ subscription.current_period_end|date:"Y-m-d"|default:"-" }}</td></tr>
+    <tr><th>Grace ends</th><td>{{ subscription.grace_ends_at|date:"Y-m-d H:i"|default:"-" }}</td></tr>
+    <tr><th>Provider</th><td>{{ subscription.provider|default:"-" }}</td></tr>
+  </table>
+
+  <div class="action-row">
+    <form method="post" class="inline">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="set_status">
+      <select name="status">
+        {% for status, label in status_choices %}
+          <option value="{{ status }}" {% if status == subscription.status %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Set status</button>
+    </form>
+
+    <form method="post" class="inline">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="set_plan">
+      <select name="plan_id">
+        {% for plan in plans %}
+          <option value="{{ plan.id }}" {% if subscription.plan_id == plan.id %}selected{% endif %}>{{ plan.name }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Set plan</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Schools ({{ schools|length }})</h2>
+  {% if schools %}
+    <table>
+      <thead><tr><th>Name</th><th>Type</th></tr></thead>
+      <tbody>
+      {% for school in schools %}
+        <tr><td>{{ school.name }}</td><td>{{ school.school_type }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No schools yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Invoices</h2>
+  {% if invoices %}
+    <table>
+      <thead><tr><th>Number</th><th>Status</th><th>Due</th><th>Amount due</th><th>Paid</th></tr></thead>
+      <tbody>
+      {% for invoice in invoices %}
+        <tr>
+          <td>{{ invoice.number }}</td>
+          <td>{{ invoice.get_status_display }}</td>
+          <td>{{ invoice.due_at|date:"Y-m-d"|default:"-" }}</td>
+          <td>{{ invoice.amount_due_minor|money:invoice.currency }}</td>
+          <td>{{ invoice.amount_paid_minor|money:invoice.currency }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No invoices yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>History</h2>
+  {% if events %}
+    <table>
+      <thead><tr><th>Event</th><th>From</th><th>To</th><th>When</th></tr></thead>
+      <tbody>
+      {% for event in events %}
+        <tr>
+          <td>{{ event.event }}</td>
+          <td>{{ event.from_status|default:"-" }}</td>
+          <td>{{ event.to_status|default:"-" }}</td>
+          <td class="muted">{{ event.at|date:"Y-m-d H:i" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No history yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

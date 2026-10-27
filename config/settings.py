@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.credentials",
     "apps.organizations",
     "apps.billing",
+    "apps.console",
     "apps.schools",
     "apps.students",
     "apps.academics",
