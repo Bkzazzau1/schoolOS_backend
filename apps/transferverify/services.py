@@ -65,9 +65,15 @@ def _student(school, value):
 
 
 def _loaded(school, external_id, *, lock=False):
-    query = BadDebtClassification.objects.select_related("student", "classified_by__user", "resolved_by__user")
-    if lock:
-        query = query.select_for_update()
+    # No select_related while locking: resolved_by is a nullable FK, so joining
+    # resolved_by__user would make this a LEFT OUTER JOIN, and Postgres refuses
+    # FOR UPDATE on the nullable side of one. The related objects lazy-load
+    # wherever they are actually read.
+    query = (
+        BadDebtClassification.objects.select_for_update()
+        if lock
+        else BadDebtClassification.objects.select_related("student", "classified_by__user", "resolved_by__user")
+    )
     item = query.filter(school=school, external_id=external_id).first()
     if item is None:
         raise Rejected("This bad debt classification does not exist.")
