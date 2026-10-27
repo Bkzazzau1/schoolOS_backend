@@ -19,6 +19,7 @@ Base URL: `/api/v1/`. Everything except the invitation link and sign-in needs a 
 | A6 | Show the server's message whenever a change is refused (422) | Every feature relies on this |
 | A7 | Stop trusting anything the server owns | Statuses, "who did it", "when", account links and totals now come from the server. Show what comes back after the next pull |
 | A8 | Forgot password, on the sign-in screen | Proprietor/staff (email login): `POST credentials/password-reset/request/` `{email}`, then `POST credentials/password-reset/confirm/` `{email, code, newPassword}` — always show the same accepted message after the request step, never "no such account". Student/Parent (admission ID/phone login): `POST credentials/recovery/request/` `{identifier}` instead; no code is emailed, since the office resolves it. `docs/ACCOUNT_RECOVERY_CREDENTIAL_MANAGEMENT.md` |
+| A9 | Sign out | Call `POST auth/logout/` `{refresh}` with the device's own refresh token before discarding stored tokens, so that token cannot be replayed if it leaked. This signs out this device only; it does not touch any other signed-in device. |
 
 **Contract note for the sender.** The server remembers its answer to every mutation id, so sending the same id again gets
 the same answer even if the payload changed. A change edited after it was first sent, or edited after it was refused, must

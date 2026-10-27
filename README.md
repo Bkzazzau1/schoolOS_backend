@@ -50,7 +50,10 @@ Tests: `.\.venv\Scripts\python manage.py test`
 | --- | --- | --- |
 | `GET  health/` | none | Liveness |
 | `POST auth/token/` | none | `{email, password}` returns `{access, refresh}` |
-| `POST auth/token/refresh/` | none | `{refresh}` returns a new `{access, refresh}` |
+| `POST auth/token/refresh/` | none | `{refresh}` returns a new `{access, refresh}`, blacklisting the one spent |
+| `POST auth/logout/` | Bearer | `{refresh}` blacklists that one session; others are unaffected |
+| `POST credentials/password-reset/request/` | none | `{email}` emails a reset code to a Proprietor/staff account |
+| `POST credentials/password-reset/confirm/` | none | `{email, code, newPassword}` sets it and revokes every other session |
 | `GET  me/` | Bearer | The person and their memberships |
 | `POST sync/push/` | Bearer | Applies one queued change |
 | `GET  owner/schools/{school}/records/{type}/` | Bearer, owner only | The owner's records of one kind |
