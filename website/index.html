@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SkulGen — The Intelligent Operating System for Education</title>
+<meta name="description" content="SkulGen is the intelligent operating system for schools: attendance, fees, academics, communication and more, across every school you run, online or off.">
+<link rel="icon" href="assets/favicon.ico">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #082D5B;
+    --teal: #00C896;
+    --blue: #3B82F6;
+    --mint: #E8F8F0;
+    --off-white: #F5F7FA;
+    --slate: #172B4D;
+    --muted: #5A6B85;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Poppins", system-ui, sans-serif; color: var(--slate); background: #fff; line-height: 1.55; }
+  a { color: inherit; }
+  img { max-width: 100%; display: block; }
+  .wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.5rem; }
+
+  header { position: sticky; top: 0; background: rgba(255,255,255,.92); backdrop-filter: blur(6px); border-bottom: 1px solid #eceef2; z-index: 10; }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: .85rem 0; }
+  .nav img { height: 34px; width: auto; }
+  .nav a.link { text-decoration: none; font-weight: 500; font-size: .95rem; color: var(--slate); margin-left: 1.75rem; }
+  .nav .links { display: flex; align-items: center; }
+  @media (max-width: 640px) { .nav .links { display: none; } }
+
+  .button { display: inline-block; padding: .85rem 1.6rem; border-radius: .6rem; font-weight: 600; text-decoration: none; font-size: .98rem; }
+  .button.primary { background: var(--teal); color: #fff; }
+  .button.primary:hover { background: #00b385; }
+  .button.ghost { background: transparent; color: var(--navy); border: 1.5px solid #d8dde6; }
+  .button.ghost:hover { border-color: var(--navy); }
+
+  .hero { background: linear-gradient(180deg, var(--mint) 0%, #fff 72%); padding: 5rem 0 4.5rem; text-align: center; }
+  .hero h1 { font-size: clamp(2rem, 4.4vw, 3.1rem); font-weight: 800; color: var(--navy); margin: 0 0 1rem; letter-spacing: -0.01em; }
+  .hero p.lede { font-size: 1.18rem; color: var(--muted); max-width: 42rem; margin: 0 auto 2.1rem; }
+  .hero .ctas { display: flex; gap: .9rem; justify-content: center; flex-wrap: wrap; }
+
+  section.section { padding: 4.5rem 0; }
+  .eyebrow { color: var(--teal); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: .8rem; margin-bottom: .6rem; }
+  h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 700; color: var(--navy); margin: 0 0 .75rem; }
+  .section-head { max-width: 38rem; margin: 0 auto 3rem; text-align: center; }
+  .section-head p { color: var(--muted); font-size: 1.05rem; margin: 0; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1.5rem; }
+  .card { background: var(--off-white); border-radius: 1rem; padding: 1.8rem 1.6rem; }
+  .card .mark { width: 2.6rem; height: 2.6rem; border-radius: .7rem; display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem; margin-bottom: 1rem; background: linear-gradient(135deg, var(--blue), var(--teal)); color: #fff; }
+  .card h3 { margin: 0 0 .5rem; font-size: 1.08rem; color: var(--navy); }
+  .card p { margin: 0; color: var(--muted); font-size: .95rem; }
+
+  .brand-promise { background: var(--navy); color: #fff; border-radius: 1.25rem; padding: 3rem 2.2rem; text-align: center; }
+  .brand-promise h2 { color: #fff; }
+  .brand-promise p { color: #cfe0ff; max-width: 40rem; margin: 0 auto; font-size: 1.05rem; }
+
+  .platforms { display: flex; gap: .7rem; justify-content: center; flex-wrap: wrap; margin-top: 1.6rem; }
+  .pill { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: .4rem 1rem; font-size: .88rem; }
+
+  .cta { text-align: center; }
+  .cta .button { margin-top: .5rem; }
+
+  footer { border-top: 1px solid #eceef2; padding: 2.5rem 0; }
+  footer .row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+  footer img { height: 24px; }
+  footer .muted { color: var(--muted); font-size: .88rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a href="#top"><img src="assets/logo-horizontal.png" alt="SkulGen"></a>
+    <nav class="links">
+      <a class="link" href="#features">Features</a>
+      <a class="link" href="#schools">For Schools</a>
+      <a class="link" href="#contact">Contact</a>
+      <a class="link button primary" href="mailto:hello@skulgen.com">Get in touch</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <h1>The intelligent operating system<br>for your school.</h1>
+      <p class="lede">Attendance, fees, academics and communication for every school you run — in one place, built for how Nigerian schools actually work, online or off.</p>
+      <div class="ctas">
+        <a class="button primary" href="mailto:hello@skulgen.com">Get in touch</a>
+        <a class="button ghost" href="#features">See what's included</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Everything a school office needs</div>
+        <h2>One system, every part of running a school</h2>
+        <p>Each role — proprietor, administrator, teacher, finance, parent — gets exactly the workspace they need, with nothing invented and nothing hidden.</p>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="mark">🏫</div>
+          <h3>Multi-school management</h3>
+          <p>Run one school or a whole group from a single account, with real limits and plans that grow with you.</p>
+        </div>
+        <div class="card">
+          <div class="mark">₦</div>
+          <h3>Fees &amp; payments</h3>
+          <p>Bill in naira, collect through Paystack and Monnify, and see exactly who has paid and who is overdue — no guessing.</p>
+        </div>
+        <div class="card">
+          <div class="mark">📚</div>
+          <h3>Academics &amp; report cards</h3>
+          <p>Classes, subjects, results and report cards, kept consistent from term to term.</p>
+        </div>
+        <div class="card">
+          <div class="mark">✅</div>
+          <h3>Attendance, built in</h3>
+          <p>Daily attendance for students and staff, recorded once and reported on everywhere it matters.</p>
+        </div>
+        <div class="card">
+          <div class="mark">💬</div>
+          <h3>Real communication</h3>
+          <p>Proprietors, staff and parents reach each other directly inside the app — not through a separate group chat.</p>
+        </div>
+        <div class="card">
+          <div class="mark">📶</div>
+          <h3>Works offline</h3>
+          <p>Built offline-first from day one: record it on the device, and it syncs the moment there's a connection.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="schools">
+    <div class="wrap">
+      <div class="brand-promise">
+        <h2>Your school, your name, your logo.</h2>
+        <p>Every school on SkulGen runs under its own identity — its own name and logo, everywhere staff, students and parents actually use the app. SkulGen is the engine underneath; it's never what your families see.</p>
+        <div class="platforms">
+          <span class="pill">Android</span>
+          <span class="pill">iPhone &amp; iPad</span>
+          <span class="pill">Windows</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section cta" id="contact">
+    <div class="wrap">
+      <div class="eyebrow">For proprietors &amp; school groups</div>
+      <h2>Ready to see SkulGen running your school?</h2>
+      <p style="color:var(--muted); max-width:34rem; margin:0 auto 1.2rem;">Tell us about your school and we'll get you set up.</p>
+      <a class="button primary" href="mailto:hello@skulgen.com">hello@skulgen.com</a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="assets/logo-horizontal.png" alt="SkulGen">
+    <span class="muted">© 2026 SkulGen. All rights reserved.</span>
+  </div>
+</footer>
+
+</body>
+</html>
