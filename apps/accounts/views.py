@@ -1,7 +1,9 @@
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.organizations.services import serialize_organization_membership
@@ -84,6 +86,33 @@ class ProprietorRegisterView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class LogoutView(APIView):
+    """Sign out of one session: this refresh token (and any access token
+    derived from it, within its own short remaining lifetime) stops working.
+
+    To sign out of every session at once instead, reset the password
+    (apps.credentials.password_reset): that revokes immediately everywhere by
+    incrementing credential_version, rather than waiting on one token's own
+    lifetime.
+    """
+
+    def post(self, request):
+        raw = request.data.get("refresh")
+        if not isinstance(raw, str) or not raw:
+            raise ValidationError({"refresh": "A refresh token is required."})
+        try:
+            token = RefreshToken(raw)
+        except TokenError as exc:
+            raise ValidationError({"refresh": "That refresh token is not valid."}) from exc
+        if str(token.payload.get("user_id")) != str(request.user.id):
+            raise ValidationError({"refresh": "That refresh token does not belong to this account."})
+        try:
+            token.blacklist()
+        except TokenError as exc:
+            raise ValidationError({"refresh": "That refresh token is not valid."}) from exc
+        return Response({"loggedOut": True}, status=status.HTTP_200_OK)
 
 
 class EmailVerificationSendView(APIView):

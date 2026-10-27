@@ -5,6 +5,7 @@ from .views import (
     EmailVerificationConfirmView,
     EmailVerificationSendView,
     InitialPasswordChangeView,
+    LogoutView,
     ProprietorRegisterView,
     SchoolOSTokenView,
 )
@@ -16,4 +17,5 @@ urlpatterns = [
     path("password/initial-change/", InitialPasswordChangeView.as_view()),
     path("token/", SchoolOSTokenView.as_view()),
     path("token/refresh/", TokenRefreshView.as_view()),
+    path("logout/", LogoutView.as_view()),
 ]
