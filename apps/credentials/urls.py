@@ -3,6 +3,8 @@ from django.urls import path
 from .views import (
     ParentCredentialResetView,
     ParentPhoneChangeView,
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
     PublicRecoveryRequestView,
     SchoolRecoveryRequestDismissView,
     SchoolRecoveryRequestListView,
@@ -12,6 +14,8 @@ from .views import (
 
 urlpatterns = [
     path("credentials/recovery/request/", PublicRecoveryRequestView.as_view()),
+    path("credentials/password-reset/request/", PasswordResetRequestView.as_view()),
+    path("credentials/password-reset/confirm/", PasswordResetConfirmView.as_view()),
     path(
         "schools/<uuid:school_id>/credentials/recovery/",
         SchoolRecoveryRequestListView.as_view(),

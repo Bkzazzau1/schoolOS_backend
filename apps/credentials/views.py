@@ -10,6 +10,7 @@ from apps.schools.models import Role
 from apps.students.models import GuardianLink, Student
 
 from .models import CredentialRecoveryRequest, RecoveryStatus
+from .password_reset import confirm_password_reset, request_password_reset
 from .services import (
     CredentialManagementError,
     change_parent_phone,
@@ -20,7 +21,12 @@ from .services import (
     reset_student_credentials,
     serialize_recovery_request,
 )
-from .throttles import RecoveryIdentifierThrottle, RecoveryNetworkThrottle
+from .throttles import (
+    PasswordResetConfirmThrottle,
+    PasswordResetRequestThrottle,
+    RecoveryIdentifierThrottle,
+    RecoveryNetworkThrottle,
+)
 
 
 _MANAGER_ROLES = {Role.PROPRIETOR, Role.ADMINISTRATOR}
@@ -87,6 +93,48 @@ class PublicRecoveryRequestView(APIView):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class PasswordResetRequestView(APIView):
+    """Email a reset code to an email-login (Staff/Proprietor) account.
+
+    Always accepted, without disclosing whether the account exists. A Student
+    or Parent login identity is never eligible here: see
+    PublicRecoveryRequestView for that school-office-mediated path.
+    """
+
+    authentication_classes = ()
+    permission_classes = (AllowAny,)
+    throttle_classes = (PasswordResetRequestThrottle, RecoveryNetworkThrottle)
+
+    def post(self, request):
+        request_password_reset(request.data.get("email"))
+        return Response(
+            {
+                "accepted": True,
+                "message": (
+                    "If that email belongs to a SchoolOS staff or proprietor account, "
+                    "a reset code has been sent to it."
+                ),
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    """Confirm a reset code and set a new password."""
+
+    authentication_classes = ()
+    permission_classes = (AllowAny,)
+    throttle_classes = (PasswordResetConfirmThrottle, RecoveryNetworkThrottle)
+
+    def post(self, request):
+        result = confirm_password_reset(
+            request.data.get("email"),
+            request.data.get("code"),
+            request.data.get("newPassword"),
+        )
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class SchoolRecoveryRequestListView(APIView):

@@ -60,6 +60,15 @@ class User(AbstractUser):
     email_verification_sent_at = models.DateTimeField(null=True, blank=True)
     email_verification_attempts = models.PositiveSmallIntegerField(default=0)
 
+    # Forgotten-password recovery for an email-login (Staff/Proprietor) account: a
+    # short code sent to this same address, the same shape as email verification
+    # above. Student and Parent accounts sign in with an admission ID or phone and
+    # recover through the school office instead (apps.credentials.services).
+    password_reset_code_hash = models.CharField(max_length=64, blank=True)
+    password_reset_expires_at = models.DateTimeField(null=True, blank=True)
+    password_reset_sent_at = models.DateTimeField(null=True, blank=True)
+    password_reset_attempts = models.PositiveSmallIntegerField(default=0)
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS: list[str] = []
 
