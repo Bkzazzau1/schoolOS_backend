@@ -120,3 +120,46 @@ class LoginIdentity(models.Model):
 
     def __str__(self):
         return f"{self.kind} · {self.identifier}"
+
+
+class DevicePlatform(models.TextChoices):
+    ANDROID = "android", "Android"
+    IOS = "ios", "iOS"
+    WINDOWS = "windows", "Windows"
+    WEB = "web", "Web"
+
+
+class DeviceToken(models.Model):
+    """One push-notification token for one signed-in device.
+
+    Keyed on the account (``User``), not a school membership: the same phone has
+    one real push channel no matter how many school roles its owner holds (see
+    ``apps.notifications.models.Notification``'s own docstring on a person
+    having a separate inbox per membership - push does not follow that split).
+    ``token`` is globally unique because it names one physical app install, not
+    one account; registering a token already pointed at a different account
+    (a shared device changing hands) reassigns it rather than erroring, since
+    the old account could never genuinely use it again anyway.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="device_tokens",
+    )
+    platform = models.CharField(max_length=16, choices=DevicePlatform.choices)
+    token = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["token"], name="unique_device_token"),
+        ]
+        indexes = [
+            models.Index(fields=["user", "platform"], name="device_token_user_platform_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.platform} · {self.user_id}"

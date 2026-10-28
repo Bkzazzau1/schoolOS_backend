@@ -2,6 +2,8 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
+    DeviceTokenRegisterView,
+    DeviceTokenUnregisterView,
     EmailVerificationConfirmView,
     EmailVerificationSendView,
     InitialPasswordChangeView,
@@ -18,4 +20,6 @@ urlpatterns = [
     path("token/", SchoolOSTokenView.as_view()),
     path("token/refresh/", TokenRefreshView.as_view()),
     path("logout/", LogoutView.as_view()),
+    path("device-tokens/", DeviceTokenRegisterView.as_view()),
+    path("device-tokens/unregister/", DeviceTokenUnregisterView.as_view()),
 ]

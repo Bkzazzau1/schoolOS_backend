@@ -10,6 +10,7 @@ from apps.organizations.services import serialize_organization_membership
 
 from .authentication import SchoolOSTokenSerializer, complete_initial_password
 from .email_verification import confirm_email_verification, issue_email_verification
+from .models import DevicePlatform, DeviceToken
 from .onboarding import register_proprietor_account
 from .throttles import (
     EmailVerificationConfirmThrottle,
@@ -113,6 +114,45 @@ class LogoutView(APIView):
         except TokenError as exc:
             raise ValidationError({"refresh": "That refresh token is not valid."}) from exc
         return Response({"loggedOut": True}, status=status.HTTP_200_OK)
+
+
+class DeviceTokenRegisterView(APIView):
+    """POST auth/device-tokens/ {"token": "...", "platform": "android"}
+
+    Registers this device for push notifications on the signed-in account. If
+    the same physical token is already registered to a different account (a
+    shared device signed out of one account and into another), it is
+    reassigned here rather than refused - the old account could never
+    genuinely push to it again anyway.
+    """
+
+    def post(self, request):
+        token = request.data.get("token")
+        platform = request.data.get("platform")
+        if not isinstance(token, str) or not token.strip():
+            raise ValidationError({"token": "A device token is required."})
+        if platform not in DevicePlatform.values:
+            raise ValidationError({"platform": "A valid platform is required."})
+        DeviceToken.objects.update_or_create(
+            token=token.strip(), defaults={"user": request.user, "platform": platform},
+        )
+        return Response({"registered": True}, status=status.HTTP_200_OK)
+
+
+class DeviceTokenUnregisterView(APIView):
+    """POST auth/device-tokens/unregister/ {"token": "..."}
+
+    Stops push to this device - called on sign-out, so a shared or resold
+    device stops receiving a previous account's notifications. Only ever
+    removes the caller's own token.
+    """
+
+    def post(self, request):
+        token = request.data.get("token")
+        if not isinstance(token, str) or not token.strip():
+            raise ValidationError({"token": "A device token is required."})
+        DeviceToken.objects.filter(token=token.strip(), user=request.user).delete()
+        return Response({"unregistered": True}, status=status.HTTP_200_OK)
 
 
 class EmailVerificationSendView(APIView):

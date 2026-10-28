@@ -206,6 +206,12 @@ PAYSTACK_SECRET_KEY = env("PAYSTACK_SECRET_KEY", default="")
 PAYSTACK_API_BASE_URL = env("PAYSTACK_API_BASE_URL", default="https://api.paystack.co")
 PAYSTACK_CALLBACK_URL = env("PAYSTACK_CALLBACK_URL", default="")
 
+# Push notifications (apps.notifications.push_delivery), via Firebase Cloud Messaging. Both
+# unset until a real Firebase project exists; until then every push send honestly refuses
+# rather than pretending to have reached a device.
+FIREBASE_PROJECT_ID = env("FIREBASE_PROJECT_ID", default="")
+FIREBASE_CREDENTIALS_JSON = env("FIREBASE_CREDENTIALS_JSON", default="")
+
 # Bank / collection-provider connections (apps.bankconnect). Provider credentials are sealed
 # with these keys before they reach the database: newest key first, older keys stay listed
 # until every record has been re-sealed. With no key the app refuses to store a credential.
