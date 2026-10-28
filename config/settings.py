@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "apps.structure",
     "apps.payroll",
     "apps.concessions",
+    "apps.financeledger",
     "apps.dashboards",
     "apps.schoollife",
     "apps.administration",
