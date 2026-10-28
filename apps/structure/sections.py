@@ -3,9 +3,10 @@ from typing import Any
 from apps.core.errors import Rejected
 from apps.core.validation import integer, text
 from apps.schools.models import Role
+from apps.sync.models import SyncRecord
 from apps.sync.registry import EntityHandler, MutationContext
 
-from .constants import SECTION
+from .constants import CAMPUS, SECTION
 
 
 class SectionHandler(EntityHandler):
@@ -25,11 +26,16 @@ class SectionHandler(EntityHandler):
         p = ctx.payload
         if text(p, "id", max_len=128) != ctx.entity_id:
             raise Rejected("id must match the record.")
+        campus_id = text(p, "campusId", max_len=128, required=False)
+        if campus_id and not SyncRecord.objects.filter(
+            school=ctx.membership.school, entity_type=CAMPUS, entity_id=campus_id, deleted=False
+        ).exists():
+            raise Rejected("Choose a real campus.")
         return {
             "id": ctx.entity_id,
             "name": text(p, "name", max_len=120),
             "stage": text(p, "stage", max_len=60),
-            "campus": text(p, "campus", max_len=120),
+            "campusId": campus_id or None,
             "leaderTitle": text(p, "leaderTitle", max_len=120, required=False),
             "leaderName": text(p, "leaderName", max_len=120, required=False),
             "classes": integer(p, "classes", maximum=500),

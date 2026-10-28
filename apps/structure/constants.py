@@ -3,6 +3,7 @@
 SECTION = "academic_section"
 APPOINTMENT = "leadership_appointment"
 APPEARANCE = "school_appearance"
+CAMPUS = "campus"
 
 #: The one appearance record a school has.
 APPEARANCE_ID = "theme"

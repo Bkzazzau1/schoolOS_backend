@@ -2,6 +2,7 @@
 
 from .appearance import AppearanceHandler
 from .appointments import AppointmentHandler
+from .campuses import CampusHandler
 from .sections import SectionHandler
 
-HANDLERS = [SectionHandler(), AppointmentHandler(), AppearanceHandler()]
+HANDLERS = [CampusHandler(), SectionHandler(), AppointmentHandler(), AppearanceHandler()]
