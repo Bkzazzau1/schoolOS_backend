@@ -85,6 +85,21 @@ class GuardedFieldTests(ModuleTestCase):
             self.ok(self.push(spec.entity_type, "g1", sample(spec, "g1", visibility="publicShowcase", note="typo"), operation="update",
                               who=self.members["administrator"] if spec is campus.GALLERY else self.owner))
 
+    def test_only_leadership_can_declare_a_day_a_holiday(self):
+        spec = calendar.EVENTS
+        teacher = self.members["teacher"]
+        self.ok(self.send(spec, teacher, "e1"))
+        self.rejected(self.push(spec.entity_type, "e1", sample(spec, "e1", type="holiday"), operation="update", who=teacher), "type")
+        self.ok(self.push(spec.entity_type, "e1", sample(spec, "e1", type="holiday"), operation="update", who=self.members["administrator"]))
+        self.assertEqual(self.stored_of(spec, "e1")["type"], "holiday")
+        # Once it is a holiday, an unrelated edit by the same teacher does not need leadership again.
+        self.ok(self.push(spec.entity_type, "e1", sample(spec, "e1", type="holiday", note="moved venue"), operation="update", who=teacher))
+
+    def test_a_new_event_cannot_arrive_already_a_holiday(self):
+        spec = calendar.EVENTS
+        self.rejected(self.send(spec, self.members["teacher"], payload=sample(spec, type="holiday")), "type")
+        self.ok(self.send(spec, self.members["administrator"], "ok-1", payload=sample(spec, "ok-1", type="holiday")))
+
     def test_only_office_staff_settle_a_lost_item_claim(self):
         spec = campus.LOST_FOUND
         parent = self.members["parent"]
