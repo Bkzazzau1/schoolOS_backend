@@ -4,11 +4,18 @@ from apps.sync.models import SyncRecord
 SECTION = "academic_section"
 POST = "leadership_appointment"
 LOOK = "school_appearance"
+CAMPUS = "campus"
 PNG_MAGIC = bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
 
 
+def campus(id="kaduna", **over):
+    body = {"id": id, "name": "Kaduna Campus"}
+    body.update(over)
+    return body
+
+
 def section(id="primary", **over):
-    body = {"id": id, "name": "Primary School", "stage": "Primary", "campus": "Kaduna Campus",
+    body = {"id": id, "name": "Primary School", "stage": "Primary", "campusId": "kaduna",
             "leaderTitle": "Headmistress", "leaderName": "Mrs. Hauwa Sule", "classes": 6}
     body.update(over)
     return body
@@ -24,6 +31,7 @@ def post(id="L-001", **over):
 class StructureTestCase(StaffTestCase):
     def setUp(self):
         super().setUp()
+        self.ok(self.push(CAMPUS, "kaduna", campus()))
         self.ok(self.push(SECTION, "primary", section()))
         self.ok(self.push(SECTION, "secondary", section("secondary", name="Secondary School", stage="Secondary")))
         self.ok(self.push(POST, "L-001", post()))
@@ -31,6 +39,32 @@ class StructureTestCase(StaffTestCase):
     def add(self, id, **over):
         body = post(id, level="deputy", title="Deputy", person="Mr. Deputy", reportsTo="L-001")
         return self.push(POST, id, {**body, **over})
+
+
+class CampusTests(StructureTestCase):
+    def test_only_the_owner_changes_the_structure(self):
+        for role in ("principal", "administrator", "accountant", "teacher", "staff", "parent", "student"):
+            self.rejected(self.push(CAMPUS, "x", campus("x"), who=self.members[role]))
+        self.assertEqual(self.push(CAMPUS, "x", campus("x"), who=self.other_owner, school=self.school).status_code, 403)
+
+    def test_it_is_cleaned_and_stamped_by_the_server(self):
+        stored = self.stored(CAMPUS, "kaduna").payload
+        self.assertEqual(stored["updatedByMembershipId"], str(self.owner.id))
+        self.assertTrue(stored["updatedAt"])
+        self.ok(self.push(CAMPUS, "kaduna", campus(name="Kaduna Main Campus", evil="x"), operation="update"))
+        stored = self.stored(CAMPUS, "kaduna").payload
+        self.assertEqual((stored["name"], "evil" in stored), ("Kaduna Main Campus", False))
+
+    def test_bad_campuses_are_refused(self):
+        for over in ({"id": "other"}, {"name": ""}, {"name": "x" * 121}):
+            self.rejected(self.push(CAMPUS, "bad", {**campus("bad"), **over}))
+
+    def test_a_campus_cannot_be_deleted(self):
+        self.rejected(self.push(CAMPUS, "kaduna", operation="delete"))
+
+    def test_a_conflicting_edit_is_reported(self):
+        response = self.push(CAMPUS, "kaduna", campus(), operation="update", base_version=99)
+        self.assertEqual(response.status_code, 409)
 
 
 class SectionTests(StructureTestCase):
@@ -48,9 +82,19 @@ class SectionTests(StructureTestCase):
         self.assertEqual((stored["classes"], "evil" in stored, stored["updatedByMembershipId"]), (7, False, str(self.owner.id)))
 
     def test_bad_sections_are_refused(self):
-        for over in ({"id": "other"}, {"name": ""}, {"stage": ""}, {"campus": ""}, {"classes": -1}, {"classes": "6"},
+        for over in ({"id": "other"}, {"name": ""}, {"stage": ""}, {"classes": -1}, {"classes": "6"},
                      {"classes": 501}, {"name": "x" * 121}):
             self.rejected(self.push(SECTION, "bad", {**section("bad"), **over}))
+
+    def test_a_section_needs_no_campus_but_a_given_one_must_be_real(self):
+        self.ok(self.push(SECTION, "bad", section("bad", campusId="")))
+        self.assertIsNone(self.stored(SECTION, "bad").payload["campusId"])
+        self.rejected(self.push(SECTION, "worse", section("worse", campusId="ghost")), "real campus")
+
+    def test_a_section_cannot_use_another_schools_campus(self):
+        # "kaduna" is real, but only in self.school (set up above) - not in other_school.
+        self.rejected(self.push(SECTION, "bad", section("bad", campusId="kaduna"),
+                                 who=self.other_owner, school=self.other_school), "real campus")
 
     def test_a_section_cannot_be_deleted(self):
         self.rejected(self.push(SECTION, "primary", operation="delete"))
@@ -74,7 +118,7 @@ class AppointmentTests(StructureTestCase):
         self.rejected(self.push(POST, "L-003", post("L-003", sectionId="")))
 
     def test_the_section_must_be_this_schools_own(self):
-        self.ok(self.push(SECTION, "primary", section(), who=self.other_owner, school=self.other_school))
+        self.ok(self.push(SECTION, "primary", section(campusId=""), who=self.other_owner, school=self.other_school))
         self.ok(self.push(POST, "L-001", post(), who=self.other_owner, school=self.other_school))
         self.assertEqual(self.stored(POST, "L-001", school=self.other_school).payload["person"], "Mrs. Hauwa Sule")
         self.rejected(self.push(POST, "L-020", post("L-020", sectionId="nowhere"), who=self.other_owner, school=self.other_school))
@@ -194,9 +238,11 @@ class WhoReadsItTests(StructureTestCase):
         found = self.client.get("/api/v1/sync/pull/", {"school": str(self.school.id)}).json()["records"]
         return {r["entityType"] for r in found}
 
-    def test_everyone_receives_the_sections_and_the_look(self):
+    def test_everyone_receives_the_sections_the_campuses_and_the_look(self):
         for role in ("proprietor", "principal", "administrator", "accountant", "teacher", "staff", "parent", "student"):
-            self.assertGreaterEqual(self.kinds(self.members[role]) & {SECTION, LOOK}, {SECTION, LOOK}, role)
+            self.assertGreaterEqual(
+                self.kinds(self.members[role]) & {SECTION, CAMPUS, LOOK}, {SECTION, CAMPUS, LOOK}, role
+            )
 
     def test_appointments_go_to_the_people_who_work_there(self):
         for role in ("proprietor", "principal", "administrator", "accountant", "teacher", "staff"):
