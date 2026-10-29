@@ -1,17 +1,24 @@
 """Term-based billing periods, from the school's own academic calendar.
 
 SkulGen's primary subscription period is the academic term. These helpers turn a school's
-real AcademicTerm records into billing-period boundaries - never an invented or guessed date.
-Only single-school organizations are handled here; a multi-school organization needs
-per-school invoice lines (Phase C, priority four), not built yet, so callers get a clear
-BillingCycleNotReady instead of a combined or arbitrary period.
+real AcademicTerm/AcademicSession records into billing-period boundaries - never an invented
+or guessed date.
+
+A subscription has exactly one current_period_start/current_period_end pair, so a
+multi-school organization's TERM-interval billing period cannot yet follow each school's own
+independent calendar (that needs a per-school period, not a per-subscription one - a schema
+change, not built yet). Pricing is already correctly per-school for a multi-school
+organization (see pricing.fixed_fees_for_subscription_period); only the TERM period itself -
+used only to decide when the next cycle run is due - still requires exactly one active school,
+so callers get a clear BillingCycleNotReady instead of a guess at whose calendar should govern.
+MONTHLY and ANNUAL periods never depended on a school's calendar and are unaffected.
 """
 
 from datetime import datetime, time, timedelta
 
 from django.utils import timezone
 
-from apps.academics.models import AcademicTerm
+from apps.academics.models import AcademicSession, AcademicTerm
 from apps.schools.models import School
 
 from .exceptions import BillingCycleNotReady
@@ -41,6 +48,21 @@ def active_term_for_school(school: School, *, as_of_date):
     return (
         AcademicTerm.objects.filter(
             session__school=school,
+            starts_on__lte=as_of_date,
+            ends_on__gte=as_of_date,
+        )
+        .order_by("-starts_on")
+        .first()
+    )
+
+
+def active_session_for_school(school: School, *, as_of_date):
+    """The academic session covering this date - how annual billing knows how many real terms
+    a session has, instead of assuming a fixed count."""
+
+    return (
+        AcademicSession.objects.filter(
+            school=school,
             starts_on__lte=as_of_date,
             ends_on__gte=as_of_date,
         )

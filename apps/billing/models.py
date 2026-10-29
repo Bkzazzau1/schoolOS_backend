@@ -291,6 +291,11 @@ class BillingInvoiceLine(models.Model):
     bracket_max_students = models.PositiveIntegerField(null=True, blank=True)
     pricing_bracket_id = models.UUIDField(null=True, blank=True)
     enterprise_agreement_id = models.UUIDField(null=True, blank=True)
+    #: Pre-discount amount and term count this line covers (annual payments only). For an
+    #: ordinary per-term line, gross_fee_minor == fixed_fee_minor and discount_minor == 0.
+    gross_fee_minor = models.PositiveBigIntegerField(default=0)
+    discount_minor = models.PositiveBigIntegerField(default=0)
+    term_count = models.PositiveSmallIntegerField(null=True, blank=True)
     period_start = models.DateTimeField(null=True, blank=True)
     period_end = models.DateTimeField(null=True, blank=True)
     metadata = models.JSONField(default=dict, blank=True)

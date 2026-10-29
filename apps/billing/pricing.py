@@ -9,7 +9,7 @@ EnterpriseAgreement, has no safely invented price - PricingPolicyUndefined is ra
 caller can surface that as an explicit decision rather than silently charging something.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from django.db import models as django_models
 from django.db import transaction
@@ -17,7 +17,14 @@ from django.utils import timezone
 
 from apps.schools.models import School
 
-from .models import EnterpriseAgreement, PricingAuditEvent, PricingBracket
+from .academic_periods import active_session_for_school
+from .models import BillingInterval, EnterpriseAgreement, PricingAuditEvent, PricingBracket
+
+#: The approved annual-payment discount: 10% off, kept as a numerator/denominator pair so the
+#: rounding rule (truncate toward zero - the discount is never less generous than advertised)
+#: is explicit at every call site that uses it.
+ANNUAL_DISCOUNT_NUMERATOR = 9
+ANNUAL_DISCOUNT_DENOMINATOR = 10
 
 
 class PricingPolicyUndefined(Exception):
@@ -31,13 +38,16 @@ class OverlappingBracketError(Exception):
 
 @dataclass(frozen=True)
 class FeeResult:
-    fixed_fee_minor: int
+    fixed_fee_minor: int  # the net amount actually owed
     currency: str
     source: str  # "bracket" or "enterprise"
     bracket_id: str | None
     enterprise_agreement_id: str | None
     min_students: int | None
     max_students: int | None
+    gross_fee_minor: int = 0  # pre-discount amount; equals fixed_fee_minor when no discount applies
+    discount_minor: int = 0
+    term_count: int | None = None  # how many terms gross_fee_minor covers (annual payments only)
 
 
 def _time_window_q(as_of, *, from_field: str, until_field: str):
@@ -95,6 +105,8 @@ def fixed_fee_for_school(school, *, billable_student_count: int, as_of=None) -> 
             enterprise_agreement_id=None,
             min_students=bracket.min_students,
             max_students=bracket.max_students,
+            gross_fee_minor=bracket.fixed_fee_minor,
+            term_count=1,
         )
 
     agreement = active_enterprise_agreement_for(school, as_of=as_of)
@@ -107,6 +119,8 @@ def fixed_fee_for_school(school, *, billable_student_count: int, as_of=None) -> 
             enterprise_agreement_id=str(agreement.id),
             min_students=None,
             max_students=None,
+            gross_fee_minor=agreement.fixed_fee_minor,
+            term_count=1,
         )
 
     raise PricingPolicyUndefined(
@@ -114,6 +128,32 @@ def fixed_fee_for_school(school, *, billable_student_count: int, as_of=None) -> 
         "this school has no authorized enterprise agreement on file. Configure one before "
         "billing it; SkulGen never auto-prices an enterprise school."
     )
+
+
+def annual_fee_for_school(school, *, billable_student_count: int, as_of=None) -> FeeResult:
+    """The discounted annual fee for one full academic session, from the session's own real
+    term count - never an assumed number of terms. 10% off the sum of what this school's
+    per-term fixed-bracket fee would be for every term in its current session, truncated
+    toward zero to the nearest kobo (so the discount is never less generous than advertised).
+    """
+
+    as_of = as_of or timezone.now()
+    session = active_session_for_school(school, as_of_date=as_of.date())
+    if session is None:
+        raise PricingPolicyUndefined(
+            "No active academic session is configured for this school. Annual pricing needs "
+            "the session's real term count; SkulGen will not assume one."
+        )
+    term_count = session.terms.count()
+    if term_count < 1:
+        raise PricingPolicyUndefined(
+            "This school's active academic session has no terms configured yet."
+        )
+
+    per_term = fixed_fee_for_school(school, billable_student_count=billable_student_count, as_of=as_of)
+    gross = per_term.fixed_fee_minor * term_count
+    net = (gross * ANNUAL_DISCOUNT_NUMERATOR) // ANNUAL_DISCOUNT_DENOMINATOR
+    return replace(per_term, fixed_fee_minor=net, gross_fee_minor=gross, discount_minor=gross - net, term_count=term_count)
 
 
 @dataclass(frozen=True)
@@ -138,6 +178,8 @@ def fixed_fees_for_subscription_period(subscription, snapshot) -> list[SchoolFee
 
     as_of = snapshot.period_end or timezone.now()
     school_meters = (snapshot.metadata or {}).get("schoolMeters")
+    plan = subscription.plan
+    fee_for = annual_fee_for_school if (plan and plan.billing_interval == BillingInterval.ANNUAL) else fixed_fee_for_school
 
     if not school_meters:
         if snapshot.active_school_count != 1:
@@ -148,7 +190,7 @@ def fixed_fees_for_subscription_period(subscription, snapshot) -> list[SchoolFee
             )
         school = School.objects.get(organization=subscription.organization, is_active=True)
         count = snapshot.billable_student_count or 0
-        return [SchoolFee(school_id=str(school.id), billable_student_count=count, fee=fixed_fee_for_school(school, billable_student_count=count, as_of=as_of))]
+        return [SchoolFee(school_id=str(school.id), billable_student_count=count, fee=fee_for(school, billable_student_count=count, as_of=as_of))]
 
     not_ready = [detail["schoolId"] for detail in school_meters if not detail.get("ready")]
     if not_ready:
@@ -160,7 +202,7 @@ def fixed_fees_for_subscription_period(subscription, snapshot) -> list[SchoolFee
     for detail in school_meters:
         school = schools_by_id[detail["schoolId"]]
         count = detail["count"]
-        results.append(SchoolFee(school_id=detail["schoolId"], billable_student_count=count, fee=fixed_fee_for_school(school, billable_student_count=count, as_of=as_of)))
+        results.append(SchoolFee(school_id=detail["schoolId"], billable_student_count=count, fee=fee_for(school, billable_student_count=count, as_of=as_of)))
     return results
 
 

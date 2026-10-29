@@ -467,6 +467,8 @@ def _issue_period_invoice_locked(
     except PricingPolicyUndefined as problem:
         raise BillingCycleNotReady(str(problem)) from problem
     amount_due = sum(sf.fee.fixed_fee_minor for sf in school_fees)
+    gross_total = sum(sf.fee.gross_fee_minor for sf in school_fees)
+    discount_total = sum(sf.fee.discount_minor for sf in school_fees)
     currency = school_fees[0].fee.currency
     due_at = now + timedelta(days=policy.invoice_due_days)
     invoice = BillingInvoice.objects.create(
@@ -492,6 +494,8 @@ def _issue_period_invoice_locked(
             "automatic": True,
             "pricingMode": "fixed_bracket",
             "schoolCount": len(school_fees),
+            "grossAmountMinor": gross_total,
+            "discountMinor": discount_total,
         },
     )
     BillingInvoiceLine.objects.bulk_create(
@@ -506,6 +510,9 @@ def _issue_period_invoice_locked(
             bracket_max_students=sf.fee.max_students,
             pricing_bracket_id=sf.fee.bracket_id,
             enterprise_agreement_id=sf.fee.enterprise_agreement_id,
+            gross_fee_minor=sf.fee.gross_fee_minor,
+            discount_minor=sf.fee.discount_minor,
+            term_count=sf.fee.term_count,
             period_start=snapshot.period_start,
             period_end=snapshot.period_end,
         )
