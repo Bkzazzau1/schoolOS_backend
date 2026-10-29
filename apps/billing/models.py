@@ -262,6 +262,53 @@ class BillingInvoice(models.Model):
         return f"{self.number} · {self.organization} · {self.status}"
 
 
+class BillingInvoiceLine(models.Model):
+    """One school's own charge within a multi-school organization's invoice.
+
+    Pricing is determined separately for each school (never by combining every school's
+    enrollment into one bracket), so every invoice - including a single-school organization's -
+    carries one line per active school. Fields are copied at issue time, the same as
+    BillingInvoice's own amount fields, so a later bracket-price change or re-enrollment never
+    rewrites a line already issued.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invoice = models.ForeignKey(
+        BillingInvoice,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    school = models.ForeignKey(
+        "schools.School",
+        on_delete=models.PROTECT,
+        related_name="billing_invoice_lines",
+    )
+    billable_student_count = models.PositiveIntegerField()
+    currency = models.CharField(max_length=3)
+    fixed_fee_minor = models.PositiveBigIntegerField()
+    pricing_source = models.CharField(max_length=16)  # "bracket" or "enterprise"
+    bracket_min_students = models.PositiveIntegerField(null=True, blank=True)
+    bracket_max_students = models.PositiveIntegerField(null=True, blank=True)
+    pricing_bracket_id = models.UUIDField(null=True, blank=True)
+    enterprise_agreement_id = models.UUIDField(null=True, blank=True)
+    period_start = models.DateTimeField(null=True, blank=True)
+    period_end = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["school__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["invoice", "school"],
+                name="unique_billing_invoice_line_per_school",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.invoice.number} · {self.school} · {self.fixed_fee_minor} {self.currency}"
+
+
 class PaymentAttempt(models.Model):
     """One server-created attempt to pay one invoice through a provider."""
 

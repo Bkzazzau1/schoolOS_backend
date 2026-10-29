@@ -59,7 +59,8 @@ class InvoiceGenerationTests(BillingTestCase):
         self.assertEqual(invoice.amount_due_minor, 4_000_000)
         self.assertEqual(invoice.status, InvoiceStatus.OPEN)
         self.assertEqual(invoice.metadata["pricingMode"], "fixed_bracket")
-        self.assertEqual(invoice.metadata["pricingSource"], "bracket")
+        line = invoice.lines.get()
+        self.assertEqual((line.school_id, line.billable_student_count, line.fixed_fee_minor, line.pricing_source), (self.school.id, 12, 4_000_000, "bracket"))
 
     def test_a_school_with_zero_billable_students_is_never_silently_invoiced(self):
         self.set_plan(base_amount_minor=1_000_000)

@@ -116,25 +116,52 @@ def fixed_fee_for_school(school, *, billable_student_count: int, as_of=None) -> 
     )
 
 
-def fixed_fee_for_subscription_period(subscription, snapshot) -> FeeResult:
-    """The fixed fee for one organization's billing period, from its authoritative usage
-    snapshot. Only single-school organizations are priced here; an organization with more
-    than one active school needs per-school invoice lines, not yet implemented, so this
-    raises PricingPolicyUndefined rather than combining their enrollments into one bracket -
-    which the approved commercial model explicitly forbids (Phase C, priority four)."""
+@dataclass(frozen=True)
+class SchoolFee:
+    school_id: str
+    billable_student_count: int
+    fee: FeeResult
 
-    if snapshot.active_school_count != 1:
+
+def fixed_fees_for_subscription_period(subscription, snapshot) -> list[SchoolFee]:
+    """Each active school's own fee for one organization's billing period - always determined
+    per school, never by combining every school's enrollment into one bracket (Phase C,
+    section 7). A single-school organization gets a one-entry list.
+
+    The automatic cycle path captures each school's own authoritative count in the usage
+    snapshot's metadata (see cycle._capture_period_usage_locked); that per-school detail is
+    what makes multi-school pricing possible here. The manual/console path
+    (services.capture_usage_snapshot) only ever records one organization-wide count, so it can
+    only safely price a single-school organization - raising PricingPolicyUndefined, not
+    guessing, for anything else.
+    """
+
+    as_of = snapshot.period_end or timezone.now()
+    school_meters = (snapshot.metadata or {}).get("schoolMeters")
+
+    if not school_meters:
+        if snapshot.active_school_count != 1:
+            raise PricingPolicyUndefined(
+                f"This organization has {snapshot.active_school_count} active schools. This usage "
+                "snapshot has no per-school breakdown, so only a single-school organization can be "
+                "safely priced from it."
+            )
+        school = School.objects.get(organization=subscription.organization, is_active=True)
+        count = snapshot.billable_student_count or 0
+        return [SchoolFee(school_id=str(school.id), billable_student_count=count, fee=fixed_fee_for_school(school, billable_student_count=count, as_of=as_of))]
+
+    not_ready = [detail["schoolId"] for detail in school_meters if not detail.get("ready")]
+    if not_ready:
         raise PricingPolicyUndefined(
-            f"This organization has {snapshot.active_school_count} active schools. Fixed-bracket "
-            "pricing is determined per school; multi-school organizations need per-school invoice "
-            "lines, which are not implemented yet. Configure that before billing this organization."
+            f"Not every active school has an authoritative roster count yet ({len(not_ready)} missing)."
         )
-    school = School.objects.get(organization=subscription.organization, is_active=True)
-    return fixed_fee_for_school(
-        school,
-        billable_student_count=snapshot.billable_student_count or 0,
-        as_of=snapshot.period_end or timezone.now(),
-    )
+    schools_by_id = {str(s.id): s for s in School.objects.filter(id__in=[detail["schoolId"] for detail in school_meters])}
+    results = []
+    for detail in school_meters:
+        school = schools_by_id[detail["schoolId"]]
+        count = detail["count"]
+        results.append(SchoolFee(school_id=detail["schoolId"], billable_student_count=count, fee=fixed_fee_for_school(school, billable_student_count=count, as_of=as_of)))
+    return results
 
 
 def _ranges_overlap(a_min: int, a_max: int | None, b_min: int, b_max: int | None) -> bool:

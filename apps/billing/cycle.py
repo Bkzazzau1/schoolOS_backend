@@ -13,6 +13,7 @@ from .models import (
     BillingCyclePolicy,
     BillingInterval,
     BillingInvoice,
+    BillingInvoiceLine,
     InvoiceStatus,
     OrganizationSubscription,
     SchoolBillingMeterSnapshot,
@@ -20,7 +21,7 @@ from .models import (
     SubscriptionStatus,
     UsageSnapshot,
 )
-from .pricing import PricingPolicyUndefined, fixed_fee_for_subscription_period
+from .pricing import PricingPolicyUndefined, fixed_fees_for_subscription_period
 
 
 AUTOMATIC_ACCESS_STATUSES = {
@@ -462,17 +463,18 @@ def _issue_period_invoice_locked(
     plan = subscription.plan
     students = snapshot.billable_student_count or 0
     try:
-        fee = fixed_fee_for_subscription_period(subscription, snapshot)
+        school_fees = fixed_fees_for_subscription_period(subscription, snapshot)
     except PricingPolicyUndefined as problem:
         raise BillingCycleNotReady(str(problem)) from problem
-    amount_due = fee.fixed_fee_minor
+    amount_due = sum(sf.fee.fixed_fee_minor for sf in school_fees)
+    currency = school_fees[0].fee.currency
     due_at = now + timedelta(days=policy.invoice_due_days)
     invoice = BillingInvoice.objects.create(
         organization=subscription.organization,
         subscription=subscription,
         usage_snapshot=snapshot,
         number=f"SOS-{now:%Y%m%d}-{uuid.uuid4().hex[:10].upper()}",
-        currency=fee.currency,
+        currency=currency,
         base_amount_minor=amount_due,
         student_unit_amount_minor=0,
         billable_student_count=students,
@@ -489,12 +491,25 @@ def _issue_period_invoice_locked(
             "usageSource": snapshot.source,
             "automatic": True,
             "pricingMode": "fixed_bracket",
-            "pricingSource": fee.source,
-            "pricingBracketId": fee.bracket_id,
-            "enterpriseAgreementId": fee.enterprise_agreement_id,
-            "bracketMinStudents": fee.min_students,
-            "bracketMaxStudents": fee.max_students,
+            "schoolCount": len(school_fees),
         },
+    )
+    BillingInvoiceLine.objects.bulk_create(
+        BillingInvoiceLine(
+            invoice=invoice,
+            school_id=sf.school_id,
+            billable_student_count=sf.billable_student_count,
+            currency=sf.fee.currency,
+            fixed_fee_minor=sf.fee.fixed_fee_minor,
+            pricing_source=sf.fee.source,
+            bracket_min_students=sf.fee.min_students,
+            bracket_max_students=sf.fee.max_students,
+            pricing_bracket_id=sf.fee.bracket_id,
+            enterprise_agreement_id=sf.fee.enterprise_agreement_id,
+            period_start=snapshot.period_start,
+            period_end=snapshot.period_end,
+        )
+        for sf in school_fees
     )
     SubscriptionEvent.objects.create(
         subscription=subscription,
@@ -507,6 +522,7 @@ def _issue_period_invoice_locked(
             "amountMinor": amount_due,
             "currency": invoice.currency,
             "billableStudents": students,
+            "schoolCount": len(school_fees),
             "dueAt": due_at.isoformat(),
         },
     )
