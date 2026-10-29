@@ -23,6 +23,7 @@ from .models import (
     UsageSnapshot,
     WebhookProcessingStatus,
 )
+from .pricing import PricingPolicyUndefined, fixed_fee_for_subscription_period
 from .providers import PaymentProviderError, provider_for
 
 BASELINE_PLAN_CODE = "standard"
@@ -426,16 +427,20 @@ def issue_latest_usage_invoice(organization: Organization) -> BillingInvoice:
         return existing
 
     students = snapshot.billable_student_count or 0
-    amount_due = plan.base_amount_minor + (plan.student_unit_amount_minor * students)
+    try:
+        fee = fixed_fee_for_subscription_period(subscription, snapshot)
+    except PricingPolicyUndefined as problem:
+        raise ValidationError({"message": str(problem)}) from problem
+    amount_due = fee.fixed_fee_minor
     now = timezone.now()
     invoice = BillingInvoice.objects.create(
         organization=organization,
         subscription=subscription,
         usage_snapshot=snapshot,
         number=f"SOS-{now:%Y%m%d}-{uuid.uuid4().hex[:10].upper()}",
-        currency=plan.currency,
-        base_amount_minor=plan.base_amount_minor,
-        student_unit_amount_minor=plan.student_unit_amount_minor,
+        currency=fee.currency,
+        base_amount_minor=amount_due,
+        student_unit_amount_minor=0,
         billable_student_count=students,
         amount_due_minor=amount_due,
         amount_paid_minor=0 if amount_due else amount_due,
@@ -448,6 +453,12 @@ def issue_latest_usage_invoice(organization: Organization) -> BillingInvoice:
             "planCode": plan.code,
             "billingInterval": plan.billing_interval,
             "usageSource": snapshot.source,
+            "pricingMode": "fixed_bracket",
+            "pricingSource": fee.source,
+            "pricingBracketId": fee.bracket_id,
+            "enterpriseAgreementId": fee.enterprise_agreement_id,
+            "bracketMinStudents": fee.min_students,
+            "bracketMaxStudents": fee.max_students,
         },
     )
     SubscriptionEvent.objects.create(

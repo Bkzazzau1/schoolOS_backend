@@ -47,23 +47,26 @@ class InvoiceGenerationTests(BillingTestCase):
         self.subscription.current_period_end = cutoff
         self.subscription.save(update_fields=["current_period_start", "current_period_end"])
 
-    def test_the_existing_per_student_calculation_is_exactly_preserved(self):
+    def test_new_invoices_are_priced_by_fixed_bracket_not_per_student(self):
+        # base_amount_minor/student_unit_amount_minor are set deliberately: if either still
+        # influenced the amount, this would fail - the fixed-bracket fee is all that matters now.
         self.set_plan(base_amount_minor=1_000_000, student_unit_amount_minor=50_000)
-        self.add_billable_students(self.school, 12)
+        self.add_billable_students(self.school, 12)  # within the 1-100 bracket: NGN40,000
         self._ready_period()
         run_subscription_cycle(self.subscription.id)
         invoice = self.subscription.invoices.get()
         self.assertEqual(invoice.billable_student_count, 12)
-        self.assertEqual(invoice.amount_due_minor, 1_000_000 + 50_000 * 12)
+        self.assertEqual(invoice.amount_due_minor, 4_000_000)
         self.assertEqual(invoice.status, InvoiceStatus.OPEN)
+        self.assertEqual(invoice.metadata["pricingMode"], "fixed_bracket")
+        self.assertEqual(invoice.metadata["pricingSource"], "bracket")
 
-    def test_a_zero_amount_invoice_is_issued_already_paid(self):
-        self.set_plan(base_amount_minor=0, student_unit_amount_minor=0)
-        self.add_billable_students(self.school, 4)
-        self._ready_period()
-        run_subscription_cycle(self.subscription.id)
-        invoice = self.subscription.invoices.get()
-        self.assertEqual((invoice.amount_due_minor, invoice.status), (0, InvoiceStatus.PAID))
+    def test_a_school_with_zero_billable_students_is_never_silently_invoiced(self):
+        self.set_plan(base_amount_minor=1_000_000)
+        self._ready_period()  # no students added; the school's authoritative count is 0
+        with self.assertRaises(BillingCycleNotReady):
+            run_subscription_cycle(self.subscription.id)
+        self.assertFalse(BillingInvoice.objects.filter(subscription=self.subscription).exists())
 
     def test_one_usage_snapshot_can_never_produce_two_invoices(self):
         self.set_plan(base_amount_minor=1_000_000)
@@ -120,14 +123,14 @@ class InvoiceGenerationTests(BillingTestCase):
         self.add_billable_students(self.school, 3)
         capture_usage_snapshot(self.organization, billable_student_count=3, source="manual_test")
         invoice = issue_latest_usage_invoice(self.organization)
-        self.assertEqual((invoice.billable_student_count, invoice.amount_due_minor), (3, 1_000_000))
+        self.assertEqual((invoice.billable_student_count, invoice.amount_due_minor), (3, 4_000_000))  # 1-100 bracket
         # Calling it again for the same (only) snapshot returns the same invoice, never a duplicate.
         again = issue_latest_usage_invoice(self.organization)
         self.assertEqual(again.id, invoice.id)
 
     def test_invoices_are_only_visible_to_this_organizations_own_billing_authority(self):
         self.set_plan(base_amount_minor=1_000_000, automatic=False)
-        capture_usage_snapshot(self.organization, billable_student_count=0, source="manual_test")
+        capture_usage_snapshot(self.organization, billable_student_count=10, source="manual_test")
         issue_latest_usage_invoice(self.organization)
         stranger = verified_user("stranger@example.ng")
         response = self.get(f"organizations/{self.organization.id}/billing/invoices/", who=stranger)

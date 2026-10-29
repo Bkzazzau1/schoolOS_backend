@@ -15,6 +15,8 @@ from django.db import models as django_models
 from django.db import transaction
 from django.utils import timezone
 
+from apps.schools.models import School
+
 from .models import EnterpriseAgreement, PricingAuditEvent, PricingBracket
 
 
@@ -111,6 +113,27 @@ def fixed_fee_for_school(school, *, billable_student_count: int, as_of=None) -> 
         f"No fixed-bracket price covers {billable_student_count} billable students, and "
         "this school has no authorized enterprise agreement on file. Configure one before "
         "billing it; SkulGen never auto-prices an enterprise school."
+    )
+
+
+def fixed_fee_for_subscription_period(subscription, snapshot) -> FeeResult:
+    """The fixed fee for one organization's billing period, from its authoritative usage
+    snapshot. Only single-school organizations are priced here; an organization with more
+    than one active school needs per-school invoice lines, not yet implemented, so this
+    raises PricingPolicyUndefined rather than combining their enrollments into one bracket -
+    which the approved commercial model explicitly forbids (Phase C, priority four)."""
+
+    if snapshot.active_school_count != 1:
+        raise PricingPolicyUndefined(
+            f"This organization has {snapshot.active_school_count} active schools. Fixed-bracket "
+            "pricing is determined per school; multi-school organizations need per-school invoice "
+            "lines, which are not implemented yet. Configure that before billing this organization."
+        )
+    school = School.objects.get(organization=subscription.organization, is_active=True)
+    return fixed_fee_for_school(
+        school,
+        billable_student_count=snapshot.billable_student_count or 0,
+        as_of=snapshot.period_end or timezone.now(),
     )
 
 

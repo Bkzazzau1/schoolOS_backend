@@ -33,9 +33,9 @@ def _sign(secret: str, raw_body: bytes) -> str:
 class PaymentsTestCase(BillingTestCase):
     def setUp(self):
         super().setUp()
-        self.set_plan(base_amount_minor=1_000_000, automatic=False)
-        capture_usage_snapshot(self.organization, billable_student_count=0, source="manual_test")
-        self.invoice = issue_latest_usage_invoice(self.organization)
+        self.set_plan(automatic=False)
+        capture_usage_snapshot(self.organization, billable_student_count=50, source="manual_test")
+        self.invoice = issue_latest_usage_invoice(self.organization)  # fixed-bracket fee, not base_amount_minor
 
     def checkout(self, *, who=None, invoice=None):
         invoice = invoice or self.invoice
@@ -174,8 +174,8 @@ class PaymentVerifyTests(PaymentsTestCase):
 class PaystackWebhookTests(BillingTestCase):
     def setUp(self):
         super().setUp()
-        self.set_plan(base_amount_minor=1_000_000, automatic=False)
-        capture_usage_snapshot(self.organization, billable_student_count=0, source="manual_test")
+        self.set_plan(automatic=False)
+        capture_usage_snapshot(self.organization, billable_student_count=50, source="manual_test")
         self.invoice = issue_latest_usage_invoice(self.organization)
         self.attempt = PaymentAttempt.objects.create(
             invoice=self.invoice, provider="paystack", reference="sos-webhook-ref",
