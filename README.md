@@ -207,8 +207,10 @@ default; turn it off only if this process receives TLS directly). Run
   `python manage.py run_media_jobs --loop`,
   `run_mandate_jobs --loop`, `run_collection_jobs --loop`
 - Scheduled (run periodically from the platform's own scheduler or cron, not a
-  long-running process): `run_billing_cycles` (daily), `expire_transferverify_alerts`
-  (daily)
+  long-running process): `publish_roster_meters` (daily, before `run_billing_cycles` -
+  automatic invoicing can only issue an invoice once every active school has a fresh
+  authoritative meter for the period), `run_billing_cycles` (daily),
+  `expire_transferverify_alerts` (daily)
 
 `docker compose up --build` runs the web process against a real local Postgres
 (not the SQLite file a plain local run uses) — a parity check, not a production

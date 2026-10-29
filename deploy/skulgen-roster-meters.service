@@ -1,0 +1,16 @@
+[Unit]
+Description=Publish fresh authoritative student-roster billing meters (publish_roster_meters)
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=skulgen
+Group=skulgen
+WorkingDirectory=/opt/skulgen/backend
+EnvironmentFile=/opt/skulgen/backend/.env
+ExecStart=/opt/skulgen/backend/.venv/bin/python manage.py publish_roster_meters
+ProtectSystem=strict
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+ReadWritePaths=/opt/skulgen/backend/media

@@ -1,0 +1,16 @@
+[Unit]
+Description=SkulGen SaaS billing cycle run (run_billing_cycles)
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=skulgen
+Group=skulgen
+WorkingDirectory=/opt/skulgen/backend
+EnvironmentFile=/opt/skulgen/backend/.env
+ExecStart=/opt/skulgen/backend/.venv/bin/python manage.py run_billing_cycles
+ProtectSystem=strict
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+ReadWritePaths=/opt/skulgen/backend/media

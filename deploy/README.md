@@ -74,11 +74,29 @@ sudo -u skulgen .venv/bin/python manage.py collectstatic --noinput
 systemctl restart skulgen-api.service
 ```
 
+## Prepared but not installed: billing automation timers
+
+`skulgen-roster-meters.{service,timer}` and `skulgen-billing-cycles.{service,timer}`
+(kept here as the exact unit files to install) run `publish_roster_meters` daily at
+01:45 and `run_billing_cycles` daily at 02:15 - roster meters must be fresh before a
+billing cycle can issue an invoice, hence the ordering. Neither is installed or enabled
+yet; commercial automatic invoicing stays off regardless (each plan's own
+`BillingCyclePolicy.automatic_invoicing_enabled` is a separate, per-plan gate, off by
+default, so installing these timers alone does not start charging anyone - but do not
+install them without explicit authorization to activate billing automation). To install:
+
+```
+sudo cp deploy/skulgen-roster-meters.service deploy/skulgen-roster-meters.timer \
+        deploy/skulgen-billing-cycles.service deploy/skulgen-billing-cycles.timer \
+        /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now skulgen-roster-meters.timer skulgen-billing-cycles.timer
+```
+
 ## Not yet wired up here
 
 - **Background workers** (`run_media_jobs --loop`, `run_mandate_jobs --loop`,
-  `run_collection_jobs --loop`) and the **scheduled** commands
-  (`run_billing_cycles`, `expire_transferverify_alerts`) — see the
+  `run_collection_jobs --loop`) and `expire_transferverify_alerts` — see the
   "Process types" section of the main `README.md`. None of these have a
   systemd unit or cron entry on this server yet.
 - **Backups** for the `skulgen` Postgres database — nothing is scheduled yet.

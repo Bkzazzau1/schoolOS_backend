@@ -1,0 +1,10 @@
+[Unit]
+Description=Publish fresh authoritative student-roster billing meters once a day, before billing cycles run
+
+[Timer]
+OnCalendar=*-*-* 01:45:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
