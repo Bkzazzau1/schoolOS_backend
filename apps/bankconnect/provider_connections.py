@@ -284,9 +284,35 @@ def _live_accounts(connection) -> int:
     return FamilyCollectionAccount.objects.filter(connection=connection).exclude(status__in=(AccountStatus.CLOSED, AccountStatus.FAILED)).count()
 
 
+def _outstanding_operation(connection) -> CollectionRejected | None:
+    """A reason this connection cannot be disabled or disconnected RIGHT NOW because something is actively
+    using it, distinct from mere history (which is always safe to leave as it is - reviewing or
+    reconciling an old transaction never looks at the connection's own status, only at the transaction).
+    A generation batch still issuing provider calls, or a scheduled switch naming this connection on
+    either side, would be broken by cutting the connection off under it."""
+    from django.db.models import Q
+
+    from apps.smartcollect.constants import IN_FLIGHT_STATUSES, SwitchStatus
+    from apps.smartcollect.models import CollectionGenerationBatch, ProviderSwitch
+
+    if CollectionGenerationBatch.objects.filter(provider_connection=connection, status__in=IN_FLIGHT_STATUSES).exists():
+        return CollectionRejected(
+            "A collection batch is still generating accounts through this connection. Wait for it to finish first.", "has_in_flight_batch"
+        )
+    if ProviderSwitch.objects.filter(
+        Q(from_connection=connection) | Q(to_connection=connection), status__in=(SwitchStatus.SCHEDULED, SwitchStatus.READY_TO_SWITCH),
+    ).exists():
+        return CollectionRejected(
+            "A scheduled provider switch still involves this connection. Cancel or apply the switch first.", "has_pending_switch"
+        )
+    return None
+
+
 def disable(membership, connection_id) -> CollectionProviderConnection:
-    """Stop using this provider for now. Only where that is safe: not the active provider, and not one whose family accounts are still live
-    (SkulGen would stop hearing about the payments made into them)."""
+    """Stop using this provider for now. Only where that is safe: not the active provider, not one whose family accounts are still
+    live (SkulGen would stop hearing about the payments made into them), and nothing else actively depends on it right now. Its
+    history - every transaction and allocation it ever carried - stays exactly as reviewable and reconcilable as before: nothing
+    in reconciliation or review ever looks at a connection's own status."""
     _require_manager(membership)
     with transaction.atomic():
         connection = get_connection(membership, connection_id, lock=True)
@@ -300,6 +326,9 @@ def disable(membership, connection_id) -> CollectionProviderConnection:
                 f"{live} family collection account{'s are' if live != 1 else ' is'} still live on this provider. Retire them first, so no payment is missed.",
                 "has_live_accounts",
             )
+        blocked = _outstanding_operation(connection)
+        if blocked is not None:
+            raise blocked
         was = connection.status
         connection.status = ConnectionStatus.DISABLED
         connection.save(update_fields=["status", "updated_at"])
@@ -371,6 +400,9 @@ def disconnect(membership, connection_id) -> CollectionProviderConnection:
         live = _live_accounts(connection)
         if live:
             raise CollectionRejected(f"{live} family collection account{'s are' if live != 1 else ' is'} still live on this provider. Retire them first.", "has_live_accounts")
+        blocked = _outstanding_operation(connection)
+        if blocked is not None:
+            raise blocked
         connection.sealed_credentials = b""
         connection.webhook_token_hash = ""
         connection.webhook_status = WebhookStatus.NOT_CONFIGURED

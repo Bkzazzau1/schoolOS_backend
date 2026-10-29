@@ -43,6 +43,21 @@ class SwitchCase(CollectTestCase):
 
 
 class SchedulingTests(SwitchCase):
+    def test_the_target_of_an_open_switch_cannot_be_disabled_or_disconnected(self):
+        """Found in independent review: cutting the target connection off mid-switch would leave the
+        switch unable to apply - it must still be able to take over as the active provider. (The source
+        side is always the current active provider for as long as a switch is open, since only one open
+        switch is ever allowed at a time, so it is already protected by the existing active-provider
+        guard; this is the side that guard does not reach.)"""
+        switch = self.schedule()
+        for action in (provider_connections.disable, provider_connections.disconnect):
+            with self.assertRaises(provider_connections.CollectionRejected) as caught:
+                action(self.owner, switch.to_connection.id)
+            self.assertEqual(caught.exception.code, "has_pending_switch")
+        # Once the switch is no longer open, the connection it would have moved TO is free again.
+        switching.cancel(self.owner, switch.id, reason="changed our minds")
+        provider_connections.disable(self.owner, self.paystack.id)
+
     def test_a_switch_is_scheduled_for_a_date_and_nothing_changes(self):
         switch = self.schedule()
         self.assertEqual(switch.status, SwitchStatus.SCHEDULED)

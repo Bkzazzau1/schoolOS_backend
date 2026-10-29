@@ -61,6 +61,25 @@ class NothingBeforeApprovalTests(CollectTestCase):
         self.assertEqual(ProviderJob.objects.filter(status=JobStatus.QUEUED).count(), 2)
         self.assertEqual((self.sandbox_accounts().count(), self.refetch(batch).status), (0, BatchStatus.PROCESSING))
 
+    def test_a_connection_still_issuing_a_batchs_accounts_cannot_be_disabled_or_disconnected(self):
+        """Found in independent review: disabling a connection mid-batch would cut off provider calls the
+        job queue is still making through it - the same risk a live family account already guarded against,
+        just for accounts not yet made rather than ones already active. The school has since switched
+        providers (so this connection is no longer the active one), but the old batch it started is still
+        issuing accounts through it."""
+        from apps.bankconnect import provider_connections
+        from apps.bankconnect.models import CollectionProviderConnection
+
+        batch = self.approved()
+        running.start_processing(self.maker, batch.id)
+        self.assertEqual(self.refetch(batch).status, BatchStatus.PROCESSING)
+        CollectionProviderConnection.objects.filter(pk=self.connection.pk).update(is_active_provider=False)
+        for action in (provider_connections.disable, provider_connections.disconnect):
+            with self.assertRaises(provider_connections.CollectionRejected) as caught:
+                action(self.owner, self.connection.id)
+            self.assertEqual(caught.exception.code, "has_in_flight_batch")
+        self.assertEqual(self.connection_row().status, "connected")
+
     def test_a_cancelled_batch_makes_nothing_even_if_a_job_was_already_queued(self):
         batch = self.approved()
         running.start_processing(self.maker, batch.id)
