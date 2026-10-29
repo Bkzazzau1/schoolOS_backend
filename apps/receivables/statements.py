@@ -11,14 +11,20 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.bankconnect.constants import ReconStatus
-from apps.bankconnect.models import BankTransaction, TransactionAllocation
+from apps.bankconnect.models import BankTransaction, ReconciliationDecision, TransactionAllocation
+from apps.students.models import Student
 
-from . import account_shapes, audit, credit, ledger, periods, reports
+from . import account_shapes, audit, credit, families, ledger, periods, reports
 from .errors import Refused
 from .models import (
-    AccountStatus, Family, FamilyCollectionAccount, FamilyCreditEntry, FamilyStatement, ReceivableStatus, StatementStatus, StudentReceivable,
+    AccountStatus, CreditKind, Family, FamilyCollectionAccount, FamilyCreditEntry, FamilyStatement, ReceivableStatus, StatementStatus,
+    StudentReceivable,
 )
 from .permissions import require_operator
+
+#: A decision with one of these actions is the one that ends a payment's story: nothing after it changes
+#: who it was ever good for.
+_TERMINAL_ACTIONS = ("reversed", "refunded", "duplicate")
 
 _NUMBERING_TRIES = 8
 
@@ -107,13 +113,57 @@ def _payment_entry(tx: BankTransaction, family: Family, allocations: list) -> di
     }
 
 
+def _families_holding_at_terminal_decision(tx: BankTransaction) -> set:
+    """Whose money this was at the moment it was most recently marked reversed, refunded or a duplicate -
+    from that decision's own before-snapshot (`review.snapshot`), which records exactly who held it right
+    then. A family the payment had already been moved away from by an earlier, unrelated decision (a
+    correction of where it was put) never appears here, however long ago that was."""
+    terminal = (
+        ReconciliationDecision.objects.filter(transaction=tx, action__in=_TERMINAL_ACTIONS).order_by("-at", "-id").first()
+    )
+    if terminal is None:
+        return set()
+    student_ids = {row.get("studentId") for row in terminal.before.get("allocations", []) if row.get("studentId")}
+    if not student_ids:
+        return set()
+    found = set()
+    for student in Student.objects.filter(id__in=student_ids):
+        owner = families.family_of(student)
+        if owner is not None:
+            found.add(owner.id)
+    return found
+
+
+def _credit_clawed_back_by_terminal_decision(tx: BankTransaction, family: Family) -> bool:
+    """Whether this family's credit from this payment was taken back specifically by the decision that
+    most recently marked it reversed, refunded or a duplicate - not by an earlier, unrelated correction
+    of where the payment was put. A `FamilyCreditEntry` carries no decision reference of its own, so this
+    is read from timing: a release always writes its credit entries before the `ReconciliationDecision`
+    row for that same decision is created, so only an `OVERPAYMENT_REVERSED` entry created after whichever
+    decision came right before the terminal one belongs to it."""
+    decisions = list(ReconciliationDecision.objects.filter(transaction=tx).order_by("at", "id"))
+    terminal_index = None
+    for i, d in enumerate(decisions):
+        if d.action in _TERMINAL_ACTIONS:
+            terminal_index = i  # kept updated through the loop, so this ends up the LAST match
+    if terminal_index is None:
+        return False
+    cutoff = decisions[terminal_index - 1].at if terminal_index > 0 else None
+    entries = FamilyCreditEntry.objects.filter(transaction=tx, family=family, kind=CreditKind.OVERPAYMENT_REVERSED)
+    if cutoff is not None:
+        entries = entries.filter(created_at__gt=cutoff)
+    return entries.exists()
+
+
 def payments(family: Family) -> list[dict]:
     """Every payment that is, or ever was, part of this family's ledger, newest first, with its current
     status and (while it still counts) where it went. History is never rewritten: a payment later reversed,
-    refunded or found to be a duplicate is still listed, with no allocations and `countsTowardBalance: false`
-    - exactly as the ledger it is read from, which took its allocations back when that was decided. A payment
-    moved to a different family's student entirely (a person correcting where it was put) drops out of this
-    family's history altogether: it was never really theirs, and nothing here should say it still is."""
+    refunded or found to be a duplicate is still listed for whoever was actually holding it when that
+    happened, with no allocations and `countsTowardBalance: false` - exactly as the ledger it is read
+    from, which took its allocations back when that was decided. A payment moved to a different family's
+    student entirely (a person correcting where it was put) drops out of this family's history
+    altogether: it was never really theirs, and nothing here should say it still is - not even if it was
+    later reversed, refunded or found to be a duplicate in the hands of whoever it was moved to."""
     tx_ids = set(TransactionAllocation.objects.filter(family=family).values_list("transaction_id", flat=True))
     tx_ids |= set(FamilyCreditEntry.objects.filter(family=family, transaction__isnull=False).values_list("transaction_id", flat=True))
     if not tx_ids:
@@ -129,9 +179,13 @@ def payments(family: Family) -> list[dict]:
     rows = []
     for tx in transactions:
         entry = _payment_entry(tx, family, by_tx.get(tx.id, []))
-        if not entry["countsTowardBalance"] and tx.reconciliation_status not in _NOT_COLLECTED:
+        if entry["countsTowardBalance"]:
+            rows.append(entry)
             continue
-        rows.append(entry)
+        if tx.reconciliation_status not in _NOT_COLLECTED:
+            continue  # moved to a different family entirely, and never reversed: not this family's history
+        if family.id in _families_holding_at_terminal_decision(tx) or _credit_clawed_back_by_terminal_decision(tx, family):
+            rows.append(entry)
     return rows
 
 

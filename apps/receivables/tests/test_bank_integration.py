@@ -238,6 +238,29 @@ class PaymentHistoryForParentsTests(BankIntegrationCase):
         row = self.row(self.family, tx)
         self.assertEqual((row["allocatedMinor"], row["creditMinor"], row["unappliedMinor"]), (300_000 * N, 20_000 * N, 0))
 
+    def test_a_payments_credit_figure_is_what_it_created_at_the_time_not_a_current_balance(self):
+        """Found in independent review: `creditMinor` must never be read as "still sitting in the
+        family's credit balance right now" - credit is shared across every charge the family owes, so
+        once some of it is spent elsewhere the figure on an OLD payment's history row and receipt must
+        stay exactly what that payment put there, not fall as the family's live balance falls. The live
+        balance belongs to `ledger.family_position()` / the position summary, never to a past payment."""
+        from datetime import timedelta
+
+        from .. import schedules
+
+        tx = self.into_account(320_000 * N)  # 300,000 of charges paid, 20,000 becomes credit
+        self.assertEqual(ledger.family_position(self.family).credit, 20_000 * N)
+
+        s = schedules.create_schedule(self.school, session=self.session, name="Extra", actor=self.owner)
+        schedules.add_item(s, actor=self.owner, code="EXTRA", name="Excursion", category="other", amount_minor=15_000 * N, due_date=CLOCK + timedelta(days=5), scope="student", student=self.ahmad)
+        schedules.publish(s, actor=self.owner)
+        credit.apply_available(self.family, actor=self.owner)  # 15,000 of the 20,000 credit is spent on the new charge
+
+        self.assertEqual(ledger.family_position(self.family).credit, 5_000 * N)  # the family's real, current balance has fallen
+        row = self.row(self.family, tx)
+        self.assertEqual(row["creditMinor"], 20_000 * N)  # the payment's own history is unchanged: this is what it created, not what remains
+        self.assertLedgerHolds()
+
     def test_a_reversed_payment_still_appears_but_no_longer_counts_or_shows_an_allocation(self):
         tx = self.into_account(10_000 * N)
         review.decide(self.owner, tx.id, action="reversed", note="Bank reversed it")
@@ -264,6 +287,67 @@ class PaymentHistoryForParentsTests(BankIntegrationCase):
 
         sani_row = self.row(sani, tx)
         self.assertEqual((sani_row["countsTowardBalance"], sani_row["allocatedMinor"], sani_row["creditMinor"]), (True, 50_000 * N, 70_000 * N))
+        self.assertLedgerHolds(self.family)
+        self.assertLedgerHolds(sani)
+
+    def test_a_reassigned_payment_later_reversed_tells_its_story_to_whoever_actually_held_it(self):
+        """A payment given to the Bellos by mistake, corrected to the Sanis, and only THEN reversed, must
+        never resurface in the Bello family's history - that reversal happened in the Sanis' hands, not
+        theirs. Found in independent review: the first version of this filter let exactly this reappear,
+        because it kept any family that had EVER held a reversed/refunded/duplicate transaction, not only
+        whoever was holding it at the moment it was actually reversed."""
+        from datetime import timedelta
+
+        from .. import schedules
+
+        tx = self.into_account(120_000 * N)  # matched to the Bello family by its account
+        other_student = self.make_student("Yusuf", "Sani", guardian="Ada Sani")
+        sani, _ = families.ensure_family_for_student(self.school, other_student)
+        s = schedules.create_schedule(self.school, session=self.session, name="Sani fees", actor=self.owner)
+        schedules.add_item(s, actor=self.owner, code="SANI", name="Tuition", category="tuition", amount_minor=50_000 * N, due_date=CLOCK + timedelta(days=9), scope="student", student=other_student)
+        schedules.publish(s, actor=self.owner)
+        review.decide(self.owner, tx.id, action="assign", student_id=str(other_student.id), note="Was for the Sanis")
+
+        review.decide(self.owner, tx.id, action="reversed", note="Bank reversed it, after the correction")
+
+        bello_row = next((r for r in statements.payments(self.family) if r["transactionId"] == str(tx.id)), None)
+        self.assertIsNone(bello_row, "the Bellos never held this payment when it was reversed, and must not see it at all")
+
+        sani_row = self.row(sani, tx)
+        self.assertEqual((sani_row["status"], sani_row["countsTowardBalance"], sani_row["allocations"]), ("reversed", False, []))
+        self.assertLedgerHolds(self.family)
+        self.assertLedgerHolds(sani)
+
+    def test_a_reassigned_overpayment_later_reversed_also_tells_its_story_to_the_right_family(self):
+        """The same correction as above, but for the credit a straight overpayment creates (no receivable
+        allocation at all): the family whose credit was clawed back when it was reversed is the one who
+        should see it, never the family it had already moved on from."""
+        from datetime import timedelta
+
+        from .. import schedules
+
+        self.into_account(300_000 * N)  # Bello's charges are fully settled, nothing left to allocate against
+        self.assertEqual(ledger.family_position(self.family).outstanding, 0)
+        tx = self.into_account(50_000 * N)  # entirely credit: the Bellos owe nothing, so nothing to put it towards
+        pure_credit_row = self.row(self.family, tx)
+        self.assertEqual((pure_credit_row["allocations"], pure_credit_row["creditMinor"]), ([], 50_000 * N))
+
+        other_student = self.make_student("Yusuf", "Sani", guardian="Ada Sani")
+        sani, _ = families.ensure_family_for_student(self.school, other_student)
+        s = schedules.create_schedule(self.school, session=self.session, name="Sani fees", actor=self.owner)
+        schedules.add_item(s, actor=self.owner, code="SANI", name="Tuition", category="tuition", amount_minor=30_000 * N, due_date=CLOCK + timedelta(days=9), scope="student", student=other_student)
+        schedules.publish(s, actor=self.owner)
+        review.decide(self.owner, tx.id, action="assign", student_id=str(other_student.id), note="Was for the Sanis, not an overpayment by the Bellos")
+
+        bello_row = next((r for r in statements.payments(self.family) if r["transactionId"] == str(tx.id)), None)
+        self.assertIsNone(bello_row)  # the credit moved to the Sanis; the Bellos have no claim on it any more
+
+        review.decide(self.owner, tx.id, action="reversed", note="Bank reversed it, after the correction")
+        bello_row_after_reversal = next((r for r in statements.payments(self.family) if r["transactionId"] == str(tx.id)), None)
+        self.assertIsNone(bello_row_after_reversal, "the Bellos never held this payment when it was reversed, and must not see it at all")
+
+        sani_row = self.row(sani, tx)
+        self.assertEqual((sani_row["status"], sani_row["countsTowardBalance"], sani_row["allocations"]), ("reversed", False, []))
         self.assertLedgerHolds(self.family)
         self.assertLedgerHolds(sani)
 
