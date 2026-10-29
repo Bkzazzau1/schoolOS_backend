@@ -1,0 +1,38 @@
+{% extends "console/base.html" %}
+{% load console_extras %}
+{% block title %}{{ school.name }} · Enterprise pricing · SkulGen console{% endblock %}
+{% block content %}
+<p><a class="row-link muted" href="{% url 'console:organization_detail' school.organization_id %}">&larr; {{ school.organization.name }}</a></p>
+<h1>{{ school.name }} &middot; Enterprise pricing</h1>
+<p class="muted">For a school whose enrollment exceeds every configured bracket. Never generated
+  automatically - this is the one place an agreement is recorded, and it only applies to this school.</p>
+
+<div class="card">
+  <h2>Agreements</h2>
+  {% if agreements %}
+    <table>
+      <thead><tr><th>Fixed fee</th><th>Effective from</th><th>Effective until</th><th>Notes</th></tr></thead>
+      <tbody>
+      {% for agreement in agreements %}
+        <tr>
+          <td>{{ agreement.fixed_fee_minor|money:agreement.currency }}</td>
+          <td>{{ agreement.effective_from|date:"Y-m-d H:i" }}</td>
+          <td>{% if agreement.effective_until %}{{ agreement.effective_until|date:"Y-m-d H:i" }}{% else %}<span class="pill tone-good">current</span>{% endif %}</td>
+          <td class="muted">{{ agreement.notes|default:"-" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No enterprise agreement on file for this school yet.</p>
+  {% endif %}
+
+  <h2 style="margin-top:1.5rem">Add an agreement</h2>
+  <form method="post" class="action-row">
+    {% csrf_token %}
+    <label>Fixed fee (NGN) <input type="text" name="fixed_fee_naira" size="10" required placeholder="400000"></label>
+    <label>Notes <input type="text" name="notes" size="30" placeholder="optional"></label>
+    <button type="submit">Create, effective now</button>
+  </form>
+</div>
+{% endblock %}

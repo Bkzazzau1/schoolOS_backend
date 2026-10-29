@@ -49,6 +49,7 @@
 <header>
   <a href="{% url 'console:dashboard' %}">SkulGen console</a>
   <a href="{% url 'console:organizations' %}">Organizations</a>
+  <a href="{% url 'console:pricing' %}">Pricing</a>
   <span class="spacer"></span>
   {% if request.user.is_authenticated %}<span class="who">{{ request.user.email }}</span>{% endif %}
 </header>

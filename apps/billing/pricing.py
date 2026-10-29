@@ -277,6 +277,28 @@ def create_pricing_bracket(
 
 
 @transaction.atomic
+def close_pricing_bracket(bracket: PricingBracket, *, effective_until=None, actor=None) -> PricingBracket:
+    """Ends a bracket's effect from this moment (or a given time) forward, so a replacement
+    covering the same enrollment range can be created without overlapping it. Never deletes
+    the row: every invoice line already issued under it keeps its own copied fee, so the
+    historical bracket stays on record as what was actually charged."""
+
+    effective_until = effective_until or timezone.now()
+    if effective_until <= bracket.effective_from:
+        raise ValueError("effective_until must be after the bracket's own effective_from")
+    bracket.effective_until = effective_until
+    bracket.save(update_fields=["effective_until"])
+    PricingAuditEvent.objects.create(
+        actor=actor,
+        action="pricing_bracket_closed",
+        target_type="pricing_bracket",
+        target_id=str(bracket.id),
+        detail={"effectiveUntil": effective_until.isoformat()},
+    )
+    return bracket
+
+
+@transaction.atomic
 def create_enterprise_agreement(
     *,
     school,

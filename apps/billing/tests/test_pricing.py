@@ -12,11 +12,12 @@ from django.utils import timezone
 from apps.organizations.services import create_organization, provision_school
 from apps.schools.models import SchoolType
 
-from ..models import PricingBracket
+from ..models import PricingAuditEvent, PricingBracket
 from ..pricing import (
     OverlappingBracketError,
     PricingPolicyUndefined,
     active_bracket_for,
+    close_pricing_bracket,
     create_enterprise_agreement,
     create_pricing_bracket,
     fixed_fee_for_school,
@@ -138,3 +139,16 @@ class BracketVersioningAndOverlapTests(TestCase):
             create_pricing_bracket(min_students=100, max_students=50, fixed_fee_minor=1, effective_from=timezone.now())
         with self.assertRaises(ValueError):
             create_pricing_bracket(min_students=1, max_students=100, fixed_fee_minor=-1, effective_from=timezone.now())
+
+    def test_closing_a_bracket_lets_a_replacement_for_the_same_range_be_created_and_is_audited(self):
+        bracket = create_pricing_bracket(min_students=1, max_students=100, fixed_fee_minor=4_000_000, effective_from=timezone.now() - timedelta(days=30))
+        close_pricing_bracket(bracket, actor=None)
+        bracket.refresh_from_db()
+        self.assertIsNotNone(bracket.effective_until)
+        create_pricing_bracket(min_students=1, max_students=100, fixed_fee_minor=4_500_000, effective_from=bracket.effective_until)  # does not raise
+        self.assertTrue(PricingAuditEvent.objects.filter(action="pricing_bracket_closed", target_id=str(bracket.id)).exists())
+
+    def test_closing_a_bracket_before_its_own_start_is_refused(self):
+        bracket = create_pricing_bracket(min_students=1, max_students=100, fixed_fee_minor=4_000_000, effective_from=timezone.now())
+        with self.assertRaises(ValueError):
+            close_pricing_bracket(bracket, effective_until=bracket.effective_from - timedelta(days=1))

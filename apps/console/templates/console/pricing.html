@@ -1,0 +1,88 @@
+{% extends "console/base.html" %}
+{% load console_extras %}
+{% block title %}Pricing · SkulGen console{% endblock %}
+{% block content %}
+<h1>Fixed-bracket pricing</h1>
+<p class="muted">The approved commercial table. A school's fee is always its bracket's fixed fee, never
+  students × a unit price. Changing a price here never changes an invoice already issued.</p>
+
+<div class="card">
+  <h2>Brackets</h2>
+  <table>
+    <thead><tr><th>Students</th><th>Fixed fee</th><th>Effective from</th><th>Effective until</th><th></th></tr></thead>
+    <tbody>
+    {% for bracket in brackets %}
+      <tr>
+        <td>{{ bracket.min_students }}{% if bracket.max_students %}&ndash;{{ bracket.max_students }}{% else %} and above{% endif %}</td>
+        <td>{{ bracket.fixed_fee_minor|money:bracket.currency }}</td>
+        <td>{{ bracket.effective_from|date:"Y-m-d H:i" }}</td>
+        <td>{% if bracket.effective_until %}{{ bracket.effective_until|date:"Y-m-d H:i" }}{% else %}<span class="pill tone-good">current</span>{% endif %}</td>
+        <td>
+          {% if not bracket.effective_until %}
+          <form method="post" class="inline" onsubmit="return confirm('Close this bracket? A replacement for the same range can then be created.');">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="close_bracket">
+            <input type="hidden" name="bracket_id" value="{{ bracket.id }}">
+            <button type="submit" class="button secondary">Close</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2 style="margin-top:1.5rem">Add a bracket</h2>
+  <form method="post" class="action-row">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create_bracket">
+    <label>Min students <input type="text" name="min_students" size="6" required></label>
+    <label>Max students <input type="text" name="max_students" size="6" placeholder="blank = no ceiling"></label>
+    <label>Fixed fee (NGN) <input type="text" name="fixed_fee_naira" size="10" required placeholder="40000"></label>
+    <button type="submit">Create, effective now</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Enterprise agreements (above every bracket)</h2>
+  {% if agreements %}
+    <table>
+      <thead><tr><th>School</th><th>Organization</th><th>Fixed fee</th><th>Effective from</th><th>Effective until</th></tr></thead>
+      <tbody>
+      {% for agreement in agreements %}
+        <tr>
+          <td><a class="row-link" href="{% url 'console:school_enterprise_agreement' agreement.school.id %}">{{ agreement.school.name }}</a></td>
+          <td><a class="row-link" href="{% url 'console:organization_detail' agreement.school.organization_id %}">{{ agreement.school.organization.name }}</a></td>
+          <td>{{ agreement.fixed_fee_minor|money:agreement.currency }}</td>
+          <td>{{ agreement.effective_from|date:"Y-m-d H:i" }}</td>
+          <td>{% if agreement.effective_until %}{{ agreement.effective_until|date:"Y-m-d H:i" }}{% else %}<span class="pill tone-good">current</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No enterprise agreements yet. Open a school from its organization page to add one.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Audit history</h2>
+  {% if audit_events %}
+    <table>
+      <thead><tr><th>Action</th><th>Target</th><th>By</th><th>When</th></tr></thead>
+      <tbody>
+      {% for event in audit_events %}
+        <tr>
+          <td>{{ event.action }}</td>
+          <td class="muted">{{ event.target_type }}:{{ event.target_id }}</td>
+          <td>{{ event.actor.email|default:"-" }}</td>
+          <td class="muted">{{ event.at|date:"Y-m-d H:i" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No pricing changes yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

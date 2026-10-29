@@ -45,10 +45,14 @@
   <h2>Schools ({{ schools|length }})</h2>
   {% if schools %}
     <table>
-      <thead><tr><th>Name</th><th>Type</th></tr></thead>
+      <thead><tr><th>Name</th><th>Type</th><th></th></tr></thead>
       <tbody>
       {% for school in schools %}
-        <tr><td>{{ school.name }}</td><td>{{ school.school_type }}</td></tr>
+        <tr>
+          <td>{{ school.name }}</td>
+          <td>{{ school.school_type }}</td>
+          <td><a class="row-link" href="{% url 'console:school_enterprise_agreement' school.id %}">Enterprise pricing</a></td>
+        </tr>
       {% endfor %}
       </tbody>
     </table>
@@ -61,7 +65,7 @@
   <h2>Invoices</h2>
   {% if invoices %}
     <table>
-      <thead><tr><th>Number</th><th>Status</th><th>Due</th><th>Amount due</th><th>Paid</th></tr></thead>
+      <thead><tr><th>Number</th><th>Status</th><th>Due</th><th>Amount due</th><th>Paid</th><th>Discount</th></tr></thead>
       <tbody>
       {% for invoice in invoices %}
         <tr>
@@ -70,12 +74,57 @@
           <td>{{ invoice.due_at|date:"Y-m-d"|default:"-" }}</td>
           <td>{{ invoice.amount_due_minor|money:invoice.currency }}</td>
           <td>{{ invoice.amount_paid_minor|money:invoice.currency }}</td>
+          <td>{% if invoice.metadata.discountMinor %}{{ invoice.metadata.discountMinor|money:invoice.currency }}{% else %}-{% endif %}</td>
         </tr>
+        {% if invoice.lines.all %}
+        <tr><td></td><td colspan="5">
+          <table>
+            <thead><tr><th>School</th><th>Students</th><th>Pricing</th><th>Fee</th></tr></thead>
+            <tbody>
+            {% for line in invoice.lines.all %}
+              <tr>
+                <td>{{ line.school.name }}</td>
+                <td>{{ line.billable_student_count }}</td>
+                <td class="muted">
+                  {% if line.pricing_source == "enterprise" %}enterprise agreement
+                  {% elif line.bracket_max_students %}{{ line.bracket_min_students }}&ndash;{{ line.bracket_max_students }}
+                  {% else %}{{ line.bracket_min_students }}+{% endif %}
+                  {% if line.term_count and line.term_count > 1 %}&middot; {{ line.term_count }} terms{% endif %}
+                </td>
+                <td>{{ line.fixed_fee_minor|money:line.currency }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </td></tr>
+        {% endif %}
       {% endfor %}
       </tbody>
     </table>
   {% else %}
     <p class="muted">No invoices yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Payment history</h2>
+  {% if payment_attempts %}
+    <table>
+      <thead><tr><th>Reference</th><th>Invoice</th><th>Status</th><th>Amount</th><th>When</th></tr></thead>
+      <tbody>
+      {% for attempt in payment_attempts %}
+        <tr>
+          <td class="muted">{{ attempt.reference }}</td>
+          <td>{{ attempt.invoice.number }}</td>
+          <td>{{ attempt.get_status_display }}</td>
+          <td>{{ attempt.amount_minor|money:attempt.currency }}</td>
+          <td class="muted">{{ attempt.created_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No payment attempts yet.</p>
   {% endif %}
 </div>
 
