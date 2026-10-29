@@ -46,12 +46,38 @@ class EmptySchoolTests(SummaryTestCase):
     def test_with_nothing_connected_it_says_so_instead_of_showing_zeros_as_facts(self):
         body = self.build()
         self.assertFalse(body["available"])
-        self.assertEqual(body["providers"], {"connected": 0, "needAttention": 0, "active": None})
+        self.assertEqual(body["providers"], {"connected": 0, "needAttention": 0, "active": None, "connections": []})
         self.assertEqual(body["today"], {"amountMinor": 0, "count": 0})
         self.assertIsNone(body["thisTerm"])
         self.assertEqual((body["byProvider"], body["recent"]), ([], []))
         self.assertFalse(body["outstandingFeesAvailable"])
         self.assertEqual(body["period"]["key"], "all")  # no open term to be "this term"
+
+
+class ConnectionHealthTests(SummaryTestCase):
+    def test_every_live_connections_own_health_is_listed_never_a_credential(self):
+        self.real_connection(provider="paystack", active=True)
+        struggling = self.real_connection(provider="monnify", status=ConnectionStatus.ERROR)
+        struggling.last_error_code = "provider_unavailable"
+        struggling.save(update_fields=["last_error_code"])
+        body = self.build()
+        rows = {c["provider"]: c for c in body["providers"]["connections"]}
+        self.assertEqual(set(rows), {"paystack", "monnify"})
+        self.assertEqual((rows["paystack"]["status"], rows["paystack"]["isActiveProvider"]), ("connected", True))
+        self.assertEqual((rows["monnify"]["status"], rows["monnify"]["lastErrorCode"]), ("error", "provider_unavailable"))
+        for row in rows.values():
+            self.assertNotIn("sealedCredentials", row)
+            self.assertNotIn("credential", str(row).lower())
+
+    def test_a_disconnected_connection_is_history_and_drops_off_the_health_list(self):
+        self.real_connection(provider="paystack", status=ConnectionStatus.REVOKED)
+        body = self.build()
+        self.assertEqual(body["providers"]["connections"], [])
+
+    def test_another_schools_connections_never_appear(self):
+        self.real_connection(provider="paystack", school=self.other_school)
+        body = self.build()
+        self.assertEqual(body["providers"]["connections"], [])
 
 
 class PeriodTests(SummaryTestCase):

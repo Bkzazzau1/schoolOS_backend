@@ -18,7 +18,7 @@ from apps.academics.models import AcademicLifecycleStatus, AcademicTerm
 
 from .constants import DEFAULT_CURRENCY, NEEDS_A_PERSON, COLLECTION_PROVIDER_CODES, ConnectionStatus, Direction, ReconStatus
 from .models import BankTransaction, CollectionProviderConnection, TransactionAllocation
-from .serializers import serialize_transaction_brief
+from .serializers import serialize_connection, serialize_transaction_brief
 
 #: Not counted as collected: the money went back, or a person has yet to say it is a real second payment.
 NOT_COLLECTED = (ReconStatus.REVERSED, ReconStatus.REFUNDED, ReconStatus.DUPLICATE)
@@ -113,6 +113,11 @@ def build(school, *, period: str = "term", include_sandbox: bool = False, recent
                 {"connectionId": str(active.id), "provider": active.provider, "environment": active.environment, "merchantName": active.merchant_name}
                 if active else None
             ),
+            # Each connection's own health, exactly as the Collections screen shows it (never a credential):
+            # for a compact dashboard view, not a second management surface. A connection needing a look
+            # sorts first; nothing here is a "last sync" - there is no scheduled sync, only a webhook that
+            # has, or has not, lately said a real event arrived or failed.
+            "connections": [serialize_connection(c) for c in connections.exclude(status=ConnectionStatus.REVOKED).order_by("provider")],
         },
         "today": _total(_period_rows(counted, "today", today, week_start, term)),
         "thisWeek": _total(_period_rows(counted, "week", today, week_start, term)),
