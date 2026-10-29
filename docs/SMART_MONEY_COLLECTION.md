@@ -38,7 +38,11 @@ merchant name and masked reference, status, webhook status and when it was last 
   **one active collection provider** (also a database rule). Only Paystack or Monnify (or the development sandbox) can be the active
   one: the database refuses anything else, so it does not depend on the screen hiding it. It is chosen once with `activate`; any later change is a reviewed
   provider switch.
-* A connected provider that has live family accounts, or is the active provider, can be neither disabled nor disconnected.
+* A connected provider that has live family accounts, or is the active provider, can be neither disabled nor disconnected -
+  nor can one a `smartcollect` generation batch is still issuing provider calls through (`has_in_flight_batch`), nor one
+  either side of an open provider switch names (`has_pending_switch`): cutting either off mid-operation would strand calls
+  already under way. None of this touches **history**: reviewing or reconciling an old transaction never looks at the
+  connection's own status, so a disabled or disconnected connection's past payments stay exactly as reconcilable as before.
 * The webhook address carries a random token (only its hash is stored). It is called **active** only after a verified event has
   actually arrived: never on setup.
 
@@ -50,9 +54,13 @@ merchant name and masked reference, status, webhook status and when it was last 
 | `finance.collection_policy_manage` | the school's collection policy and its overrides |
 | `finance.collection_prepare` | the **maker** of a collection batch |
 | `finance.collection_approve` | the **checker** of a collection batch |
+| `finance.reconciliation` | decide what a payment under review means - assign, split, mark a duplicate or unrelated income, reverse, refund, reopen |
 
-The proprietor holds all four. `finance.billing_authority` (what families owe) deliberately does **not** open provider secrets. The
-earlier `finance.bank_connections` duty is honoured as provider authority only, so an assignment already made keeps working.
+The proprietor holds all five. `finance.billing_authority` (what families owe) deliberately does **not** open provider secrets.
+Seeing the review queue (`can_view_collections`, the owner, the Finance Office by role, or any of the five duties) is deliberately
+**not** the same authority as deciding what is in it: an Accountant sees it by role alone, but changing a transaction needs the
+`finance.reconciliation` duty explicitly, checked both in the view and again in `review.decide()` itself. The earlier
+`finance.bank_connections` duty is honoured as provider authority only, so an assignment already made keeps working.
 
 ## The connectors (`apps/bankconnect/providers`)
 
@@ -86,6 +94,121 @@ kept, unmatched, for a person; it is never attached to a family by guessing from
 student-matching engine still serves payments from connections made by the earlier bank-account model; Smart Money Collection
 payments never use it.) A payment into a settled, dormant or closed account that the provider confirms goes through the normal
 pipeline; SkulGen invents no rule about it, and anything beyond what is owed becomes family credit.
+
+## Webhook failure visibility and recovery
+
+Every outcome of a delivery is now distinguished and recorded safely, never just allowed to raise an unhandled
+error: an **unauthenticated** request (a bad signature) is audited (`webhook_rejected`) but never touches the
+connection's own status, since noise or an attack must never be mistaken for evidence the school's own credential
+is broken. An **authenticated event that failed somewhere after that** - the provider could not be reached, our
+own secret storage failed to open, the body was unreadable, or something broke partway through recording the
+payments - calls `provider_connections.record_failure()` (the same signal a failed manual connectivity test
+already gave) and writes a `webhook_processing_failed` audit entry with one of SkulGen's own short, fixed codes,
+never the provider's own message or anything from the request body. A later success (`record_success()`) clears
+it. The Finance dashboard's connection health list (`summary.build()`'s `providers.connections`) and the
+Collections screen's own "Activity" history both read from this, so a school that is not being heard from is
+visible, not silent.
+
+**What this does not, and should not, do:** it is not a retry queue. The whole attempt - the delivery record and
+every payment it would have created - rolls back together on any failure, so the exact same delivery, retried
+later, starts fresh rather than being half-remembered or skipped. Recovery from there is the **provider's own**
+webhook retry policy (Paystack and Monnify both retry a non-2xx response on their own schedule, commonly for
+around a day to a few days depending on the provider), plus `reconciliation.reconcile_pending()`'s own sweep,
+which picks up anything ingested but not yet reconciled (for example after a crash between the two) regardless of
+how long ago it arrived.
+
+**Reviewed, as asked, before building anything new:** a dead-letter queue or a new background worker is **not**
+introduced, because the need is not demonstrated for the common case - a transient failure (a brief provider
+outage, a momentary vault error) is now visible, self-clears on the provider's own retry, and was the gap this
+pass actually closes. Two genuine risks remain, neither solved by a queue on SkulGen's side:
+
+1. **A webhook that never reaches SkulGen at all** - dropped in transit, or never sent because of a problem on
+   the provider's own side before it even attempts delivery. Nothing is recorded, because nothing arrived: there
+   is no `BankWebhookEvent` row, no audit entry, and no amount of retrying on SkulGen's end helps, since the
+   failure is not SkulGen's to retry. The only way this is ever found today is a person noticing an expected
+   payment is missing and asking Finance Office to look, which has no tool to directly ask the provider "did you
+   send this?" - `verify_transaction()` already exists on both connectors (it is how Monnify's unsigned sandbox
+   path confirms a payment today) but nothing staff-facing calls it for an arbitrary reference. A small,
+   justified follow-up - not a queue, a single on-demand "check this reference with the provider" action for
+   someone who already holds the reconciliation duty - would close this, but is not built here since it was not
+   asked for in this pass.
+2. **The provider's own retry window is exhausted before a prolonged SkulGen-side outage resolves** (secure
+   storage down for longer than the provider keeps retrying, for example). Once the provider gives up, the same
+   manual-verify gap in (1) is the only way back; a bank statement import (see below, design only) would also
+   catch this, since the money still shows up in the school's own bank statement even when the webhook never
+   does.
+
+Both risks point at the same two follow-ups: a manual "verify with the provider" action, and bank statement
+import as the ultimate backstop for whatever a webhook-only design can never fully guarantee. Neither is built in
+this pass.
+
+## Bank statement import (design only - not yet implemented)
+
+Some schools receive payments straight into a commercial bank account with no Paystack or Monnify integration at
+all, or want their bank statement as an independent check against what the webhook path already recorded. This
+is a design for review, not code: nothing below exists yet, and the **critical rule** it is built around is that
+**a CSV upload must never automatically become a provider-verified payment** - the whole design exists to make
+double-crediting the same real transfer (once from a provider webhook, once from a statement line) structurally
+hard to do by accident.
+
+**Formats.** CSV only, to start: every Nigerian bank's own online banking already exports it, or can be coerced
+to it from Excel. Not PDF statements - reliably parsing a bank's PDF layout is a much harder, error-prone problem
+better deferred than guessed at. A school's columns are mapped once (date, narration, amount, and either a single
+signed amount or separate debit/credit columns, since banks differ) and the mapping is remembered for its next
+upload. UTF-8 (with BOM tolerance, since Excel exports it); a file that fails to decode is refused, never guessed at.
+
+**Who may upload, who may confirm.** Uploading a file is a Finance Office task (the same people who already see
+Collections, `can_view_collections`); it only ever creates **staging** rows (see below), so it changes nothing
+real yet. Confirming a staged line as an actual payment - the step that can affect a balance - needs the same
+`finance.reconciliation` duty this pass just gave its own dedicated check (see "Reconciliation permissions"
+above): looking at a statement is not authority to decide what it means, for exactly the same reason viewing the
+provider review queue is not.
+
+**Validation and safe processing.** A size cap (a school-term's worth of transactions is a few thousand rows, so
+a generous but bounded limit) and a row cap. Every row is validated in a dry run first - date parses, amount
+parses, direction is unambiguous - before anything is written: the admin sees a preview (how many rows, how many
+failed to parse and why) and explicitly confirms the upload before it is committed, mirroring the
+preview-then-commit pattern `apps.smartcollect`'s own batches already use. Committing writes in bounded chunks,
+each its own transaction, not one lock held over a whole file.
+
+**Staging, not `BankTransaction`, until confirmed.** An imported row lands in a new model of its own (something
+like `ImportedStatementLine`: school, date, amount, direction, narration, reference if the bank gives one, a
+content hash, and a status - `staged`, `confirmed`, `discarded`) rather than directly in `BankTransaction`. This
+is deliberate, not incidental: a status flag on the existing model is one query away from being forgotten in some
+future report; a separate table structurally cannot leak into `summary.build()`'s counted totals, the review
+queue, or a family's statement, because nothing reads it from there at all. Only `confirm` promotes a staged line
+into a real `BankTransaction` (`provider="statement_import"` - a new code, deliberately kept out of
+`COLLECTION_PROVIDER_CODES`, so it can never be an active provider or look like a live connection), after which it
+runs through the **existing, unmodified** matching, allocation, credit and reversal machinery - no second
+reconciliation engine, exactly as asked.
+
+**Duplicate identification - two different duplicates.**
+
+* *The same statement line imported twice* (re-uploading a file, or two uploads with an overlapping date range):
+  caught by a hash of (school, date, amount, narration) at staging time, the same idea `BankWebhookEvent`'s
+  payload hash already uses for webhook deliveries.
+* *The same real transfer SkulGen already has from a provider webhook*: this is the critical rule's actual
+  target, and it is never resolved automatically. At confirm time, a staged line with a close amount and date is
+  checked against existing `BankTransaction` rows for the school; if one plausibly matches, the reviewer sees it
+  and is asked directly - "this looks like the settlement of an already-recorded payment; confirming this
+  separately could double-count it" - and must explicitly choose: confirm it anyway as a genuinely separate
+  payment, or discard it as the same money already recorded. Nothing is ever promoted past a plausible match
+  without that explicit choice.
+
+**Audit and correction.** Every upload and every confirm/discard decision is an audited event (who, the file,
+how many rows, which were promoted), the same pattern `BankAuditEvent`/`ReconciliationDecision` already use
+everywhere else in this app. Once a line is promoted it is an ordinary `BankTransaction`: reassigning, splitting
+or reversing it afterwards needs no new code at all, since the existing review workflow already does this for
+any transaction regardless of which provider code it carries.
+
+**Staying distinguishable.** `provider="statement_import"` is shown wherever a payment's provider is shown today
+(the same way a sandbox/test transaction already carries its own label), and `summary.build()` would report a
+confirmed import's amount in its own line, never silently folded into the provider-webhook total - the same
+"never silently combine two sources" rule this pass's Finance dashboard and Parent Finance work already
+established for the manual ledger and Smart Money Collection. School isolation needs no new pattern: every
+staging row and the view that reads it is scoped by `school`, exactly like everything else here.
+
+Not implemented until this design is reviewed and approved.
 
 ## Legacy data
 
@@ -171,6 +294,11 @@ date". No response carries a credential or an identity number.
 * Monnify's contract code is only proven when the first account is made, and is not claimed as verified before.
 * Whether a provider-side account is "dormant" is SkulGen's own flag; no provider documents a way to refuse transfers to a reserved
   account without closing it, so none is called for it.
+* Bank statement import: designed above, not built. The same for a bank-data aggregator (Mono, Okra, OnePipe or similar) -
+  deliberately deferred, no commercial dependency added and no credentials requested.
+* A staff-facing "check this reference with the provider directly" action, for a payment suspected missing because its webhook
+  never arrived at all: `verify_transaction()` already exists on every connector but nothing calls it on demand yet. See "Webhook
+  failure visibility and recovery" above.
 * A parent-facing way to supply a BVN/NIN; today the school records it (write-only) for the payer.
 
 ## Remita and Mandates (not part of Smart Money Collection)
