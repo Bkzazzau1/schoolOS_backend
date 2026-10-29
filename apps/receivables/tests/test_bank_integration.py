@@ -3,7 +3,7 @@ from apps.bankconnect.provider_connections import BankRejected
 from apps.bankconnect.models import BankTransaction, ReconciliationDecision, TransactionAllocation
 from apps.notifications.models import Notification
 
-from .. import collection_accounts, credit, families, ledger
+from .. import collection_accounts, credit, families, ledger, statements
 from ..models import CreditKind, FamilyCreditEntry
 from .base import ReceivablesTestCase, CLOCK
 
@@ -216,3 +216,53 @@ class ReviewDecisionsTests(BankIntegrationCase):
         self.decide("reopen")
         actions = list(ReconciliationDecision.objects.filter(transaction=self.tx).order_by("at", "id").values_list("action", flat=True))
         self.assertEqual(actions, ["auto_match", "reopen"])
+
+
+class PaymentHistoryForParentsTests(BankIntegrationCase):
+    """What `statements.payments()` gives a parent: the same verified collections the ledger counts,
+    never a different figure, and never silence about one that stopped counting."""
+
+    def row(self, family, tx):
+        return next(r for r in statements.payments(family) if r["transactionId"] == str(tx.id))
+
+    def test_a_payment_into_the_family_account_is_shown_with_its_allocation(self):
+        tx = self.into_account(120_000 * N)
+        row = self.row(self.family, tx)
+        self.assertEqual((row["amountMinor"], row["status"], row["countsTowardBalance"]), (120_000 * N, "matched", True))
+        self.assertEqual({a["studentId"] for a in row["allocations"]} <= {str(self.ahmad.id), str(self.aisha.id), str(self.maryam.id)}, True)
+        self.assertEqual(sum(a["amountMinor"] for a in row["allocations"]), 120_000 * N)
+        self.assertEqual((row["allocatedMinor"], row["creditMinor"], row["unappliedMinor"]), (120_000 * N, 0, 0))
+
+    def test_an_overpayment_is_shown_as_credit_and_nothing_is_left_unapplied(self):
+        tx = self.into_account(320_000 * N)
+        row = self.row(self.family, tx)
+        self.assertEqual((row["allocatedMinor"], row["creditMinor"], row["unappliedMinor"]), (300_000 * N, 20_000 * N, 0))
+
+    def test_a_reversed_payment_still_appears_but_no_longer_counts_or_shows_an_allocation(self):
+        tx = self.into_account(10_000 * N)
+        review.decide(self.owner, tx.id, action="reversed", note="Bank reversed it")
+        row = self.row(self.family, tx)
+        self.assertEqual((row["amountMinor"], row["status"], row["countsTowardBalance"]), (10_000 * N, "reversed", False))
+        self.assertEqual((row["allocations"], row["allocatedMinor"], row["creditMinor"], row["unappliedMinor"]), ([], 0, 0, 0))
+        self.assertLedgerHolds()
+
+    def test_a_payment_reassigned_to_another_familys_student_moves_with_it_not_double_counted(self):
+        from datetime import timedelta
+
+        from .. import schedules
+
+        tx = self.into_account(120_000 * N)  # matched to the Bello family by its account
+        other_student = self.make_student("Yusuf", "Sani", guardian="Ada Sani")
+        sani, _ = families.ensure_family_for_student(self.school, other_student)
+        s = schedules.create_schedule(self.school, session=self.session, name="Sani fees", actor=self.owner)
+        schedules.add_item(s, actor=self.owner, code="SANI", name="Tuition", category="tuition", amount_minor=50_000 * N, due_date=CLOCK + timedelta(days=9), scope="student", student=other_student)
+        schedules.publish(s, actor=self.owner)
+        review.decide(self.owner, tx.id, action="assign", student_id=str(other_student.id), note="Was for the Sanis")
+
+        bello_row = next((r for r in statements.payments(self.family) if r["transactionId"] == str(tx.id)), None)
+        self.assertIsNone(bello_row)  # not double counted: it no longer touches the Bello family at all
+
+        sani_row = self.row(sani, tx)
+        self.assertEqual((sani_row["countsTowardBalance"], sani_row["allocatedMinor"], sani_row["creditMinor"]), (True, 50_000 * N, 70_000 * N))
+        self.assertLedgerHolds(self.family)
+        self.assertLedgerHolds(sani)

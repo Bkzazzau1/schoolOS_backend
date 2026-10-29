@@ -68,4 +68,5 @@ urlpatterns = [
     # a parent's own view
     path(f"{_BASE}me/families/", parent.MyFamiliesView.as_view()),
     path(f"{_BASE}me/families/<uuid:family_id>/statement/", parent.MyFamilyStatementView.as_view()),
+    path(f"{_BASE}me/families/<uuid:family_id>/payments/", parent.MyFamilyPaymentsView.as_view()),
 ]

@@ -49,3 +49,17 @@ class MyFamilyStatementView(ReceivablesView):
         if family is None:
             raise NotFound("That family was not found.")  # also what someone else's family looks like
         return Response({"statement": statements.build(family)})
+
+
+class MyFamilyPaymentsView(ReceivablesView):
+    """Every verified bank payment this family's own balance has ever counted, with what it went towards -
+    the same payments Finance Office sees in Smart Money Collection, read through the family's own ledger
+    rather than the staff-only side, so a parent never sees another family's payments or a provider's
+    internals."""
+
+    def get(self, request, school_id, family_id):
+        membership = _parent(request, school_id)
+        family = next((f for f in _my_families(membership) if f.id == family_id), None)
+        if family is None:
+            raise NotFound("That family was not found.")
+        return Response({"payments": statements.payments(family)})

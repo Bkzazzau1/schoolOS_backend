@@ -10,12 +10,21 @@ from datetime import date
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from . import account_shapes, audit, ledger, periods, reports
+from apps.bankconnect.constants import ReconStatus
+from apps.bankconnect.models import BankTransaction, TransactionAllocation
+
+from . import account_shapes, audit, credit, ledger, periods, reports
 from .errors import Refused
-from .models import AccountStatus, Family, FamilyCollectionAccount, FamilyStatement, ReceivableStatus, StatementStatus, StudentReceivable
+from .models import (
+    AccountStatus, Family, FamilyCollectionAccount, FamilyCreditEntry, FamilyStatement, ReceivableStatus, StatementStatus, StudentReceivable,
+)
 from .permissions import require_operator
 
 _NUMBERING_TRIES = 8
+
+#: A payment in one of these states no longer counts as money collected: it went back, or is held as a
+#: possible duplicate until a person confirms it (mirrors apps.bankconnect.summary.NOT_COLLECTED).
+_NOT_COLLECTED = (ReconStatus.REVERSED, ReconStatus.REFUNDED, ReconStatus.DUPLICATE)
 
 
 def _line(receivable: StudentReceivable, pos: ledger.Position) -> dict:
@@ -66,6 +75,64 @@ def collection_account_facts(family: Family) -> list[dict]:
         })
     order = {AccountStatus.ACTIVE: 0, AccountStatus.DORMANT: 1, AccountStatus.SETTLED: 1, AccountStatus.GRACE: 1}
     return sorted(rows, key=lambda r: (order.get(r["status"], 2), r["bankName"], r["id"]))
+
+
+def _payment_entry(tx: BankTransaction, family: Family, allocations: list) -> dict:
+    reversed_like = tx.reconciliation_status in _NOT_COLLECTED
+    allocated = sum(a.amount_minor for a in allocations)
+    credit_minor = max(credit.total_credit_from(tx, family), 0) if not reversed_like else 0
+    # Whether THIS family still has any stake in this payment right now - not just whether the payment
+    # as a whole is still good. A payment moved to someone else's student entirely leaves a family with
+    # neither an allocation nor credit from it, even though the payment itself was never reversed.
+    counted = not reversed_like and (allocated > 0 or credit_minor > 0)
+    return {
+        "transactionId": str(tx.id),
+        "date": tx.transaction_date.isoformat(),
+        "provider": tx.provider,
+        "reference": tx.transaction_reference or tx.external_transaction_id,
+        "amountMinor": tx.amount_minor,
+        "status": tx.reconciliation_status,
+        "countsTowardBalance": counted,
+        "allocations": [
+            {
+                "studentId": str(a.student_id), "studentName": a.student.full_name, "purpose": a.purpose,
+                "amountMinor": a.amount_minor, "receivableId": str(a.receivable_id) if a.receivable_id else None,
+                "item": a.receivable.item_name if a.receivable_id else "",
+            }
+            for a in allocations
+        ] if counted else [],
+        "allocatedMinor": allocated if counted else 0,
+        "creditMinor": credit_minor if counted else 0,
+        "unappliedMinor": max(tx.amount_minor - allocated - credit_minor, 0) if counted else 0,
+    }
+
+
+def payments(family: Family) -> list[dict]:
+    """Every payment that is, or ever was, part of this family's ledger, newest first, with its current
+    status and (while it still counts) where it went. History is never rewritten: a payment later reversed,
+    refunded or found to be a duplicate is still listed, with no allocations and `countsTowardBalance: false`
+    - exactly as the ledger it is read from, which took its allocations back when that was decided. A payment
+    moved to a different family's student entirely (a person correcting where it was put) drops out of this
+    family's history altogether: it was never really theirs, and nothing here should say it still is."""
+    tx_ids = set(TransactionAllocation.objects.filter(family=family).values_list("transaction_id", flat=True))
+    tx_ids |= set(FamilyCreditEntry.objects.filter(family=family, transaction__isnull=False).values_list("transaction_id", flat=True))
+    if not tx_ids:
+        return []
+    transactions = BankTransaction.objects.filter(id__in=tx_ids).order_by("-transaction_date", "-created_at")
+    current = (
+        TransactionAllocation.objects.filter(family=family, transaction_id__in=tx_ids, superseded=False, receivable__isnull=False)
+        .select_related("student", "receivable")
+    )
+    by_tx: dict = {}
+    for a in current:
+        by_tx.setdefault(a.transaction_id, []).append(a)
+    rows = []
+    for tx in transactions:
+        entry = _payment_entry(tx, family, by_tx.get(tx.id, []))
+        if not entry["countsTowardBalance"] and tx.reconciliation_status not in _NOT_COLLECTED:
+            continue
+        rows.append(entry)
+    return rows
 
 
 def build(family: Family, *, session=None, term=None, today: date | None = None) -> dict:

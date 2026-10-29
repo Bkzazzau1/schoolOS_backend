@@ -209,6 +209,23 @@ class ParentEndpointTests(test_api.ApiTestCase):
         self.assertEqual(statement["collectionAccounts"], [account])
         self.assertNotIn("SECRET", json.dumps([families_, statement]))
 
+    def test_a_parent_can_read_their_familys_real_payment_history(self):
+        from .. import allocation
+
+        allocation.allocate(self.payment(120_000 * N), self.family)
+        rows = self.get(f"me/families/{self.family.id}/payments/", who=self.parent).json()["payments"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["amountMinor"], rows[0]["countsTowardBalance"]), (120_000 * N, True))
+        self.assertNotIn("SECRET", json.dumps(rows))
+
+    def test_a_parent_cannot_read_another_familys_payments(self):
+        other_student = self.make_student("Other", "Family", school=self.other_school, guardian="Someone")
+        from .. import families as families_module
+
+        other_family, _ = families_module.ensure_family_for_student(self.other_school, other_student)
+        response = self.get(f"me/families/{other_family.id}/payments/", who=self.parent)
+        self.assertEqual(response.status_code, 404)
+
     def test_a_parent_of_a_family_with_no_account_yet_is_told_there_is_none_rather_than_shown_a_childs_id(self):
         FamilyCollectionAccount.objects.all().update(status="closed")
         family = self.get("me/families/", who=self.parent).json()["families"][0]
