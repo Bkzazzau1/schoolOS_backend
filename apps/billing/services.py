@@ -19,7 +19,7 @@ from .models import (
     SubscriptionStatus,
     UsageSnapshot,
 )
-from .pricing import PricingPolicyUndefined, fixed_fees_for_subscription_period
+from .pricing import PricingPolicyUndefined, fixed_fees_for_subscription_period, preview_fee_for_subscription
 
 BASELINE_PLAN_CODE = "standard"
 BASELINE_PLAN_DEFAULTS = {
@@ -267,11 +267,34 @@ def serialize_subscription(
         .first()
     )
     entitlements = resolved_entitlements(subscription)
+    preview = preview_fee_for_subscription(subscription)
     return {
         "organizationId": str(organization.id),
         "status": subscription.status,
         "accessMode": access_mode(subscription),
         "plan": serialize_plan(subscription.plan),
+        "pricingPreview": (
+            {
+                "totalMinor": sum(sf.fee.fixed_fee_minor for sf in preview),
+                "grossMinor": sum(sf.fee.gross_fee_minor for sf in preview),
+                "discountMinor": sum(sf.fee.discount_minor for sf in preview),
+                "currency": preview[0].fee.currency,
+                "lines": [
+                    {
+                        "schoolId": sf.school_id,
+                        "billableStudentCount": sf.billable_student_count,
+                        "fixedFeeMinor": sf.fee.fixed_fee_minor,
+                        "pricingSource": sf.fee.source,
+                        "bracketMinStudents": sf.fee.min_students,
+                        "bracketMaxStudents": sf.fee.max_students,
+                        "termCount": sf.fee.term_count,
+                    }
+                    for sf in preview
+                ],
+            }
+            if preview
+            else None
+        ),
         "currentPeriodStart": (
             subscription.current_period_start.isoformat()
             if subscription.current_period_start
@@ -360,7 +383,25 @@ def serialize_payment_attempt(attempt: PaymentAttempt) -> dict:
     }
 
 
+def serialize_invoice_line(line: BillingInvoiceLine) -> dict:
+    return {
+        "id": str(line.id),
+        "schoolId": str(line.school_id),
+        "schoolName": line.school.name,
+        "billableStudentCount": line.billable_student_count,
+        "currency": line.currency,
+        "fixedFeeMinor": line.fixed_fee_minor,
+        "pricingSource": line.pricing_source,
+        "bracketMinStudents": line.bracket_min_students,
+        "bracketMaxStudents": line.bracket_max_students,
+        "grossFeeMinor": line.gross_fee_minor,
+        "discountMinor": line.discount_minor,
+        "termCount": line.term_count,
+    }
+
+
 def serialize_invoice(invoice: BillingInvoice, *, include_attempts: bool = False) -> dict:
+    metadata = invoice.metadata or {}
     payload = {
         "id": str(invoice.id),
         "number": invoice.number,
@@ -372,11 +413,18 @@ def serialize_invoice(invoice: BillingInvoice, *, include_attempts: bool = False
         "billableStudentCount": invoice.billable_student_count,
         "amountDueMinor": invoice.amount_due_minor,
         "amountPaidMinor": invoice.amount_paid_minor,
+        "grossAmountMinor": metadata.get("grossAmountMinor", invoice.amount_due_minor),
+        "discountMinor": metadata.get("discountMinor", 0),
+        "pricingMode": metadata.get("pricingMode"),
         "periodStart": invoice.period_start.isoformat() if invoice.period_start else None,
         "periodEnd": invoice.period_end.isoformat() if invoice.period_end else None,
         "issuedAt": invoice.issued_at.isoformat(),
         "dueAt": invoice.due_at.isoformat() if invoice.due_at else None,
         "paidAt": invoice.paid_at.isoformat() if invoice.paid_at else None,
+        "lines": [
+            serialize_invoice_line(line)
+            for line in invoice.lines.select_related("school").order_by("school__name")
+        ],
     }
     if include_attempts:
         payload["paymentAttempts"] = [

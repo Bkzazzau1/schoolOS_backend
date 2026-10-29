@@ -206,6 +206,31 @@ def fixed_fees_for_subscription_period(subscription, snapshot) -> list[SchoolFee
     return results
 
 
+def preview_fee_for_subscription(subscription) -> list[SchoolFee] | None:
+    """What the next invoice would charge, from the last roster count SkulGen has observed -
+    the exact same pricing logic an actual invoice uses (fixed_fees_for_subscription_period),
+    never a separate estimate that could silently drift from what a school is really charged.
+    This is a read-only preview for display before any invoice exists yet, so any reason the
+    real logic would refuse to price it (no snapshot yet, zero enrollment, an organization or
+    enrollment state the automatic path can't yet express) quietly returns None instead of
+    raising - a missing preview is a normal, expected state here, not an error.
+    """
+
+    from .models import UsageSnapshot
+
+    snapshot = (
+        UsageSnapshot.objects.filter(organization=subscription.organization)
+        .order_by("-captured_at", "-id")
+        .first()
+    )
+    if snapshot is None:
+        return None
+    try:
+        return fixed_fees_for_subscription_period(subscription, snapshot)
+    except Exception:
+        return None
+
+
 def _ranges_overlap(a_min: int, a_max: int | None, b_min: int, b_max: int | None) -> bool:
     """Inclusive numeric-range overlap; a None max means unbounded above."""
     a_max_ok = a_max is None or a_max >= b_min
