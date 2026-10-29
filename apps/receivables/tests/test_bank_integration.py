@@ -266,3 +266,73 @@ class PaymentHistoryForParentsTests(BankIntegrationCase):
         self.assertEqual((sani_row["countsTowardBalance"], sani_row["allocatedMinor"], sani_row["creditMinor"]), (True, 50_000 * N, 70_000 * N))
         self.assertLedgerHolds(self.family)
         self.assertLedgerHolds(sani)
+
+
+class CompleteFinancialJourneyTests(BankIntegrationCase):
+    """The whole acceptance criterion, end to end: a family owes, transfers into its account, the
+    provider confirms it, the backend reconciles it, and from that one real event everyone - Finance
+    Office, the family's own parent-facing read, and the receipt a payment would print - sees the same
+    money, correctly allocated, with nothing double-counted and nothing silently different."""
+
+    def row(self, family, tx):
+        return next(r for r in statements.payments(family) if r["transactionId"] == str(tx.id))
+
+    def test_an_outstanding_balance_is_paid_confirmed_reconciled_and_seen_the_same_everywhere(self):
+        from apps.bankconnect import summary
+
+        before = ledger.family_position(self.family)
+        self.assertEqual(before.outstanding, 300_000 * N)  # the family owes, before anything is paid
+
+        # The family transfers into its own dedicated virtual account; the provider's webhook/ingest
+        # path (`into_account`, via `self.payment` + `reconciliation.reconcile_pending`) confirms and
+        # auto-matches it, exactly as a real Paystack/Monnify callback would.
+        tx = self.into_account(120_000 * N, sender="Musa Bello", narration="School fees")
+        self.assertEqual(tx.reconciliation_status, "matched")
+        self.assertLedgerHolds()
+
+        # The backend's own position is updated at once, from the same ledger every reader below reads.
+        after = ledger.family_position(self.family)
+        self.assertEqual((after.outstanding, after.paid), (180_000 * N, 120_000 * N))
+
+        # Finance Office's dashboard summary counts it as collected today, reconciled, not pending review.
+        dash = summary.build(self.school, period="today")
+        self.assertEqual(dash["today"]["amountMinor"], 120_000 * N)
+        self.assertEqual(dash["reconciliation"]["reconciledMinor"], 120_000 * N)
+        self.assertEqual(dash["reconciliation"]["pendingReviewCount"], 0)
+
+        # The family's own parent-facing statement (MyFamilyStatementView's data) agrees exactly.
+        statement = statements.build(self.family)
+        self.assertEqual((statement["position"]["outstandingMinor"], statement["position"]["paidMinor"]), (180_000 * N, 120_000 * N))
+
+        # The family's own verified-payments read (the new parent-facing endpoint) shows the one real
+        # payment, fully allocated, counting toward the balance - everything a receipt needs is here.
+        (row,) = statements.payments(self.family)
+        self.assertEqual((row["transactionId"], row["countsTowardBalance"], row["allocatedMinor"], row["creditMinor"], row["unappliedMinor"]), (str(tx.id), True, 120_000 * N, 0, 0))
+        self.assertTrue(row["allocations"])  # a receipt has something real to print
+
+        # A second, partial payment: some is allocated, the rest held as the family's own credit - never lost.
+        second = self.into_account(90_000 * N, sender="Musa Bello", narration="Partial fees")
+        partial_row = self.row(self.family, second)
+        self.assertEqual((partial_row["allocatedMinor"], partial_row["creditMinor"], partial_row["unappliedMinor"]), (90_000 * N, 0, 0))
+        self.assertEqual(ledger.family_position(self.family).outstanding, 90_000 * N)
+
+        # An unmatched transfer (no family account can be identified) is held for a person, never guessed at,
+        # and touches nobody's balance or payment history.
+        stranger = self.payment(5_000 * N, sender="Nobody", narration="hello")
+        from apps.bankconnect import reconciliation
+
+        reconciliation.reconcile_pending(self.school)
+        stranger.refresh_from_db()
+        self.assertEqual(stranger.reconciliation_status, "unmatched")
+        self.assertEqual(ledger.family_position(self.family).outstanding, 90_000 * N)
+        self.assertFalse(any(r["transactionId"] == str(stranger.id) for r in statements.payments(self.family)))
+
+        # The bank reverses the first payment: it is taken back out, visibly, not hidden - the charge
+        # it paid is owed again, and Finance Office's reconciled total drops by exactly that much.
+        review.decide(self.owner, tx.id, action="reversed", note="Bank reversed it")
+        self.assertEqual(ledger.family_position(self.family).outstanding, 210_000 * N)
+        reversed_row = self.row(self.family, tx)
+        self.assertEqual((reversed_row["status"], reversed_row["countsTowardBalance"], reversed_row["allocations"]), ("reversed", False, []))
+        dash_after_reversal = summary.build(self.school, period="all")
+        self.assertEqual(dash_after_reversal["reconciliation"]["reconciledMinor"], 90_000 * N)  # only the still-good payment counts
+        self.assertLedgerHolds()
