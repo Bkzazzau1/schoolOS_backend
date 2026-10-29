@@ -13,7 +13,7 @@ from . import review, summary
 from .constants import NEEDS_A_PERSON, Direction, ReconStatus
 from .http import bad_filter, bank_errors, body, is_uuid
 from .models import BankTransaction, TransactionAllocation
-from .permissions import acting_membership
+from .permissions import NEED_RECONCILE, acting_membership
 from .serializers import serialize_transaction, serialize_transaction_detail
 
 MAX_PAGE = 100
@@ -115,7 +115,7 @@ class DecideView(APIView):
 
     @bank_errors
     def post(self, request, school_id, transaction_id):
-        membership = acting_membership(request, school_id)
+        membership = acting_membership(request, school_id, need=NEED_RECONCILE)
         data = body(request)
         review.decide(
             membership, transaction_id,

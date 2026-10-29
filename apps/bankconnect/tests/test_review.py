@@ -98,8 +98,15 @@ class AssignTests(ReviewTestCase):
         body = self.decided(row, action="assign", studentId=str(self.aisha.id), purpose="books")
         self.assertEqual(body["allocations"][0]["purpose"], "books")
 
-    def test_the_finance_office_can_decide_too(self):
+    def test_the_finance_office_can_see_but_not_decide_without_the_duty_and_can_once_given_it(self):
+        """Found in independent review: being able to look at the review queue (an Accountant's by role)
+        must not, by itself, carry authority to change a transaction - that is a separate, explicit duty,
+        same as the other collection responsibilities."""
         row = self.unclear()
+        response = self.decide(row, who=self.members["accountant"], action="assign", studentId=str(self.aisha.id))
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(ReconciliationDecision.objects.filter(action="assign").exists())
+        self.give_duty(self.members["accountant"], duty="finance.reconciliation")
         response = self.decide(row, who=self.members["accountant"], action="assign", studentId=str(self.aisha.id))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(ReconciliationDecision.objects.filter(action="assign").get().actor, self.members["accountant"])

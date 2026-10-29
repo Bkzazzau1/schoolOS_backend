@@ -1,6 +1,6 @@
 """Who may do what in Smart Money Collection.
 
-Four separate responsibilities, each the owner's by default and each delegable to a trusted person through a
+Five separate responsibilities, each the owner's by default and each delegable to a trusted person through a
 duty (a job assignment):
 
 * **provider manage** (`finance.collection_provider_manage`): the school's own Paystack / Monnify
@@ -9,7 +9,11 @@ duty (a job assignment):
   authority (`finance.billing_authority`), which decides what families owe and has nothing to do with payment secrets;
 * **policy manage** (`finance.collection_policy_manage`): the school's collection policy and its overrides;
 * **prepare** (`finance.collection_prepare`): the MAKER of a collection batch;
-* **approve** (`finance.collection_approve`): the CHECKER of a collection batch.
+* **approve** (`finance.collection_approve`): the CHECKER of a collection batch;
+* **reconcile** (`finance.reconciliation`): decide what a payment in review actually means - assign it,
+  split it, mark it a duplicate or unrelated income, reverse or refund it, reopen it. NOT implied by being
+  able to look at collections: an Accountant sees the review queue by role alone, but deciding what is in
+  it is a separate, explicitly given responsibility, just like the other four above.
 
 Looking at collections (what arrived, which accounts exist, the review queue) is for the owner, the Finance Office and
 anyone holding one of these duties. Nobody else, whatever their role, and never across schools.
@@ -30,10 +34,13 @@ from .constants import (
     DUTY_POLICY_MANAGE,
     DUTY_PREPARE,
     DUTY_PROVIDER_MANAGE,
+    DUTY_RECONCILE,
     SMART_COLLECTION_DUTIES,
 )
 
-NEED_VIEW, NEED_PROVIDER, NEED_POLICY, NEED_PREPARE, NEED_APPROVE = "view", "provider", "policy", "prepare", "approve"
+NEED_VIEW, NEED_PROVIDER, NEED_POLICY, NEED_PREPARE, NEED_APPROVE, NEED_RECONCILE = (
+    "view", "provider", "policy", "prepare", "approve", "reconcile",
+)
 #: Non-staff roles can never hold any authority here, whatever a stray record says.
 _OUTSIDERS = (Role.PARENT, Role.STUDENT, Role.ALUMNI)
 
@@ -63,6 +70,12 @@ def can_approve(membership) -> bool:
     return _owner(membership) or _holds(membership, DUTY_APPROVE)
 
 
+def can_decide_reconciliation(membership) -> bool:
+    """May change what a payment under review means (assign, split, mark a duplicate or unrelated,
+    reverse, refund, reopen) - never implied by merely being able to see the review queue."""
+    return _owner(membership) or _holds(membership, DUTY_RECONCILE)
+
+
 def can_view_collections(membership) -> bool:
     return bool(membership.is_active) and (
         membership.role in (Role.PROPRIETOR, Role.ACCOUNTANT)
@@ -79,6 +92,7 @@ _CHECKS = {
     NEED_POLICY: (can_manage_policy, "Only the owner, or someone the owner has authorised, can change the school's collection policy."),
     NEED_PREPARE: (can_prepare, "Only the owner, or someone the owner has authorised, can prepare a collection batch."),
     NEED_APPROVE: (can_approve, "Only the owner, or someone the owner has authorised, can approve a collection batch."),
+    NEED_RECONCILE: (can_decide_reconciliation, "Only the owner, or someone the owner has authorised, can decide where a payment goes."),
 }
 
 
@@ -87,6 +101,7 @@ def permissions_of(membership) -> dict:
     return {
         "canView": can_view_collections(membership), "canManageProviders": can_manage_providers(membership),
         "canManagePolicy": can_manage_policy(membership), "canPrepare": can_prepare(membership), "canApprove": can_approve(membership),
+        "canDecideReconciliation": can_decide_reconciliation(membership),
     }
 
 

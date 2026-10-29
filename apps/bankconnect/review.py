@@ -20,6 +20,7 @@ from apps.receivables.errors import Refused as ReceivablesRefused
 from .provider_connections import BankRejected
 from .constants import Direction, Purpose, ReconStatus
 from .models import BankTransaction, ReconciliationDecision, TransactionAllocation
+from .permissions import can_decide_reconciliation
 
 ACTIONS = ("assign", "split", "unrelated_income", "duplicate", "investigate", "reversed", "refunded", "reopen")
 #: A person must say why they did these: they change what counts as the school's money.
@@ -122,6 +123,10 @@ def decide(
     membership, transaction_id, *, action, expected_status=None, student_id=None, purpose=None,
     allocations=None, note="", duplicate_of=None,
 ) -> BankTransaction:
+    # Defence in depth: the view checks this too. Seeing the review queue is not the same authority as
+    # changing what is in it - being able to look never implies being able to decide.
+    if not can_decide_reconciliation(membership):
+        raise BankRejected("Only the owner, or someone the owner has authorised, can decide where a payment goes.", "not_authorised")
     if action not in ACTIONS:
         raise BankRejected("That is not something a payment can be marked as.", "unknown_action")
     note = " ".join(str(note or "").split())

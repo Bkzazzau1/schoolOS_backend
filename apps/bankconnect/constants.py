@@ -10,12 +10,16 @@ from django.db import models
 #:   set up the webhook, choose the active provider and schedule or apply a provider switch;
 #: - policy manage: change the school's collection policy (defaults, session/term/family overrides);
 #: - prepare: the MAKER of a collection batch (build the preview, select families, resolve overrides, submit);
-#: - approve: the CHECKER of a collection batch (approve or reject; never for a batch they prepared).
+#: - approve: the CHECKER of a collection batch (approve or reject; never for a batch they prepared);
+#: - reconcile: decide what a payment review sends for review actually means (assign, split, mark a
+#:   duplicate or unrelated, reverse, refund, reopen). Seeing the review queue is not this: a person with
+#:   no duty at all can still look, through `can_view_collections`, but cannot change a single transaction.
 DUTY_PROVIDER_MANAGE = "finance.collection_provider_manage"
 DUTY_POLICY_MANAGE = "finance.collection_policy_manage"
 DUTY_PREPARE = "finance.collection_prepare"
 DUTY_APPROVE = "finance.collection_approve"
-SMART_COLLECTION_DUTIES = (DUTY_PROVIDER_MANAGE, DUTY_POLICY_MANAGE, DUTY_PREPARE, DUTY_APPROVE)
+DUTY_RECONCILE = "finance.reconciliation"
+SMART_COLLECTION_DUTIES = (DUTY_PROVIDER_MANAGE, DUTY_POLICY_MANAGE, DUTY_PREPARE, DUTY_APPROVE, DUTY_RECONCILE)
 #: The earlier duty for connecting the school's bank accounts. Kept so an assignment already made keeps working:
 #: it is honoured as provider-management authority and nothing more.
 DUTY_MANAGE_CONNECTIONS = "finance.bank_connections"

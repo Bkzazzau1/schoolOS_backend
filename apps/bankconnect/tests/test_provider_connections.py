@@ -72,14 +72,14 @@ class WhoMayManageTests(BankTestCase):
     def test_the_owner_may_do_everything_by_default(self):
         self.assertEqual(
             permissions.permissions_of(self.owner),
-            {"canView": True, "canManageProviders": True, "canManagePolicy": True, "canPrepare": True, "canApprove": True},
+            {"canView": True, "canManageProviders": True, "canManagePolicy": True, "canPrepare": True, "canApprove": True, "canDecideReconciliation": True},
         )
 
     def test_the_finance_office_views_but_holds_no_authority_without_a_duty(self):
         accountant = self.members["accountant"]
         self.assertEqual(
             permissions.permissions_of(accountant),
-            {"canView": True, "canManageProviders": False, "canManagePolicy": False, "canPrepare": False, "canApprove": False},
+            {"canView": True, "canManageProviders": False, "canManagePolicy": False, "canPrepare": False, "canApprove": False, "canDecideReconciliation": False},
         )
 
     def test_each_duty_grants_only_its_own_authority(self):
@@ -87,6 +87,7 @@ class WhoMayManageTests(BankTestCase):
         expected = {
             "finance.collection_provider_manage": "canManageProviders", "finance.collection_policy_manage": "canManagePolicy",
             "finance.collection_prepare": "canPrepare", "finance.collection_approve": "canApprove",
+            "finance.reconciliation": "canDecideReconciliation",
         }
         for duty, granted in expected.items():
             self.give_duty(accountant, duty)
