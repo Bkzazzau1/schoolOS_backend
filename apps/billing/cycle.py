@@ -7,6 +7,8 @@ from django.utils import timezone
 
 from apps.schools.models import School
 
+from .academic_periods import active_term_for_school, next_term_bounds, single_active_school, term_bounds
+from .exceptions import BillingCycleNotReady
 from .models import (
     BillingCyclePolicy,
     BillingInterval,
@@ -19,10 +21,6 @@ from .models import (
     UsageSnapshot,
 )
 from .pricing import PricingPolicyUndefined, fixed_fee_for_subscription_period
-
-
-class BillingCycleNotReady(Exception):
-    """Expected configuration/meter condition that should skip a cycle safely."""
 
 
 AUTOMATIC_ACCESS_STATUSES = {
@@ -220,7 +218,7 @@ def automation_summary(subscription: OrganizationSubscription) -> dict:
         state = "invoice_outstanding"
         message = "An invoice is awaiting payment before the next cycle can be issued."
     elif (
-        interval in {BillingInterval.TERM, BillingInterval.CUSTOM}
+        interval == BillingInterval.CUSTOM
         and (subscription.current_period_start is None or subscription.current_period_end is None)
     ):
         state = "period_required"
@@ -372,13 +370,24 @@ def _ensure_period_locked(subscription: OrganizationSubscription, *, now):
 
     plan = subscription.plan
     interval = plan.billing_interval if plan else ""
-    if interval in {BillingInterval.TERM, BillingInterval.CUSTOM}:
-        raise BillingCycleNotReady("The next term/custom billing period has not been configured.")
-    end = _next_period_end(now, interval)
-    if end is None:
-        raise BillingCycleNotReady("The billing interval cannot initialize a period automatically.")
+    if interval == BillingInterval.CUSTOM:
+        raise BillingCycleNotReady("The next custom billing period has not been configured.")
+    if interval == BillingInterval.TERM:
+        school = single_active_school(subscription.organization)
+        term = active_term_for_school(school, as_of_date=timezone.localtime(now).date())
+        if term is None:
+            raise BillingCycleNotReady(
+                "No active academic term is configured for this school's calendar right now. "
+                "SkulGen will not invent a term boundary; configure the academic calendar first."
+            )
+        start, end = term_bounds(term)
+    else:
+        start = now
+        end = _next_period_end(now, interval)
+        if end is None:
+            raise BillingCycleNotReady("The billing interval cannot initialize a period automatically.")
 
-    subscription.current_period_start = now
+    subscription.current_period_start = start
     subscription.current_period_end = end
     subscription.save(
         update_fields=["current_period_start", "current_period_end", "updated_at"]
@@ -388,9 +397,9 @@ def _ensure_period_locked(subscription: OrganizationSubscription, *, now):
         event="billing_period_initialized",
         from_status=subscription.status,
         to_status=subscription.status,
-        detail={"periodStart": now.isoformat(), "periodEnd": end.isoformat()},
+        detail={"periodStart": start.isoformat(), "periodEnd": end.isoformat()},
     )
-    return now, end
+    return start, end
 
 
 def _capture_period_usage_locked(subscription: OrganizationSubscription):
@@ -509,16 +518,27 @@ def _advance_period_locked(subscription: OrganizationSubscription):
     old_end = subscription.current_period_end
     if old_end is None:
         return
-    next_end = _next_period_end(old_end, plan.billing_interval)
+
+    if plan.billing_interval == BillingInterval.TERM:
+        try:
+            school = single_active_school(subscription.organization)
+        except BillingCycleNotReady:
+            next_start, next_end = None, None
+        else:
+            next_start, next_end = next_term_bounds(school, not_before_date=timezone.localtime(old_end).date())
+    else:
+        next_start = old_end
+        next_end = _next_period_end(old_end, plan.billing_interval)
+
     if next_end is None:
         subscription.current_period_start = None
         subscription.current_period_end = None
         detail = {"waitingForNextPeriod": True}
     else:
-        subscription.current_period_start = old_end
+        subscription.current_period_start = next_start
         subscription.current_period_end = next_end
         detail = {
-            "periodStart": old_end.isoformat(),
+            "periodStart": next_start.isoformat(),
             "periodEnd": next_end.isoformat(),
         }
     subscription.save(
