@@ -223,6 +223,7 @@ def upsert_academic_class(*, membership, payload: dict) -> AcademicClass:
             "code": payload["code"],
             "name": payload["name"],
             "section": payload["section"],
+            "campus_id": payload.get("campusId") or "",
             "level_order": payload["levelOrder"],
             "stream": payload["stream"],
             "next_class": next_class,

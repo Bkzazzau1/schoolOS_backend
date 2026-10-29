@@ -2,6 +2,7 @@ from typing import Any
 
 from apps.core.errors import Rejected
 from apps.core.validation import boolean, choice, text
+from apps.structure.constants import CAMPUS
 from apps.sync.models import SyncRecord
 from apps.sync.registry import EntityHandler, MutationContext
 
@@ -133,11 +134,17 @@ class AcademicClassHandler(EntityHandler):
         next_class_id = _optional_text(p, "nextClassId", max_len=64)
         if next_class_id == external_id:
             raise Rejected("A class cannot progress to itself. Use Repeat instead.")
+        campus_id = _optional_text(p, "campusId", max_len=128)
+        if campus_id and not SyncRecord.objects.filter(
+            school=ctx.membership.school, entity_type=CAMPUS, entity_id=campus_id, deleted=False
+        ).exists():
+            raise Rejected("Choose a real campus.")
         return {
             "id": external_id,
             "code": text(p, "code", max_len=60),
             "name": text(p, "name", max_len=120),
             "section": text(p, "section", max_len=80),
+            "campusId": campus_id or None,
             "levelOrder": _positive_int(p, "levelOrder", maximum=1000),
             "stream": _optional_text(p, "stream", max_len=60),
             "nextClassId": next_class_id,

@@ -107,6 +107,11 @@ class AcademicClass(models.Model):
     code = models.CharField(max_length=60)
     name = models.CharField(max_length=120)
     section = models.CharField(max_length=80)
+    #: A real apps.structure campus id (not a FK - campus is a generic-sync record, not a Django
+    #: model), or blank when this class has not been assigned to one yet. Used to scope data about
+    #: this class's real students to the one campus a membership is restricted to, if any - see
+    #: apps.owner.jobs.access.campus_scope_for.
+    campus_id = models.CharField(max_length=128, blank=True)
     level_order = models.PositiveSmallIntegerField()
     stream = models.CharField(max_length=60, blank=True)
     next_class = models.ForeignKey(

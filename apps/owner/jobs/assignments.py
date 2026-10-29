@@ -3,6 +3,8 @@ from typing import Any
 from apps.core.errors import Rejected
 from apps.core.validation import choice, is_email, string_list, text
 from apps.schools.models import Role
+from apps.structure.constants import CAMPUS
+from apps.sync.models import SyncRecord
 from apps.sync.registry import EntityHandler, MutationContext
 
 from ..common import REVOKED, resolve_status, server_owned_link
@@ -36,6 +38,11 @@ class JobAssignmentHandler(EntityHandler):
 
         role = choice(p.get("role"), JOB_ROLES, "role")
         section_id = text(p, "sectionId", max_len=128, required=role == "sectionHead")
+        campus_id = text(p, "campusId", max_len=128, required=False)
+        if campus_id and not SyncRecord.objects.filter(
+            school=ctx.membership.school, entity_type=CAMPUS, entity_id=campus_id, deleted=False
+        ).exists():
+            raise Rejected("Choose a real campus.")
         status = resolve_status(p, ctx.existing)
         cleaned = {
             "name": text(p, "name"),
@@ -46,7 +53,10 @@ class JobAssignmentHandler(EntityHandler):
             "role": role,
             "sectionId": section_id or None,
             "sectionName": text(p, "sectionName", required=False) or None,
-            "scope": "section" if section_id else "school",
+            # A direct campus grant (any role/duty) narrows school-wide to one campus; a section
+            # grant (sectionHead) narrows to that section's own real campus, once it has one.
+            "campusId": campus_id or None,
+            "scope": "section" if section_id else ("campus" if campus_id else "school"),
             "duties": string_list(p, "duties", allowed=DUTIES),
             "status": status,
             "membershipId": server_owned_link(ctx.existing),
