@@ -64,7 +64,7 @@ class JobAssignmentTests(OwnerTestCase):
     def test_every_duty_and_role_the_app_offers_is_accepted(self):
         from apps.owner.jobs.constants import DUTIES, JOB_ROLES
 
-        self.assertEqual(len(DUTIES), 24)
+        self.assertEqual(len(DUTIES), 35)
         every_duty = sorted(DUTIES)
         for i, role in enumerate(sorted(JOB_ROLES - {"sectionHead"})):
             self.assertAccepted(self.push(f"J{i}", job(role=role, sectionId="", duties=every_duty)))
@@ -92,3 +92,16 @@ class JobAssignmentTests(OwnerTestCase):
     def test_a_job_cannot_be_deleted_only_revoked(self):
         self.push("J1", job())
         self.assertRejected(self.push("J1", operation="delete"), "deleted")
+
+    def test_a_job_can_be_scoped_to_a_real_campus(self):
+        self.assertAccepted(self.push("CAMPUS-1", {"id": "CAMPUS-1", "name": "Kaduna Campus"}, entity_type="campus"))
+        self.assertAccepted(self.push("J1", job(role="administrator", sectionId="", duties=["administration.students"], campusId="CAMPUS-1")))
+        stored = self.stored("J1").payload
+        self.assertEqual((stored["campusId"], stored["scope"]), ("CAMPUS-1", "campus"))
+
+    def test_a_job_cannot_be_scoped_to_a_campus_that_is_not_real(self):
+        self.assertRejected(self.push("J1", job(role="administrator", sectionId="", duties=["administration.students"], campusId="ghost")), "real campus")
+
+    def test_a_job_with_no_campus_or_section_is_whole_school(self):
+        self.assertAccepted(self.push("J1", job(role="finance", sectionId="", sectionName="", duties=["finance.fees"])))
+        self.assertEqual(self.stored("J1").payload["scope"], "school")
