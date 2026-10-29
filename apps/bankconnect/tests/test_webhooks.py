@@ -84,11 +84,20 @@ class WebhookTests(BankTestCase):
     def test_a_delivery_that_fails_half_way_is_not_remembered_as_done(self):
         body = self.body(external_transaction_id="W1")
         with mock.patch.object(webhooks, "ingest", side_effect=RuntimeError("database went away")):
-            with self.assertRaises(RuntimeError):
-                self.deliver(body)
+            # The provider is told to retry (503), never left hanging with an unhandled server error -
+            # and the failure is recorded safely, without the real exception text going anywhere unsafe.
+            response = self.deliver(body)
+        self.assertEqual(response.status_code, 503)
         self.assertEqual((BankTransaction.objects.count(), BankWebhookEvent.objects.count()), (0, 0))
+        self.connection.refresh_from_db()
+        self.assertEqual(self.connection.last_error_code, "processing_failed")
+        event = BankAuditEvent.objects.get(kind="webhook_processing_failed")
+        self.assertEqual(event.detail["code"], "processing_failed")
+        self.assertNotIn("database went away", json.dumps(event.detail))
         self.assertEqual(self.deliver(body).json()["outcome"], "processed")
         self.assertEqual(BankTransaction.objects.count(), 1)
+        self.connection.refresh_from_db()
+        self.assertEqual(self.connection.last_error_code, "")  # a later success clears it
 
     def test_a_payment_into_an_account_no_family_has_is_kept_unmatched_and_never_guessed_at(self):
         # the narration and sender name say exactly who it is - and it is still not attached to anyone
@@ -113,6 +122,44 @@ class WebhookTests(BankTestCase):
         self.assertEqual(event.detail, {"code": "invalid_signature"})
         self.assertEqual(event.connection, self.connection)
         self.assertEqual(self.row({"id": str(self.connection.id)}).webhook_status, "awaiting_event")
+        # Unauthenticated noise is never mistaken for evidence that the connection's own credential is
+        # bad: unlike an authenticated processing failure, it never touches the connection's own status.
+        self.connection.refresh_from_db()
+        self.assertEqual((self.connection.status, self.connection.last_error_code), ("connected", ""))
+
+    def test_the_provider_cannot_be_reached_the_provider_retries_and_the_connection_is_flagged(self):
+        body = self.body(external_transaction_id="W1")
+        signature = sandbox_tools.SandboxConnector.sign(body, self.secret_of(self.connection)["webhook_secret"])
+        connector = webhooks.registry.get_connector("sandbox")
+        from ..providers.base import ProviderUnavailable
+
+        with mock.patch.object(connector, "handle_webhook", side_effect=ProviderUnavailable()):
+            response = self.deliver(body, signature=signature)
+        self.assertEqual((response.status_code, response.json()["code"]), (503, "unavailable"))
+        self.assertEqual((BankTransaction.objects.count(), BankWebhookEvent.objects.count()), (0, 0))
+        self.connection.refresh_from_db()
+        self.assertEqual((self.connection.status, self.connection.last_error_code), ("error", "provider_unavailable"))
+        event = BankAuditEvent.objects.get(kind="webhook_processing_failed")
+        self.assertEqual(event.detail, {"code": "provider_unavailable"})
+        # The provider's own retry of the exact same delivery, once it can be reached, is processed cleanly.
+        self.assertEqual(self.deliver(body, signature=signature).json()["outcome"], "processed")
+        self.connection.refresh_from_db()
+        self.assertEqual((self.connection.status, self.connection.last_error_code), ("connected", ""))
+
+    def test_an_unreadable_authenticated_body_is_refused_and_recorded_distinctly_from_a_bad_signature(self):
+        body = self.body(external_transaction_id="W1")
+        signature = sandbox_tools.SandboxConnector.sign(body, self.secret_of(self.connection)["webhook_secret"])
+        connector = webhooks.registry.get_connector("sandbox")
+        from ..providers.base import ConnectorError
+
+        with mock.patch.object(connector, "handle_webhook", side_effect=ConnectorError("unreadable_payload", "could not read this")):
+            response = self.deliver(body, signature=signature)
+        self.assertEqual((response.status_code, response.json()["code"]), (400, "unreadable"))
+        self.connection.refresh_from_db()
+        self.assertEqual((self.connection.status, self.connection.last_error_code), ("error", "unreadable_payload"))
+        event = BankAuditEvent.objects.get(kind="webhook_processing_failed")
+        self.assertEqual(event.detail, {"code": "unreadable_payload"})
+        self.assertNotIn("could not read this", json.dumps(event.detail))  # SkulGen's own fixed code only, never the provider's message
 
     def test_a_body_changed_after_signing_is_refused(self):
         body = self.body(external_transaction_id="W1", amount_minor=100)
@@ -163,6 +210,10 @@ class WebhookTests(BankTestCase):
             response = self.deliver(body, signature=signature)
         self.assertEqual((response.status_code, response.json()["code"]), (503, "unavailable"))
         self.assertEqual(BankTransaction.objects.count(), 0)
+        self.connection.refresh_from_db()
+        self.assertEqual((self.connection.status, self.connection.last_error_code), ("error", "vault_error"))
+        event = BankAuditEvent.objects.get(kind="webhook_processing_failed")
+        self.assertEqual(event.detail, {"code": "vault_error"})
 
     def test_it_needs_no_sign_in_and_reveals_no_secret(self):
         response = self.deliver(self.body(external_transaction_id="W1"))
