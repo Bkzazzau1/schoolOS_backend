@@ -98,7 +98,8 @@ class OrganizationInvoiceListView(APIView):
         )
         invoices = (
             BillingInvoice.objects.filter(organization_id=organization_id)
-            .prefetch_related("payment_attempts")
+            .select_related("school")
+            .prefetch_related("payment_attempts", "lines__school")
             .order_by("-issued_at", "-id")[:50]
         )
         return Response(

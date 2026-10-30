@@ -1,16 +1,21 @@
 """Per-school, per-term premium-feature access - the second half of premium entitlement
-resolution, alongside the existing organization-level apps.billing.services.require_entitlement.
+resolution, alongside the organization-level commercial-plan check (whether a feature code is
+enabled at all, independent of any one school's payment).
 
-A premium feature requires BOTH: the organization's plan to have that entitlement enabled with
-a healthy (full) access mode - the existing require_entitlement() check, unchanged - AND this
-specific school's current billing period to have a paid invoice. The second check is what
-makes premium access per-school and per-term rather than just per-organization: one
-organization's invoice can cover several schools, and paying it unlocks every school that
-invoice actually covers for the period it actually covers, never a sibling school on a
-different (later or earlier) period that invoice doesn't cover.
+A premium feature requires BOTH: the organization's commercial plan to have that entitlement
+enabled (a plan-wide, commercial on/off switch - independent of lifecycle status), AND this
+specific school's own current billing period to have a paid invoice
+(school_premium_access()). Deliberately does NOT also require the organization's lifecycle
+access_mode to be "full": since Phase C's independent per-school billing change, each active
+school gets its own invoice, paid independently of its siblings, so the organization's
+overall status can be dragged toward "restricted" by one unpaid school without that school's
+paid sibling ever losing its own premium access - "do not rely solely on the organization-wide
+subscription status" is explicit in the brief this implements. A school whose organization
+drops to "restricted"/"suspended" still loses *essential* access the ordinary way
+(apps.core.permissions); premium access here is judged solely by this school's own invoices.
 
 Nothing in this module is wired into any live feature's request path yet. These functions are
-the reusable foundation the freemium policy calls for; which premium entity types or views
+the reusable foundation the freemium policy calls for; which premium entity types or actions
 actually call require_premium_entitlement(), and when that goes live, are separate, explicitly
 authorized steps - see the design report for the full candidate list and why each one either
 qualifies today or doesn't (performance analytics, AI tooling and "advanced financial
@@ -21,13 +26,15 @@ actual repository rather than assumed from an earlier proposal).
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
-from .models import BillingInvoiceLine, InvoiceStatus
-from .services import require_entitlement
+from .models import BillingInvoice, InvoiceStatus
+from .services import ensure_organization_subscription, resolved_entitlements
 
 #: Verified against real, currently-implemented code (apps/cbt/services.py's automatic scoring
-#: in submit_attempt(), and apps/report_cards/services.py's generate_report_card() /
-#: compile_class_report_cards()) - not carried over from any earlier, unverified proposal.
-CBT_SUBMISSION = "cbt_submission"
+#: in submit_attempt(), reached only from CbtTestHandler's "publish" action, and
+#: apps/report_cards/services.py's generate_report_card()/compile_class_report_cards(), reached
+#: only from ReportCardBatchHandler's "compile" action) - not carried over from any earlier,
+#: unverified proposal.
+CBT_EXAM_PUBLISH = "cbt_exam_publish"
 REPORT_CARD_GENERATION = "report_card_generation"
 
 
@@ -36,45 +43,59 @@ def school_premium_access(school, *, as_of=None) -> bool:
 
     Fails closed: no invoice yet for the period covering `as_of` means premium stays locked,
     never silently unlocked just because the organization's lifecycle status looks healthy.
-    Scoped to this school's own BillingInvoiceLine, not the organization as a whole, so one
-    school's paid period can never unlock a sibling school's different period. Today every
-    school in one organization invoice shares that invoice's one period and one paid/unpaid
-    status (multi-school term billing with independent per-school periods is a later phase -
-    see the design report's item on this), so two schools on the same combined invoice are
-    correctly unlocked or locked together; they are never conflated with a different
-    organization's schools or a different period's invoice.
+    Queries BillingInvoice.school directly (set on every invoice issued since the per-school
+    independent billing change), so one school's paid period can never unlock a sibling
+    school's different period or a different organization's school - each school's own
+    invoice carries its own status, settled independently through the ordinary Paystack
+    checkout/webhook flow, with the usual idempotency guarantees unchanged.
     """
 
     as_of = as_of or timezone.now()
-    line = (
-        BillingInvoiceLine.objects.filter(
+    invoice = (
+        BillingInvoice.objects.filter(
             school=school,
             period_start__lte=as_of,
             period_end__gt=as_of,
         )
-        .select_related("invoice")
-        .order_by("-invoice__issued_at", "-id")
+        .order_by("-issued_at", "-id")
         .first()
     )
-    if line is None:
+    if invoice is None:
         return False
-    return line.invoice.status == InvoiceStatus.PAID
+    return invoice.status == InvoiceStatus.PAID
 
 
 def require_premium_entitlement(school, *, code: str, current_value: int | None = None) -> None:
-    """Raises unless both premium conditions hold for this school: its organization's plan has
-    `code` enabled under a full access mode (require_entitlement, unchanged), and this school's
-    own current billing period is actually paid (school_premium_access).
+    """Raises unless both premium conditions hold for this school: its organization's
+    commercial plan has `code` enabled at all (a plan-wide switch, not an access_mode check),
+    and this school's own current billing period is actually paid (school_premium_access()).
 
-    A school with no organization is outside SkulGen's SaaS billing entirely - the same
-    exemption apps.core.permissions already gives it for the ordinary subscription gate - so
-    it is never blocked here either.
+    A school with no organization is outside SkulGen's SaaS billing entirely - the same,
+    narrowly-scoped legacy exemption apps.core.permissions already gives it for the ordinary
+    subscription gate (schools created before the SaaS account layer). Every school created
+    through the normal provisioning flow (apps.organizations.services.provision_school) is
+    always attached to an organization, so this exemption has no path to apply to a new
+    school going forward - it is not an unintended permanent free-premium bypass, only a
+    reviewed accommodation for pre-existing data.
     """
 
     organization = school.organization
     if organization is None:
         return
-    require_entitlement(organization, code, current_value=current_value)
+    subscription = ensure_organization_subscription(organization)
+    resolved = resolved_entitlements(subscription).get(code)
+    if resolved is None or not resolved["enabled"]:
+        raise PermissionDenied(
+            "Your current SkulGen plan does not include this feature."
+        )
+    if (
+        current_value is not None
+        and resolved["limit"] is not None
+        and current_value >= resolved["limit"]
+    ):
+        raise PermissionDenied(
+            "You have reached the limit for this feature."
+        )
     if not school_premium_access(school):
         raise PermissionDenied(
             "This feature needs this school's current term subscription to be paid."

@@ -107,8 +107,6 @@ class AnnualInvoicingTests(BillingTestCase):
         self.assertEqual(result["result"], "invoice_issued")
         invoice = self.subscription.invoices.get()
         self.assertEqual(invoice.amount_due_minor, 10_800_000)  # 3 x NGN40,000 x 0.9
-        self.assertEqual(invoice.metadata["grossAmountMinor"], 12_000_000)
-        self.assertEqual(invoice.metadata["discountMinor"], 1_200_000)
         line = invoice.lines.get()
         self.assertEqual((line.gross_fee_minor, line.discount_minor, line.term_count), (12_000_000, 1_200_000, 3))
 

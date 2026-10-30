@@ -79,7 +79,7 @@ class InvoiceGenerationTests(BillingTestCase):
         from apps.billing.cycle import _issue_period_invoice_locked, _policy_for
 
         again = _issue_period_invoice_locked(self.subscription, snapshot, policy=_policy_for(self.subscription), now=timezone.now())
-        self.assertEqual(again.id, first.id)
+        self.assertEqual([inv.id for inv in again], [first.id])
         self.assertEqual(BillingInvoice.objects.filter(subscription=self.subscription).count(), 1)
 
     def test_a_retried_cycle_run_for_the_same_period_is_a_no_op_not_a_second_invoice(self):

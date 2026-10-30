@@ -208,10 +208,17 @@ class UsageSnapshot(models.Model):
 
 
 class BillingInvoice(models.Model):
-    """An immutable-priced SkulGen SaaS invoice for one usage observation.
+    """An immutable-priced SkulGen SaaS invoice.
 
     Amount inputs are copied onto the invoice at issue time so later plan changes
     cannot rewrite historical charges.
+
+    `school` is set for every invoice issued since the per-school independent billing
+    change (Phase C): each active school in an organization gets its own invoice for a
+    period, priced and paid independently of its siblings - paying school A's invoice
+    never touches school B's. It is null only on invoices issued before that change,
+    which combined every school's charge into one invoice with its own BillingInvoiceLine
+    per school; those historical invoices are never rewritten or split retroactively.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -225,10 +232,17 @@ class BillingInvoice(models.Model):
         on_delete=models.PROTECT,
         related_name="invoices",
     )
-    usage_snapshot = models.OneToOneField(
+    school = models.ForeignKey(
+        "schools.School",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="billing_invoices",
+    )
+    usage_snapshot = models.ForeignKey(
         UsageSnapshot,
         on_delete=models.PROTECT,
-        related_name="invoice",
+        related_name="invoices",
     )
     number = models.CharField(max_length=40, unique=True)
     currency = models.CharField(max_length=3)
@@ -255,7 +269,11 @@ class BillingInvoice(models.Model):
             models.Index(
                 fields=["organization", "status", "-issued_at"],
                 name="billing_inv_org_status_idx",
-            )
+            ),
+            models.Index(
+                fields=["school", "period_start", "period_end"],
+                name="billing_inv_school_period_idx",
+            ),
         ]
 
     def __str__(self):

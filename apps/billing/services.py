@@ -39,7 +39,7 @@ BASELINE_ENTITLEMENTS = {
     #: Premium-feature foundation (Phase C freemium policy). Both default enabled so adding
     #: them changes nothing on their own - enforcement is a separate, later, explicitly
     #: authorized step (apps.billing.premium_access is not wired into any live request path).
-    "cbt_submission": {"enabled": True, "limit_value": None},
+    "cbt_exam_publish": {"enabled": True, "limit_value": None},
     "report_card_generation": {"enabled": True, "limit_value": None},
 }
 
@@ -407,10 +407,17 @@ def serialize_invoice_line(line: BillingInvoiceLine) -> dict:
 
 def serialize_invoice(invoice: BillingInvoice, *, include_attempts: bool = False) -> dict:
     metadata = invoice.metadata or {}
+    lines = list(invoice.lines.select_related("school").order_by("school__name"))
+    gross_total = sum(line.gross_fee_minor for line in lines) if lines else metadata.get("grossAmountMinor", invoice.amount_due_minor)
+    discount_total = sum(line.discount_minor for line in lines) if lines else metadata.get("discountMinor", 0)
     payload = {
         "id": str(invoice.id),
         "number": invoice.number,
         "organizationId": str(invoice.organization_id),
+        # Set on every invoice issued since the per-school independent billing change; null
+        # only on historical invoices issued before it, which combined several schools.
+        "schoolId": str(invoice.school_id) if invoice.school_id else None,
+        "schoolName": invoice.school.name if invoice.school_id else None,
         "status": invoice.status,
         "currency": invoice.currency,
         "baseAmountMinor": invoice.base_amount_minor,
@@ -418,18 +425,15 @@ def serialize_invoice(invoice: BillingInvoice, *, include_attempts: bool = False
         "billableStudentCount": invoice.billable_student_count,
         "amountDueMinor": invoice.amount_due_minor,
         "amountPaidMinor": invoice.amount_paid_minor,
-        "grossAmountMinor": metadata.get("grossAmountMinor", invoice.amount_due_minor),
-        "discountMinor": metadata.get("discountMinor", 0),
+        "grossAmountMinor": gross_total,
+        "discountMinor": discount_total,
         "pricingMode": metadata.get("pricingMode"),
         "periodStart": invoice.period_start.isoformat() if invoice.period_start else None,
         "periodEnd": invoice.period_end.isoformat() if invoice.period_end else None,
         "issuedAt": invoice.issued_at.isoformat(),
         "dueAt": invoice.due_at.isoformat() if invoice.due_at else None,
         "paidAt": invoice.paid_at.isoformat() if invoice.paid_at else None,
-        "lines": [
-            serialize_invoice_line(line)
-            for line in invoice.lines.select_related("school").order_by("school__name")
-        ],
+        "lines": [serialize_invoice_line(line) for line in lines],
     }
     if include_attempts:
         payload["paymentAttempts"] = [
@@ -470,29 +474,31 @@ def issue_latest_usage_invoice(organization: Organization) -> BillingInvoice:
         raise ValidationError(
             {"message": "No authoritative billable-student usage snapshot is available yet."}
         )
-    existing = BillingInvoice.objects.filter(usage_snapshot=snapshot).first()
-    if existing is not None:
-        return existing
-
-    students = snapshot.billable_student_count or 0
     try:
         school_fees = fixed_fees_for_subscription_period(subscription, snapshot)
     except PricingPolicyUndefined as problem:
         raise ValidationError({"message": str(problem)}) from problem
-    amount_due = sum(sf.fee.fixed_fee_minor for sf in school_fees)
-    gross_total = sum(sf.fee.gross_fee_minor for sf in school_fees)
-    discount_total = sum(sf.fee.discount_minor for sf in school_fees)
-    currency = school_fees[0].fee.currency
+    # fixed_fees_for_subscription_period only ever returns more than one school when the usage
+    # snapshot carries per-school meter detail, which this manual/console path's snapshot never
+    # does (see capture_usage_snapshot) - it raises first for any other multi-school case. So
+    # this is always exactly one school today; looped for the same shape as the automatic path.
+    sf = school_fees[0]
+    existing = BillingInvoice.objects.filter(usage_snapshot=snapshot, school_id=sf.school_id).first()
+    if existing is not None:
+        return existing
+
+    amount_due = sf.fee.fixed_fee_minor
     now = timezone.now()
     invoice = BillingInvoice.objects.create(
         organization=organization,
         subscription=subscription,
+        school_id=sf.school_id,
         usage_snapshot=snapshot,
         number=f"SOS-{now:%Y%m%d}-{uuid.uuid4().hex[:10].upper()}",
-        currency=currency,
+        currency=sf.fee.currency,
         base_amount_minor=amount_due,
         student_unit_amount_minor=0,
-        billable_student_count=students,
+        billable_student_count=sf.billable_student_count,
         amount_due_minor=amount_due,
         amount_paid_minor=0 if amount_due else amount_due,
         status=InvoiceStatus.OPEN if amount_due else InvoiceStatus.PAID,
@@ -505,30 +511,24 @@ def issue_latest_usage_invoice(organization: Organization) -> BillingInvoice:
             "billingInterval": plan.billing_interval,
             "usageSource": snapshot.source,
             "pricingMode": "fixed_bracket",
-            "schoolCount": len(school_fees),
-            "grossAmountMinor": gross_total,
-            "discountMinor": discount_total,
         },
     )
-    BillingInvoiceLine.objects.bulk_create(
-        BillingInvoiceLine(
-            invoice=invoice,
-            school_id=sf.school_id,
-            billable_student_count=sf.billable_student_count,
-            currency=sf.fee.currency,
-            fixed_fee_minor=sf.fee.fixed_fee_minor,
-            pricing_source=sf.fee.source,
-            bracket_min_students=sf.fee.min_students,
-            bracket_max_students=sf.fee.max_students,
-            pricing_bracket_id=sf.fee.bracket_id,
-            enterprise_agreement_id=sf.fee.enterprise_agreement_id,
-            gross_fee_minor=sf.fee.gross_fee_minor,
-            discount_minor=sf.fee.discount_minor,
-            term_count=sf.fee.term_count,
-            period_start=snapshot.period_start,
-            period_end=snapshot.period_end,
-        )
-        for sf in school_fees
+    BillingInvoiceLine.objects.create(
+        invoice=invoice,
+        school_id=sf.school_id,
+        billable_student_count=sf.billable_student_count,
+        currency=sf.fee.currency,
+        fixed_fee_minor=sf.fee.fixed_fee_minor,
+        pricing_source=sf.fee.source,
+        bracket_min_students=sf.fee.min_students,
+        bracket_max_students=sf.fee.max_students,
+        pricing_bracket_id=sf.fee.bracket_id,
+        enterprise_agreement_id=sf.fee.enterprise_agreement_id,
+        gross_fee_minor=sf.fee.gross_fee_minor,
+        discount_minor=sf.fee.discount_minor,
+        term_count=sf.fee.term_count,
+        period_start=snapshot.period_start,
+        period_end=snapshot.period_end,
     )
     SubscriptionEvent.objects.create(
         subscription=subscription,
@@ -538,9 +538,10 @@ def issue_latest_usage_invoice(organization: Organization) -> BillingInvoice:
         detail={
             "invoiceId": str(invoice.id),
             "invoiceNumber": invoice.number,
+            "schoolId": sf.school_id,
             "amountMinor": amount_due,
             "currency": invoice.currency,
-            "billableStudents": students,
+            "billableStudents": sf.billable_student_count,
         },
     )
     return invoice

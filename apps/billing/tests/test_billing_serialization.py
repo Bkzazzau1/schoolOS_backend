@@ -107,7 +107,13 @@ class InvoiceSerializationTests(BillingTestCase):
         run_subscription_cycle(self.subscription.id)
 
         response = self.get(f"organizations/{self.organization.id}/billing/invoices/")
-        invoice = response.json()["invoices"][0]
-        names = sorted(line["schoolName"] for line in invoice["lines"])
-        self.assertEqual(names, sorted([self.school.name, "Second Campus"]))
-        self.assertEqual(invoice["amountDueMinor"], 4_000_000 + 12_000_000)
+        invoices = response.json()["invoices"]
+        # Each school gets its own invoice now, not a shared line on one combined invoice.
+        self.assertEqual(len(invoices), 2)
+        by_school_name = {inv["schoolName"]: inv for inv in invoices}
+        self.assertEqual(sorted(by_school_name), sorted([self.school.name, "Second Campus"]))
+        self.assertEqual(by_school_name[self.school.name]["amountDueMinor"], 4_000_000)
+        self.assertEqual(by_school_name["Second Campus"]["amountDueMinor"], 12_000_000)
+        for invoice in invoices:
+            self.assertEqual(len(invoice["lines"]), 1)
+            self.assertEqual(invoice["lines"][0]["schoolName"], invoice["schoolName"])

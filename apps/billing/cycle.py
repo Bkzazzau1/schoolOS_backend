@@ -447,59 +447,65 @@ def _issue_period_invoice_locked(
     *,
     policy: BillingCyclePolicy,
     now,
-):
-    existing = (
-        BillingInvoice.objects.filter(
-            subscription=subscription,
-            period_start=snapshot.period_start,
-            period_end=snapshot.period_end,
-        )
-        .order_by("issued_at", "id")
-        .first()
-    )
-    if existing is not None:
-        return existing
+) -> list[BillingInvoice]:
+    """One invoice per active school for this period - never one combined invoice.
+
+    Each school's subscription is paid independently (Phase C): school A's payment never
+    unlocks school B's premium features, because they are never the same invoice. Idempotent
+    per (subscription, school, period), not just per (subscription, period), so a partial
+    retry only creates the schools still missing an invoice for this period.
+    """
 
     plan = subscription.plan
-    students = snapshot.billable_student_count or 0
     try:
         school_fees = fixed_fees_for_subscription_period(subscription, snapshot)
     except PricingPolicyUndefined as problem:
         raise BillingCycleNotReady(str(problem)) from problem
-    amount_due = sum(sf.fee.fixed_fee_minor for sf in school_fees)
-    gross_total = sum(sf.fee.gross_fee_minor for sf in school_fees)
-    discount_total = sum(sf.fee.discount_minor for sf in school_fees)
-    currency = school_fees[0].fee.currency
+
     due_at = now + timedelta(days=policy.invoice_due_days)
-    invoice = BillingInvoice.objects.create(
-        organization=subscription.organization,
-        subscription=subscription,
-        usage_snapshot=snapshot,
-        number=f"SOS-{now:%Y%m%d}-{uuid.uuid4().hex[:10].upper()}",
-        currency=currency,
-        base_amount_minor=amount_due,
-        student_unit_amount_minor=0,
-        billable_student_count=students,
-        amount_due_minor=amount_due,
-        amount_paid_minor=0 if amount_due else amount_due,
-        status=InvoiceStatus.OPEN if amount_due else InvoiceStatus.PAID,
-        period_start=snapshot.period_start,
-        period_end=snapshot.period_end,
-        due_at=due_at,
-        paid_at=now if amount_due == 0 else None,
-        metadata={
-            "planCode": plan.code,
-            "billingInterval": plan.billing_interval,
-            "usageSource": snapshot.source,
-            "automatic": True,
-            "pricingMode": "fixed_bracket",
-            "schoolCount": len(school_fees),
-            "grossAmountMinor": gross_total,
-            "discountMinor": discount_total,
-        },
-    )
-    BillingInvoiceLine.objects.bulk_create(
-        BillingInvoiceLine(
+    invoices = []
+    for sf in school_fees:
+        existing = (
+            BillingInvoice.objects.filter(
+                subscription=subscription,
+                school_id=sf.school_id,
+                period_start=snapshot.period_start,
+                period_end=snapshot.period_end,
+            )
+            .order_by("issued_at", "id")
+            .first()
+        )
+        if existing is not None:
+            invoices.append(existing)
+            continue
+
+        amount_due = sf.fee.fixed_fee_minor
+        invoice = BillingInvoice.objects.create(
+            organization=subscription.organization,
+            subscription=subscription,
+            school_id=sf.school_id,
+            usage_snapshot=snapshot,
+            number=f"SOS-{now:%Y%m%d}-{uuid.uuid4().hex[:10].upper()}",
+            currency=sf.fee.currency,
+            base_amount_minor=amount_due,
+            student_unit_amount_minor=0,
+            billable_student_count=sf.billable_student_count,
+            amount_due_minor=amount_due,
+            amount_paid_minor=0 if amount_due else amount_due,
+            status=InvoiceStatus.OPEN if amount_due else InvoiceStatus.PAID,
+            period_start=snapshot.period_start,
+            period_end=snapshot.period_end,
+            due_at=due_at,
+            paid_at=now if amount_due == 0 else None,
+            metadata={
+                "planCode": plan.code,
+                "billingInterval": plan.billing_interval,
+                "usageSource": snapshot.source,
+                "automatic": True,
+                "pricingMode": "fixed_bracket",
+            },
+        )
+        BillingInvoiceLine.objects.create(
             invoice=invoice,
             school_id=sf.school_id,
             billable_student_count=sf.billable_student_count,
@@ -516,24 +522,23 @@ def _issue_period_invoice_locked(
             period_start=snapshot.period_start,
             period_end=snapshot.period_end,
         )
-        for sf in school_fees
-    )
-    SubscriptionEvent.objects.create(
-        subscription=subscription,
-        event="automatic_invoice_issued",
-        from_status=subscription.status,
-        to_status=subscription.status,
-        detail={
-            "invoiceId": str(invoice.id),
-            "invoiceNumber": invoice.number,
-            "amountMinor": amount_due,
-            "currency": invoice.currency,
-            "billableStudents": students,
-            "schoolCount": len(school_fees),
-            "dueAt": due_at.isoformat(),
-        },
-    )
-    return invoice
+        SubscriptionEvent.objects.create(
+            subscription=subscription,
+            event="automatic_invoice_issued",
+            from_status=subscription.status,
+            to_status=subscription.status,
+            detail={
+                "invoiceId": str(invoice.id),
+                "invoiceNumber": invoice.number,
+                "schoolId": sf.school_id,
+                "amountMinor": amount_due,
+                "currency": invoice.currency,
+                "billableStudents": sf.billable_student_count,
+                "dueAt": due_at.isoformat(),
+            },
+        )
+        invoices.append(invoice)
+    return invoices
 
 
 def _advance_period_locked(subscription: OrganizationSubscription):
@@ -630,7 +635,7 @@ def run_subscription_cycle(subscription_id, *, now=None) -> dict:
         return {"result": "cancelled", "subscriptionId": str(subscription.id)}
 
     snapshot = _capture_period_usage_locked(subscription)
-    invoice = _issue_period_invoice_locked(
+    invoices = _issue_period_invoice_locked(
         subscription,
         snapshot,
         policy=policy,
@@ -640,8 +645,10 @@ def run_subscription_cycle(subscription_id, *, now=None) -> dict:
     return {
         "result": "invoice_issued",
         "subscriptionId": str(subscription.id),
-        "invoiceId": str(invoice.id),
-        "invoiceNumber": invoice.number,
+        "invoiceId": str(invoices[0].id),
+        "invoiceNumber": invoices[0].number,
+        "invoiceIds": [str(invoice.id) for invoice in invoices],
+        "schoolCount": len(invoices),
     }
 
 
