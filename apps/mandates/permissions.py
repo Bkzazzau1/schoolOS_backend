@@ -100,8 +100,16 @@ def _named_membership(request):
 
 
 def acting_membership(request, school_id, *, need: str = NEED_VIEW):
-    """The membership the person is acting as, checked for this school and this level of authority."""
-    membership = require_membership(request.user, school_id, membership_id=_named_membership(request))
+    """The membership the person is acting as, checked for this school and this level of authority.
+
+    Viewing mandates/payment status is a financial-continuity operation (Phase C freemium
+    policy): it stays reachable regardless of SkulGen subscription status. Starting, managing
+    or approving a mandate/batch is an active account action and keeps today's ordinary gate.
+    """
+    membership = require_membership(
+        request.user, school_id, membership_id=_named_membership(request),
+        bypass_subscription_check=need == NEED_VIEW,
+    )
     check, message = _CHECKS[need]
     if not check(membership):
         raise PermissionDenied(message)

@@ -9,6 +9,7 @@ from apps.core.errors import Rejected
 from apps.core.permissions import active_membership
 
 from . import registry
+from .access_tiers import bypasses_subscription_gate
 from .models import MutationLog, SyncRecord
 
 ACCEPTED = "accepted"
@@ -33,9 +34,17 @@ def apply_mutation(user, data: dict) -> Outcome:
     Raises PermissionDenied when the caller has no such membership. That is a
     problem with the caller's identity rather than with the mutation, so it is
     not recorded as a decision.
+
+    An essential or financial-continuity entity type (apps.sync.access_tiers) bypasses the
+    subscription gate entirely - unpaid schools can still start a term, enroll students and
+    manage records. Everything else keeps today's exact behaviour: blocked once the
+    organization's subscription is restricted or suspended.
     """
     membership = active_membership(
-        user, data["tenantId"], membership_id=data["membershipId"]
+        user,
+        data["tenantId"],
+        membership_id=data["membershipId"],
+        bypass_subscription_check=bypasses_subscription_gate(data["entityType"]),
     )
     if membership is None:
         raise PermissionDenied("You are not a member of this school.")

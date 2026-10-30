@@ -129,11 +129,22 @@ def _named_membership(request):
     return value or None
 
 
+#: Viewing collection history and deciding where a payment goes are financial-continuity
+#: operations (Phase C freemium policy): a school's own fee collection stays reachable
+#: regardless of its SkulGen subscription status. Connecting new providers, changing policy,
+#: or preparing/approving new collection batches are account-management actions and keep
+#: today's ordinary subscription gate.
+_CONTINUITY_NEEDS = (NEED_VIEW, NEED_RECONCILE)
+
+
 def acting_membership(request, school_id, *, manage: bool = False, need: str | None = None):
     """The membership the person is acting as, checked for this school and this level of authority.
     `manage=True` is the older spelling of `need="provider"`."""
     need = need or (NEED_PROVIDER if manage else NEED_VIEW)
-    membership = require_membership(request.user, school_id, membership_id=_named_membership(request))
+    membership = require_membership(
+        request.user, school_id, membership_id=_named_membership(request),
+        bypass_subscription_check=need in _CONTINUITY_NEEDS,
+    )
     check, message = _CHECKS[need]
     if not check(membership):
         raise PermissionDenied(message)
