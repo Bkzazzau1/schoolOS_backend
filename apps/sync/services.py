@@ -23,6 +23,16 @@ class Outcome:
     disposition: str
     server_version: int | None = None
     message: str = ""
+    #: False only for a premium-payment-pending refusal (apps.billing.premium_access). Every
+    #: other outcome - accepted, conflict, or an ordinary validation/authorization rejection -
+    #: is intrinsic to the mutation itself and safe to remember forever under its id, the same
+    #: as before. A payment-pending refusal is judged against the school's *current* invoice
+    #: state, which can legitimately change after the fact (the school pays), so memorizing it
+    #: would wrongly keep refusing the exact same mutation id forever even after payment -
+    #: apply_mutation() skips MutationLog for this one case so a genuine retry (whether the
+    #: person acts again, which the app's own offline queue already sends under a new id, or
+    #: the rarer same-id retry after a dropped response) is re-judged fresh every time.
+    cacheable: bool = True
 
 
 def apply_mutation(user, data: dict) -> Outcome:
@@ -30,7 +40,10 @@ def apply_mutation(user, data: dict) -> Outcome:
 
     Returns accepted, conflict (someone else changed the record first) or
     rejected (not allowed or not valid). The same mutation id always gets the
-    same answer, so retrying after a lost response is safe.
+    same answer on a retry, so retrying after a lost response is safe - except
+    a premium-payment-pending rejection (Outcome.cacheable=False), which is
+    judged fresh every time against the school's current invoice state, since
+    paying the invoice must let an identical retry succeed.
 
     Raises PermissionDenied when the caller has no such membership. That is a
     problem with the caller's identity rather than with the mutation, so it is
@@ -60,17 +73,18 @@ def apply_mutation(user, data: dict) -> Outcome:
             return Outcome(previous.disposition, previous.server_version, previous.message)
 
         outcome = _decide(membership, data)
-        MutationLog.objects.create(
-            school=membership.school,
-            mutation_id=data["id"],
-            membership=membership,
-            entity_type=data["entityType"],
-            entity_id=data["entityId"],
-            operation=data["operation"],
-            disposition=outcome.disposition,
-            server_version=outcome.server_version,
-            message=outcome.message,
-        )
+        if outcome.cacheable:
+            MutationLog.objects.create(
+                school=membership.school,
+                mutation_id=data["id"],
+                membership=membership,
+                entity_type=data["entityType"],
+                entity_id=data["entityId"],
+                operation=data["operation"],
+                disposition=outcome.disposition,
+                server_version=outcome.server_version,
+                message=outcome.message,
+            )
         return outcome
 
 
@@ -108,7 +122,9 @@ def _decide(membership, data: dict) -> Outcome:
                 try:
                     require_premium_entitlement(membership.school, code=premium_code)
                 except PermissionDenied as refused:
-                    return Outcome(REJECTED, message=str(refused))
+                    # Judged against the school's invoice state right now, which can change
+                    # (the school pays) - never memorized, so a later retry is re-judged fresh.
+                    return Outcome(REJECTED, message=str(refused), cacheable=False)
         if operation == "create":
             return _create(membership, record, ctx, handler)
         return _change(membership, record, ctx, handler, base_version)

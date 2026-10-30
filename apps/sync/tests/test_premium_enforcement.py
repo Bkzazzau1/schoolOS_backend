@@ -19,7 +19,7 @@ from apps.billing.models import BillingInvoice, InvoiceStatus, SubscriptionStatu
 from apps.billing.services import ensure_organization_subscription
 from apps.organizations.models import Organization
 from apps.schools.models import Membership, Role, School
-from apps.sync.access_tiers import premium_code_for
+from apps.sync.access_tiers import bypasses_subscription_gate, premium_code_for
 
 User = get_user_model()
 PASSWORD = "a-long-test-password-1"
@@ -49,6 +49,23 @@ class PremiumCodeForClassificationTests(TestCase):
         self.assertIsNone(premium_code_for("not_a_real_entity", {"action": "publish"}))
 
 
+class SubscriptionGateBypassClassificationTests(TestCase):
+    """The coarse, organization-wide subscription gate in apps.core.permissions must never be
+    the thing that decides a premium-gated or continuity entity type - only
+    apps.billing.premium_access (for premium actions) or nothing at all (for continuity) does."""
+
+    def test_both_premium_entity_types_bypass_the_coarse_gate(self):
+        self.assertTrue(bypasses_subscription_gate("academic_cbt_test"))
+        self.assertTrue(bypasses_subscription_gate("academic_report_card_batch"))
+
+    def test_both_academic_continuity_entity_types_bypass_the_coarse_gate(self):
+        self.assertTrue(bypasses_subscription_gate("academic_cbt_attempt"))
+        self.assertTrue(bypasses_subscription_gate("academic_report_card"))
+
+    def test_an_unclassified_entity_type_still_does_not_bypass_it(self):
+        self.assertFalse(bypasses_subscription_gate("not_a_real_entity"))
+
+
 class _PremiumPushTestCase(APITestCase):
     def _school(self, *, status=SubscriptionStatus.ACTIVE):
         organization = Organization.objects.create(name="BrightGate Group", slug=f"bg-premium-{uuid.uuid4().hex[:8]}")
@@ -73,12 +90,12 @@ class _PremiumPushTestCase(APITestCase):
             status=InvoiceStatus.PAID, period_start=start, period_end=end,
         )
 
-    def push(self, school, membership, *, entity_type, entity_id, payload, operation="create"):
+    def push(self, school, membership, *, entity_type, entity_id, payload, operation="create", mutation_id=None):
         self.client.force_authenticate(membership.user)
         return self.client.post(
             "/api/v1/sync/push/",
             {
-                "id": f"mut-{uuid.uuid4().hex}",
+                "id": mutation_id or f"mut-{uuid.uuid4().hex}",
                 "tenantId": str(school.id),
                 "membershipId": str(membership.id),
                 "entityType": entity_type,
@@ -193,3 +210,76 @@ class ReportCardGenerationEnforcementTests(_PremiumPushTestCase):
             response = self.push(school, membership, entity_type="academic_report_card_batch", entity_id=entity_id, payload=self._compile_payload(entity_id))
         self.assertNotIn(PREMIUM_MESSAGE, response.json()["message"])
         self.assertIn("Class does not exist", response.json()["message"])
+
+
+class CrossSchoolSubscriptionInterferenceTests(_PremiumPushTestCase):
+    """Two schools sharing one organization: School A has paid its own current term, School B
+    has not, and School B's own overdue invoice has pushed their *shared* organization's
+    lifecycle status to RESTRICTED. School A's premium action must be judged solely by its own
+    paid invoice through apps.billing.premium_access - never blocked earlier by the coarse,
+    organization-wide gate apps.core.permissions applies before that check ever runs. This is
+    the critical cross-school interference the correction brief this file implements calls out:
+    before the fix, active_membership() consulted bypasses_subscription_gate() by entity type
+    alone, and a premium entity type was not in that bypass list, so the organization's shared
+    RESTRICTED status blocked School A's publish before require_premium_entitlement() ran."""
+
+    def _two_schools(self, *, organization_status=SubscriptionStatus.RESTRICTED):
+        organization = Organization.objects.create(name="BrightGate Group", slug=f"bg-cross-{uuid.uuid4().hex[:8]}")
+        school_a = School.objects.create(name="BrightGate Academy A", slug=f"bg-cross-a-{uuid.uuid4().hex[:8]}", organization=organization)
+        school_b = School.objects.create(name="BrightGate Academy B", slug=f"bg-cross-b-{uuid.uuid4().hex[:8]}", organization=organization)
+        subscription = ensure_organization_subscription(organization)
+        self._pay_current_term(school_a, subscription)
+        # School B stays unpaid - its own overdue state is what pushed the shared org to this status.
+        subscription.status = organization_status
+        subscription.save(update_fields=["status"])
+        return school_a, school_b, subscription
+
+    def _teacher(self, school):
+        user = User.objects.create_user(f"teacher-{uuid.uuid4().hex[:8]}@brightgate.ng", PASSWORD)
+        return Membership.objects.create(user=user, school=school, role=Role.TEACHER)
+
+    def _publish_payload(self, entity_id):
+        return {
+            "id": entity_id, "action": "publish", "classSubjectId": str(uuid.uuid4()), "termId": str(uuid.uuid4()),
+            "title": "Mid-term Mathematics", "durationMinutes": 60, "resultMode": "score_only", "questions": [],
+        }
+
+    def test_school_as_own_paid_premium_action_is_never_blocked_by_school_bs_debt(self):
+        school_a, _school_b, _subscription = self._two_schools()
+        membership = self._teacher(school_a)
+        entity_id = str(uuid.uuid4())
+        with override_settings(PREMIUM_ENFORCEMENT_ENABLED=True):
+            response = self.push(school_a, membership, entity_type="academic_cbt_test", entity_id=entity_id, payload=self._publish_payload(entity_id))
+        # Reaches ordinary validation (its own paid entitlement cleared the premium gate) -
+        # never the coarse 403 and never the "needs payment" premium message either.
+        self.assertEqual(response.status_code, 422, response.json())
+        self.assertIn("Class subject does not exist", response.json()["message"])
+
+    def test_school_bs_own_unpaid_premium_action_is_still_refused_on_its_own_merits(self):
+        _school_a, school_b, _subscription = self._two_schools()
+        membership = self._teacher(school_b)
+        entity_id = str(uuid.uuid4())
+        with override_settings(PREMIUM_ENFORCEMENT_ENABLED=True):
+            response = self.push(school_b, membership, entity_type="academic_cbt_test", entity_id=entity_id, payload=self._publish_payload(entity_id))
+        self.assertEqual(response.status_code, 422, response.json())
+        self.assertIn(PREMIUM_MESSAGE, response.json()["message"])
+
+    def test_essential_operations_on_either_school_are_unaffected_by_the_shared_restricted_status(self):
+        school_a, school_b, _subscription = self._two_schools()
+        for school in (school_a, school_b):
+            membership = Membership.objects.create(
+                user=User.objects.create_user(f"admin-{uuid.uuid4().hex[:8]}@brightgate.ng", PASSWORD),
+                school=school, role=Role.ADMINISTRATOR,
+            )
+            response = self.push(school, membership, entity_type="academic_term", entity_id=str(uuid.uuid4()), payload={"id": "x"})
+            self.assertNotEqual(response.status_code, 403, response.json())
+
+    def test_an_unclassified_entity_type_on_either_school_still_stays_blocked(self):
+        school_a, school_b, _subscription = self._two_schools()
+        for school in (school_a, school_b):
+            membership = Membership.objects.create(
+                user=User.objects.create_user(f"x-{uuid.uuid4().hex[:8]}@brightgate.ng", PASSWORD),
+                school=school, role=Role.ADMINISTRATOR,
+            )
+            response = self.push(school, membership, entity_type="not_a_real_entity", entity_id="x", payload={}, operation="delete")
+            self.assertEqual(response.status_code, 403)
