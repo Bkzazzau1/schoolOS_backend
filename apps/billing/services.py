@@ -36,6 +36,11 @@ BASELINE_PLAN_DEFAULTS = {
 BASELINE_ENTITLEMENTS = {
     "school_provisioning": {"enabled": True, "limit_value": None},
     "multi_school": {"enabled": True, "limit_value": None},
+    #: Premium-feature foundation (Phase C freemium policy). Both default enabled so adding
+    #: them changes nothing on their own - enforcement is a separate, later, explicitly
+    #: authorized step (apps.billing.premium_access is not wired into any live request path).
+    "cbt_submission": {"enabled": True, "limit_value": None},
+    "report_card_generation": {"enabled": True, "limit_value": None},
 }
 
 FULL_ACCESS_STATUSES = {
