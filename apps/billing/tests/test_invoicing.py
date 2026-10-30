@@ -2,6 +2,9 @@
 it stands today, plus the idempotency guarantees that make the automatic cycle runner and the
 console's manual issue-latest-invoice path both safe to retry."""
 
+import uuid
+
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.billing.cycle import BillingCycleNotReady, run_billing_cycles, run_subscription_cycle
@@ -88,10 +91,13 @@ class InvoiceGenerationTests(BillingTestCase):
         self._ready_period()
         result_a = run_subscription_cycle(self.subscription.id)
         self.assertEqual(result_a["result"], "invoice_issued")
-        # The invoice just issued is still open (unpaid), so a second call right away correctly
-        # reports it as outstanding rather than advancing to, or billing, a further period.
+        # The invoice just issued is still open (unpaid), but that alone must never stop the
+        # NEXT period from being scheduled (Phase C correction brief, item 3: an outstanding
+        # invoice is tracked for admin visibility, never a reason to withhold billing) - the
+        # period has already advanced to a future one, so the next call reports it scheduled,
+        # and - the actual guarantee this test is about - still never a second invoice.
         result_b = run_subscription_cycle(self.subscription.id)
-        self.assertEqual(result_b["result"], "invoice_outstanding")
+        self.assertEqual(result_b["result"], "scheduled")
         self.assertEqual(BillingInvoice.objects.filter(subscription=self.subscription).count(), 1)
 
     def test_the_cycle_refuses_to_bill_a_period_whose_schools_are_not_all_metered_yet(self):
@@ -145,6 +151,38 @@ class InvoiceGenerationTests(BillingTestCase):
         ok = self.get(f"organizations/{self.organization.id}/billing/invoices/")  # the owner always can
         self.assertEqual(ok.status_code, 200)
         self.assertEqual(len(ok.json()["invoices"]), 1)
+
+
+class SchoolPeriodInvoiceUniquenessTests(BillingTestCase):
+    """Database-backed uniqueness, not just the application-level lock-and-check
+    run_subscription_cycle already serializes through (Phase C correction brief, item 3's
+    "database-backed uniqueness or equivalent robust concurrency safeguards")."""
+
+    def test_the_database_itself_refuses_a_second_invoice_for_the_same_school_and_period(self):
+        self.set_plan(base_amount_minor=1_000_000)
+        self.add_billable_students(self.school, 6)
+        self._ready_period()
+        run_subscription_cycle(self.subscription.id)
+        first = self.subscription.invoices.get()
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                BillingInvoice.objects.create(
+                    organization=self.organization, subscription=self.subscription, school=self.school,
+                    usage_snapshot=first.usage_snapshot, number=f"TEST-{uuid.uuid4().hex[:10]}",
+                    currency="NGN", amount_due_minor=4_000_000,
+                    period_start=first.period_start, period_end=first.period_end,
+                )
+        self.assertEqual(BillingInvoice.objects.filter(subscription=self.subscription, school=self.school).count(), 1)
+
+    def _ready_period(self):
+        run_subscription_cycle(self.subscription.id)
+        self.publish_meter()
+        cutoff = timezone.now()
+        self.subscription.refresh_from_db()
+        self.subscription.current_period_start = cutoff - timezone.timedelta(hours=1)
+        self.subscription.current_period_end = cutoff
+        self.subscription.save(update_fields=["current_period_start", "current_period_end"])
 
 
 class BillingCyclesBatchDriverTests(BillingTestCase):

@@ -48,6 +48,13 @@ def school_premium_access(school, *, as_of=None) -> bool:
     school's different period or a different organization's school - each school's own
     invoice carries its own status, settled independently through the ordinary Paystack
     checkout/webhook flow, with the usual idempotency guarantees unchanged.
+
+    Falls back to a historical, pre-Phase-C combined invoice (``school`` is null on those -
+    see BillingInvoice's own docstring) only when no per-school invoice exists for this period
+    at all, and only when that historical invoice both actually covers this school (one of its
+    BillingInvoiceLine rows names it) and is itself PAID. A historical invoice that was never
+    paid gives no fallback access - this never unlocks a payment that was never confirmed, it
+    only preserves one that genuinely already was.
     """
 
     as_of = as_of or timezone.now()
@@ -60,9 +67,22 @@ def school_premium_access(school, *, as_of=None) -> bool:
         .order_by("-issued_at", "-id")
         .first()
     )
-    if invoice is None:
+    if invoice is not None:
+        return invoice.status == InvoiceStatus.PAID
+    if school.organization_id is None:
         return False
-    return invoice.status == InvoiceStatus.PAID
+    historical = (
+        BillingInvoice.objects.filter(
+            school__isnull=True,
+            organization_id=school.organization_id,
+            period_start__lte=as_of,
+            period_end__gt=as_of,
+            lines__school=school,
+        )
+        .order_by("-issued_at", "-id")
+        .first()
+    )
+    return historical is not None and historical.status == InvoiceStatus.PAID
 
 
 def require_premium_entitlement(school, *, code: str, current_value: int | None = None) -> None:

@@ -118,6 +118,80 @@ class SchoolPremiumAccessTests(PremiumAccessTestCase):
         self.assertTrue(school_premium_access(self.school, as_of=self._midpoint(term2_start, term2_end)))
 
 
+class HistoricalInvoiceCompatibilityTests(PremiumAccessTestCase):
+    """Invoices issued before the per-school independent billing change combined every school
+    into one invoice (school=None) with one BillingInvoiceLine per school. school_premium_access
+    must still honor a genuinely paid historical invoice for the schools it actually named,
+    without ever inventing access for a school it didn't, and without ever treating an unpaid
+    historical invoice as if it unlocked anything."""
+
+    def _historical_invoice(self, schools, *, period_start, period_end, status, fee_minor=4_000_000):
+        snapshot = UsageSnapshot.objects.create(
+            organization=self.organization, subscription=self.subscription,
+            period_start=period_start, period_end=period_end,
+            active_school_count=len(schools), billable_student_count=50 * len(schools), source="test",
+        )
+        total = fee_minor * len(schools)
+        invoice = BillingInvoice.objects.create(
+            organization=self.organization, subscription=self.subscription, school=None, usage_snapshot=snapshot,
+            number=f"TEST-HIST-{uuid.uuid4().hex[:10]}", currency="NGN",
+            base_amount_minor=total, amount_due_minor=total,
+            amount_paid_minor=total if status == InvoiceStatus.PAID else 0,
+            status=status, period_start=period_start, period_end=period_end,
+        )
+        for school in schools:
+            BillingInvoiceLine.objects.create(
+                invoice=invoice, school=school, billable_student_count=50, currency="NGN",
+                fixed_fee_minor=fee_minor, pricing_source="bracket", bracket_min_students=1,
+                bracket_max_students=100, gross_fee_minor=fee_minor,
+                period_start=period_start, period_end=period_end,
+            )
+        return invoice
+
+    def test_a_paid_historical_combined_invoice_still_unlocks_the_schools_it_actually_named(self):
+        school_b, _ = provision_school(actor=self.owner, organization_id=self.organization.id, name="Campus B", school_type=SchoolType.PRIMARY, location="Kano")
+        start = timezone.now() - timedelta(days=1)
+        end = timezone.now() + timedelta(days=89)
+        self._historical_invoice([self.school, school_b], period_start=start, period_end=end, status=InvoiceStatus.PAID)
+        as_of = self._midpoint(start, end)
+        self.assertTrue(school_premium_access(self.school, as_of=as_of))
+        self.assertTrue(school_premium_access(school_b, as_of=as_of))
+
+    def test_an_unpaid_historical_combined_invoice_gives_no_fallback_access(self):
+        start = timezone.now() - timedelta(days=1)
+        end = timezone.now() + timedelta(days=89)
+        self._historical_invoice([self.school], period_start=start, period_end=end, status=InvoiceStatus.OPEN)
+        self.assertFalse(school_premium_access(self.school, as_of=self._midpoint(start, end)))
+
+    def test_a_historical_invoice_never_unlocks_a_school_it_never_named(self):
+        school_b, _ = provision_school(actor=self.owner, organization_id=self.organization.id, name="Campus B", school_type=SchoolType.PRIMARY, location="Kano")
+        start = timezone.now() - timedelta(days=1)
+        end = timezone.now() + timedelta(days=89)
+        self._historical_invoice([self.school], period_start=start, period_end=end, status=InvoiceStatus.PAID)
+        self.assertFalse(school_premium_access(school_b, as_of=self._midpoint(start, end)))
+
+    def test_a_historical_invoice_never_unlocks_a_different_organizations_school(self):
+        other_owner = verified_user("other-historical@example.ng")
+        from apps.organizations.services import create_organization
+
+        other_org, _ = create_organization(actor=other_owner, name="Unrelated Historical Org")
+        other_school, _ = provision_school(actor=other_owner, organization_id=other_org.id, name="Unrelated School", school_type=SchoolType.SECONDARY, location="Lagos")
+        start = timezone.now() - timedelta(days=1)
+        end = timezone.now() + timedelta(days=89)
+        self._historical_invoice([self.school], period_start=start, period_end=end, status=InvoiceStatus.PAID)
+        self.assertFalse(school_premium_access(other_school, as_of=self._midpoint(start, end)))
+
+    def test_a_new_per_school_invoice_for_the_same_period_takes_priority_over_history(self):
+        """Once the per-school billing change has issued this school its own invoice for a
+        period, that invoice is authoritative - even if a historical combined invoice also
+        happens to cover the same window. The two are never averaged or OR'd together."""
+        start = timezone.now() - timedelta(days=1)
+        end = timezone.now() + timedelta(days=89)
+        self._historical_invoice([self.school], period_start=start, period_end=end, status=InvoiceStatus.PAID)
+        self._invoice(self.school, period_start=start, period_end=end, status=InvoiceStatus.OPEN)
+        self.assertFalse(school_premium_access(self.school, as_of=self._midpoint(start, end)))
+
+
 class RequirePremiumEntitlementTests(PremiumAccessTestCase):
     def test_a_school_with_no_organization_is_never_blocked(self):
         standalone = School.objects.create(name="Independent School", slug="independent-premium-test")

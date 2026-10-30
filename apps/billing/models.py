@@ -275,6 +275,18 @@ class BillingInvoice(models.Model):
                 name="billing_inv_school_period_idx",
             ),
         ]
+        constraints = [
+            # Database-backed, not just the application-level select_for_update() +
+            # check-then-create that run_subscription_cycle already serializes through -
+            # defense in depth against ever double-issuing one school's invoice for one period,
+            # even from a future caller that bypasses that lock. Never restricts historical
+            # invoices (school is null on those): SQL UNIQUE constraints already never treat two
+            # NULLs as equal, so any number of null-school rows may share a period.
+            models.UniqueConstraint(
+                fields=["subscription", "school", "period_start", "period_end"],
+                name="unique_school_period_invoice",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.number} · {self.organization} · {self.status}"
