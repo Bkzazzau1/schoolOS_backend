@@ -190,6 +190,13 @@ SYNC_ALLOW_UNLISTED_ENTITY_TYPES = env.bool(
 )
 SYNC_MAX_PAYLOAD_BYTES = 256 * 1024
 
+#: Explicit, default-off rollout control for the Phase C freemium premium-feature checks
+#: (apps.billing.premium_access). The foundation and its call sites are wired in regardless;
+#: this flag alone decides whether an unpaid school is actually refused. Default False means
+#: installing this code changes nothing for any real school until this is deliberately
+#: switched on, per "do not activate premium restrictions without final approval".
+PREMIUM_ENFORCEMENT_ENABLED = env.bool("PREMIUM_ENFORCEMENT_ENABLED", default=False)
+
 ACCESS_BLOCK_GRACE_HOURS = env.int("ACCESS_BLOCK_GRACE_HOURS", default=48)
 
 INVITATION_TTL_DAYS = env.int("INVITATION_TTL_DAYS", default=14)

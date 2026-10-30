@@ -5,11 +5,12 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
+from apps.billing.premium_access import require_premium_entitlement
 from apps.core.errors import Rejected
 from apps.core.permissions import active_membership
 
 from . import registry
-from .access_tiers import bypasses_subscription_gate
+from .access_tiers import bypasses_subscription_gate, premium_code_for
 from .models import MutationLog, SyncRecord
 
 ACCEPTED = "accepted"
@@ -101,6 +102,13 @@ def _decide(membership, data: dict) -> Outcome:
     try:
         if handler is not None:
             handler.authorize(ctx)
+        if settings.PREMIUM_ENFORCEMENT_ENABLED:
+            premium_code = premium_code_for(entity_type, ctx.payload)
+            if premium_code is not None:
+                try:
+                    require_premium_entitlement(membership.school, code=premium_code)
+                except PermissionDenied as refused:
+                    return Outcome(REJECTED, message=str(refused))
         if operation == "create":
             return _create(membership, record, ctx, handler)
         return _change(membership, record, ctx, handler, base_version)
