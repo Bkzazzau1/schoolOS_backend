@@ -131,6 +131,39 @@ class SensitiveDetailGatingTests(SchoolEntitlementViewTestCase):
         self.assertIsNotNone(payload["billing"])
         self.assertEqual(payload["billing"]["status"], InvoiceStatus.PAID)
 
+    def test_billing_detail_surfaces_the_invoices_own_latest_payment_attempt(self):
+        """Stage 1.5, Task 2: a Flutter client reopening the subscription screen must be able
+        to recover a pending checkout from the server's own record, never only its own
+        in-memory state - and never by starting a second attempt just to check on the first."""
+        from apps.billing.models import PaymentAttempt, PaymentAttemptStatus
+
+        start, end = self._current_period()
+        invoice = self._invoice(self.school, period_start=start, period_end=end, status=InvoiceStatus.OPEN)
+        older = PaymentAttempt.objects.create(
+            invoice=invoice, provider="paystack", reference=f"ref-older-{uuid.uuid4().hex[:8]}",
+            amount_minor=invoice.amount_due_minor, currency="NGN", status=PaymentAttemptStatus.FAILED,
+        )
+        older.created_at = timezone.now() - timedelta(minutes=10)
+        older.save(update_fields=["created_at"])
+        newer = PaymentAttempt.objects.create(
+            invoice=invoice, provider="paystack", reference=f"ref-newer-{uuid.uuid4().hex[:8]}",
+            amount_minor=invoice.amount_due_minor, currency="NGN", status=PaymentAttemptStatus.PENDING,
+            checkout_url="https://checkout.paystack.com/abc123",
+        )
+        admin = self.billing_administrator()
+        payload = self.get(self.entitlement_url(self.school), who=admin).json()
+        latest = payload["billing"]["latestPaymentAttempt"]
+        self.assertEqual(latest["reference"], newer.reference)
+        self.assertEqual(latest["status"], PaymentAttemptStatus.PENDING)
+        self.assertEqual(latest["checkoutUrl"], newer.checkout_url)
+
+    def test_billing_detail_has_no_payment_attempt_when_none_has_ever_been_made(self):
+        start, end = self._current_period()
+        self._invoice(self.school, period_start=start, period_end=end, status=InvoiceStatus.OPEN)
+        admin = self.billing_administrator()
+        payload = self.get(self.entitlement_url(self.school), who=admin).json()
+        self.assertIsNone(payload["billing"]["latestPaymentAttempt"])
+
 
 class PaymentStatusAndEntitlementTests(SchoolEntitlementViewTestCase):
     def test_an_unpaid_school_shows_both_premium_capabilities_unavailable_with_a_reason(self):

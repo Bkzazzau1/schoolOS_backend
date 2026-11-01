@@ -30,7 +30,7 @@ from rest_framework.exceptions import PermissionDenied
 from .academic_periods import active_session_for_school, active_term_for_school
 from .models import BillingInvoice, InvoiceStatus, SchoolBillingMeterSnapshot
 from .pricing import PricingPolicyUndefined, fixed_fee_for_school
-from .services import ensure_organization_subscription, resolved_entitlements
+from .services import ensure_organization_subscription, resolved_entitlements, serialize_payment_attempt
 
 #: Verified against real, currently-implemented code (apps/cbt/services.py's automatic scoring
 #: in submit_attempt(), reached only from CbtTestHandler's "publish" action, and
@@ -259,6 +259,11 @@ def serialize_school_entitlement_status(school, *, viewer_role: str | None, bill
 
     billing = None
     if billing_authority and invoice is not None:
+        # The invoice's own latest payment attempt (never created here - just read), so a
+        # Flutter client reopening the subscription screen can recover a pending checkout
+        # ("Refresh payment") from the server's own record instead of only its own in-memory
+        # state, and never has a reason to start a second one just to check on the first.
+        latest_attempt = invoice.payment_attempts.order_by("-created_at", "-id").first()
         billing = {
             "organizationId": str(organization.id),
             "invoiceId": str(invoice.id),
@@ -270,6 +275,9 @@ def serialize_school_entitlement_status(school, *, viewer_role: str | None, bill
             "dueAt": invoice.due_at.isoformat() if invoice.due_at else None,
             "issuedAt": invoice.issued_at.isoformat(),
             "payable": invoice.status == InvoiceStatus.OPEN,
+            "latestPaymentAttempt": (
+                serialize_payment_attempt(latest_attempt) if latest_attempt is not None else None
+            ),
         }
 
     return {
