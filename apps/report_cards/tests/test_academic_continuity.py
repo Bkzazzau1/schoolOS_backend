@@ -131,6 +131,14 @@ class ReportCardContinuityTests(APITestCase):
         self.assertIn(PREMIUM_MESSAGE, response.json()["message"])
         self.assertFalse(ReportCard.objects.filter(school=self.school).exists())
 
+    def test_a_paid_school_can_compile_a_real_new_report_card_batch_with_enforcement_on(self):
+        """Stage 2, Task 5: the positive case, named explicitly rather than only implied by
+        compile_real_batch() succeeding as a setup step for the continuity tests below - a
+        real ReportCard row genuinely exists afterward, not just a 200 response."""
+        report_card_id = self.compile_real_batch()
+        card = ReportCard.objects.get(external_id=report_card_id)
+        self.assertEqual(card.state, ReportCardState.DRAFT)
+
     # -- continuity: review/submit/release of an already-compiled card must keep working ----
 
     def test_an_already_compiled_card_can_be_submitted_and_released_with_enforcement_on(self):

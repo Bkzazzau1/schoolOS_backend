@@ -168,6 +168,16 @@ class CbtExamContinuityTests(APITestCase):
         self.assertIn(PREMIUM_MESSAGE, response.json()["message"])
         self.assertFalse(CbtAttempt.objects.filter(school=self.school).exists())
 
+    def test_a_paid_teacher_with_the_correct_role_can_publish_a_real_new_exam_with_enforcement_on(self):
+        """Stage 2, Task 5: the positive case, named explicitly rather than only implied by
+        publish_real_exam() succeeding as a setup step for the continuity tests below - a
+        real CbtTest row genuinely reaches PUBLISHED, not just a 200 response."""
+        from apps.cbt.models import CbtTest, CbtTestState
+
+        test_id, _attempt_id = self.publish_real_exam()
+        item = CbtTest.objects.get(school=self.school, external_id=test_id)
+        self.assertEqual(item.state, CbtTestState.PUBLISHED)
+
     def test_saving_a_draft_itself_is_never_premium_gated_even_while_unpaid(self):
         test_id = str(uuid.uuid4())
         with override_settings(PREMIUM_ENFORCEMENT_ENABLED=True):
