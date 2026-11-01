@@ -42,6 +42,21 @@
 </div>
 
 <div class="card">
+  <h2>Billing automation</h2>
+  <p>{{ automation.message }} <span class="muted">({{ automation.state }})</span></p>
+  {% if automation.billingInterval == "term" %}
+    <p class="muted">
+      {{ automation.schoolsUpToDate }} up to date &middot;
+      {{ automation.schoolsAwaitingPayment }} awaiting payment &middot;
+      {{ automation.schoolsAwaitingCensus }} awaiting census &middot;
+      {{ automation.schoolsWithNoActiveTerm }} with no active term
+    </p>
+  {% else %}
+    <p class="muted">Period: {{ automation.periodStart|date:"Y-m-d"|default:"-" }} to {{ automation.periodEnd|date:"Y-m-d"|default:"-" }}</p>
+  {% endif %}
+</div>
+
+<div class="card">
   <h2>Schools ({{ schools|length }})</h2>
   {% if schools %}
     <table>

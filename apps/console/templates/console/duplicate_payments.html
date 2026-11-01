@@ -1,0 +1,43 @@
+{% extends "console/base.html" %}
+{% load console_extras %}
+{% block title %}Duplicate payments · SkulGen console{% endblock %}
+{% block content %}
+<h1>Duplicate payments</h1>
+<p class="muted">Every invoice the payment provider genuinely confirmed twice. Neither
+  collection is ever discarded or auto-refunded - resolve by contacting the payer, applying
+  credit, or processing a manual refund under an approved policy, then record how here.</p>
+
+<div class="card">
+  {% if reviews %}
+    <table>
+      <thead><tr><th>Invoice</th><th>Primary reference</th><th>Duplicate reference</th><th>Detected</th><th>Resolution</th></tr></thead>
+      <tbody>
+      {% for review in reviews %}
+        <tr>
+          <td>{{ review.invoice.number }} <span class="muted">({{ review.invoice.organization.name }})</span></td>
+          <td class="muted">{{ review.primary_attempt.reference }}</td>
+          <td class="muted">{{ review.duplicate_attempt.reference }}</td>
+          <td class="muted">{{ review.detected_at|date:"Y-m-d H:i" }}</td>
+          <td>
+            {% if review.resolved_at %}
+              <span class="pill tone-good">resolved</span>
+              <div class="muted">{{ review.resolution_note }} &middot; {{ review.resolved_by }} &middot; {{ review.resolved_at|date:"Y-m-d H:i" }}</div>
+            {% else %}
+              <span class="pill tone-warn">needs resolution</span>
+              <form method="post" class="action-row">
+                {% csrf_token %}
+                <input type="hidden" name="review_id" value="{{ review.id }}">
+                <input type="text" name="resolution_note" size="34" required placeholder="how this was resolved">
+                <button type="submit">Mark resolved</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No duplicate collections on file.</p>
+  {% endif %}
+</div>
+{% endblock %}

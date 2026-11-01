@@ -14,13 +14,18 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.billing.census import correct_school_census
+from apps.billing.cycle import automation_summary
 from apps.billing.models import (
+    CensusStatus,
+    DuplicateCollectionReview,
     EnterpriseAgreement,
     OrganizationSubscription,
     PaymentAttempt,
     Plan,
     PricingAuditEvent,
     PricingBracket,
+    SchoolEnrollmentCensus,
     SubscriptionStatus,
 )
 from apps.billing.pricing import (
@@ -140,6 +145,7 @@ def organization_detail(request, organization_id):
             "organization": organization,
             "subscription": subscription,
             "access_mode": access_mode(subscription),
+            "automation": automation_summary(subscription),
             "schools": organization.schools.filter(is_active=True).order_by("name"),
             "invoices": invoices,
             "payment_attempts": payment_attempts,
@@ -220,3 +226,61 @@ def school_enterprise_agreement(request, school_id):
             "agreements": agreements,
         },
     )
+
+
+@staff_member_required
+def census_exceptions(request):
+    """Every school currently flagged needs_review (Phase D Stage 3, Task 7 item 4) - zero
+    enrollment, or above every bracket with no enterprise agreement - with a documented,
+    auditable correction path (apps.billing.census.correct_school_census) that never
+    silently rewrites a paid invoice."""
+
+    if request.method == "POST":
+        census = get_object_or_404(SchoolEnrollmentCensus, id=request.POST.get("census_id"))
+        try:
+            count = int(request.POST.get("billable_student_count", ""))
+            correct_school_census(
+                census, actor=request.user,
+                reason=request.POST.get("reason", "").strip(),
+                billable_student_count=count,
+            )
+            messages.success(request, "Census corrected.")
+        except ValueError as problem:
+            messages.error(request, str(problem) if str(problem) else "Enter a whole number for the corrected count.")
+        return redirect(reverse("console:census_exceptions"))
+
+    exceptions = (
+        SchoolEnrollmentCensus.objects.filter(status=CensusStatus.NEEDS_REVIEW)
+        .select_related("school", "school__organization")
+        .order_by("-created_at")[:50]
+    )
+    return render(request, "console/census_exceptions.html", {"exceptions": exceptions})
+
+
+@staff_member_required
+def duplicate_payments(request):
+    """Every invoice with more than one genuinely successful provider collection (Phase D
+    Stage 2's DuplicateCollectionReview, surfaced here for Stage 3 Task 7 item 7) - never
+    auto-refunded, only recorded for an operator to resolve by contacting the payer or
+    processing a manual refund under an approved policy."""
+
+    if request.method == "POST":
+        review = get_object_or_404(DuplicateCollectionReview, id=request.POST.get("review_id"))
+        note = request.POST.get("resolution_note", "").strip()
+        if not note:
+            messages.error(request, "A resolution note is required.")
+        else:
+            review.resolution_note = note
+            review.resolved_at = timezone.now()
+            review.resolved_by = request.user
+            review.save(update_fields=["resolution_note", "resolved_at", "resolved_by"])
+            messages.success(request, "Marked resolved.")
+        return redirect(reverse("console:duplicate_payments"))
+
+    reviews = (
+        DuplicateCollectionReview.objects.select_related(
+            "invoice", "invoice__organization", "primary_attempt", "duplicate_attempt",
+        )
+        .order_by("-detected_at")[:50]
+    )
+    return render(request, "console/duplicate_payments.html", {"reviews": reviews})

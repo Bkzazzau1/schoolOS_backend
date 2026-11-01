@@ -20,6 +20,10 @@ _STATUS_TONE = {
     "restricted": "tone-bad",
     "suspended": "tone-bad",
     "cancelled": "tone-muted",
+    "open": "tone-info",
+    "frozen": "tone-good",
+    "needs_review": "tone-warn",
+    "corrected": "tone-muted",
 }
 
 
