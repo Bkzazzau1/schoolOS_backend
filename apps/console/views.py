@@ -34,6 +34,7 @@ from apps.billing.pricing import (
     create_enterprise_agreement,
     create_pricing_bracket,
 )
+from apps.billing.reporting import platform_subscription_report
 from apps.billing.services import access_mode, admin_set_plan, admin_set_status, ensure_organization_subscription
 from apps.organizations.models import Organization
 from apps.schools.models import School
@@ -81,6 +82,7 @@ def dashboard(request):
             "needs_attention": needs_attention,
             "total_organizations": Organization.objects.filter(is_active=True).count(),
             "total_schools": School.objects.filter(is_active=True).count(),
+            "report": platform_subscription_report(),
         },
     )
 

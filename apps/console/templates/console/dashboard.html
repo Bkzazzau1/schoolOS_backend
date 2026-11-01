@@ -10,6 +10,23 @@
 </div>
 
 <div class="card" style="margin-top: 1.25rem;">
+  <h2>Subscription reporting</h2>
+  <div class="stat-grid">
+    <div class="stat"><div class="n">{{ report.totalSubscribedSchools }}</div><div class="label">Subscribed schools</div></div>
+    <div class="stat"><div class="n">{{ report.schoolsWithActivePaidSubscriptions }}</div><div class="label">Active &amp; paid</div></div>
+    <div class="stat"><div class="n">{{ report.schoolsAwaitingPayment }}</div><div class="label">Awaiting payment</div></div>
+    <div class="stat"><div class="n">{{ report.schoolsExpiringSoon }}</div><div class="label">Expiring within {{ report.expiringWithinDays }}d</div></div>
+    <div class="stat"><div class="n">{{ report.unpaidInvoiceCount }}</div><div class="label">Unpaid invoices</div></div>
+    <div class="stat"><div class="n">{{ report.schoolsOnEnterpriseAgreements }}</div><div class="label">On enterprise agreements</div></div>
+    <div class="stat"><div class="n"><a class="row-link" href="{% url 'console:census_exceptions' %}">{{ report.schoolsAwaitingCensusReview }}</a></div><div class="label">Awaiting census review</div></div>
+    {% for row in report.confirmedRevenueByCurrency %}
+      <div class="stat"><div class="n">{{ row.amountMinor|money:row.currency }}</div><div class="label">Confirmed revenue ({{ row.currency }})</div></div>
+    {% endfor %}
+  </div>
+  <p class="muted" style="margin-top:.75rem">Paid invoices only - an open invoice is never counted as revenue. Never mixed with any school's own fee collection from parents.</p>
+</div>
+
+<div class="card">
   <h2>By subscription status</h2>
   <div class="stat-grid">
     {% for row in status_counts %}
