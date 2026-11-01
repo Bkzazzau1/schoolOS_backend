@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.schools.models import School
 
+from ..academic_periods import active_term_for_school, term_bounds
 from ..models import (
     BillingCyclePolicy,
     BillingInterval,
@@ -174,11 +175,112 @@ def _meter_coverage(subscription: OrganizationSubscription, *, as_of=None):
     }
 
 
+def _term_automation_summary(
+    subscription: OrganizationSubscription, *, plan, policy: BillingCyclePolicy | None, configured: bool,
+) -> dict:
+    """automation_summary()'s TERM-interval branch (Phase D Stage 3, Task 4).
+
+    TERM billing has no single organization-wide "current period" - each school is billed
+    from its own academic calendar (apps.billing.cycle.term_billing), independently of every
+    sibling school. Reusing the org-wide branch's subscription.current_period_start/end and
+    "any one open invoice on this subscription" check would be actively misleading here: that
+    period is never advanced for TERM subscriptions, and one school's unrelated unpaid invoice
+    must never be reported as blocking a fully-paid sibling's own billing. This reports a
+    real per-school breakdown instead, using the exact same state vocabulary the org-wide
+    branch already uses (so every existing caller/UI label keeps working unchanged).
+    """
+
+    now = timezone.now()
+    today = timezone.localtime(now).date()
+    schools = list(
+        School.objects.filter(organization=subscription.organization, is_active=True).order_by("id")
+    )
+    awaiting_census = 0
+    awaiting_payment = 0
+    up_to_date = 0
+    no_active_term = 0
+    for school in schools:
+        term = active_term_for_school(school, as_of_date=today)
+        if term is None:
+            no_active_term += 1
+            continue
+        start, end = term_bounds(term)
+        invoice = (
+            BillingInvoice.objects.filter(
+                subscription=subscription, school=school, period_start=start, period_end=end,
+            )
+            .order_by("issued_at", "id")
+            .first()
+        )
+        if invoice is None:
+            meter = _latest_meter_for_period(school, period_start=start, as_of=min(now, end))
+            # A zero-count meter is the automatic bootstrap observation every newly
+            # provisioned school gets, not a real census - fixed_fee_for_school() would
+            # refuse it as PricingPolicyUndefined, exactly like no meter at all, so it is
+            # reported here as still awaiting its first real census too.
+            if meter is None or meter.billable_student_count <= 0:
+                awaiting_census += 1
+            else:
+                # A real census exists but this school hasn't been issued its term invoice
+                # yet - the next cycle run will do that; report it the same as a school
+                # already holding an open invoice, since from the payer's point of view both
+                # simply mean "not yet paid for this term."
+                awaiting_payment += 1
+            continue
+        if invoice.status == InvoiceStatus.OPEN:
+            awaiting_payment += 1
+        else:
+            up_to_date += 1
+
+    metered_schools = len(schools) - awaiting_census - no_active_term
+
+    if not configured:
+        if policy is None or not policy.automatic_invoicing_enabled:
+            state, message = "automatic_invoicing_off", "Automatic invoicing is not enabled for this plan."
+        else:
+            state, message = "policy_incomplete", "Configure invoice due, past-due and grace durations."
+    elif awaiting_census:
+        state = "awaiting_meter"
+        message = (
+            f"{awaiting_census} of {len(schools)} school(s) are awaiting an authoritative "
+            "roster census for their current term."
+        )
+    elif awaiting_payment:
+        state = "invoice_outstanding"
+        message = f"{awaiting_payment} of {len(schools)} school(s) have a term invoice awaiting payment."
+    else:
+        state = "scheduled"
+        message = "Every active school's current term is invoiced and accounted for."
+
+    return {
+        "enabled": configured,
+        "billingInterval": BillingInterval.TERM,
+        "state": state,
+        "message": message,
+        "activeSchools": len(schools),
+        "meteredSchools": metered_schools,
+        "schoolsAwaitingCensus": awaiting_census,
+        "schoolsAwaitingPayment": awaiting_payment,
+        "schoolsUpToDate": up_to_date,
+        "schoolsWithNoActiveTerm": no_active_term,
+        # Per-school term billing has no single shared period - reporting an organization-wide
+        # date here would be the stale information this branch exists to stop showing.
+        "periodStart": None,
+        "periodEnd": None,
+        "nextInvoiceAt": None,
+        "invoiceDueDays": policy.invoice_due_days if policy else None,
+        "pastDueDays": policy.past_due_days if policy else None,
+        "graceDays": policy.grace_days if policy else None,
+    }
+
+
 def automation_summary(subscription: OrganizationSubscription) -> dict:
     plan = subscription.plan
     policy = _policy_for(subscription)
     interval = plan.billing_interval if plan else ""
     configured = bool(interval and _policy_complete(policy))
+    if interval == BillingInterval.TERM:
+        return _term_automation_summary(subscription, plan=plan, policy=policy, configured=configured)
     now = timezone.now()
     coverage_as_of = now
     if subscription.current_period_end is not None and subscription.current_period_end < now:
