@@ -143,10 +143,25 @@ def settle_payment_attempt(
     provider_data: dict,
     source: str,
 ) -> PaymentAttempt:
+    # Looked up unlocked first, purely to learn which invoice this reference belongs to -
+    # safe because an attempt's invoice never changes after creation. The invoice lock below
+    # is then always acquired before the attempt lock, the same order
+    # get_or_initialize_invoice_payment uses, so a checkout request and a settlement
+    # request racing on the same invoice can never deadlock by each holding the lock the
+    # other one is waiting for.
+    invoice_id = (
+        PaymentAttempt.objects.filter(reference=reference, provider=provider_code)
+        .values_list("invoice_id", flat=True)
+        .first()
+    )
+    if invoice_id is None:
+        raise PaymentAttempt.DoesNotExist(
+            f"No {provider_code} payment attempt with reference {reference!r}."
+        )
+    invoice = BillingInvoice.objects.select_for_update().select_related("subscription").get(pk=invoice_id)
     attempt = (
         PaymentAttempt.objects.select_for_update()
-        .select_related("invoice", "invoice__subscription")
-        .get(reference=reference, provider=provider_code)
+        .get(reference=reference, provider=provider_code, invoice_id=invoice_id)
     )
     if attempt.status == PaymentAttemptStatus.SUCCEEDED:
         return attempt
@@ -185,7 +200,6 @@ def settle_payment_attempt(
         ]
     )
 
-    invoice = BillingInvoice.objects.select_for_update().get(pk=attempt.invoice_id)
     if invoice.status != InvoiceStatus.PAID:
         invoice.amount_paid_minor = invoice.amount_due_minor
         invoice.status = InvoiceStatus.PAID
