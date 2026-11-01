@@ -10,7 +10,9 @@ from unittest.mock import patch
 
 from django.test import override_settings
 
+from apps.billing import payments
 from apps.billing.models import (
+    DuplicateCollectionReview,
     InvoiceStatus,
     PaymentAttempt,
     PaymentAttemptStatus,
@@ -95,6 +97,24 @@ class InvoiceCheckoutTests(PaymentsTestCase):
         self.invoice.refresh_from_db()
         self.assertEqual(self.invoice.status, InvoiceStatus.OPEN)
 
+    def test_a_second_checkout_before_resolution_reuses_the_same_pending_attempt(self):
+        with patch("apps.billing.providers.PaystackProvider._json_request") as mocked:
+            mocked.side_effect = lambda method, path, payload=None: {
+                "status": True,
+                "data": {
+                    "authorization_url": "https://checkout.paystack.com/abc123",
+                    "access_code": "abc123",
+                    "reference": payload["reference"],
+                },
+            }
+            first = self.checkout()
+            second = self.checkout()
+        self.assertEqual(first.status_code, 201, first.json())
+        self.assertEqual(second.status_code, 201, second.json())
+        self.assertEqual(first.json()["payment"]["reference"], second.json()["payment"]["reference"])
+        self.assertEqual(PaymentAttempt.objects.filter(invoice=self.invoice).count(), 1)
+        self.assertEqual(mocked.call_count, 1)  # the provider opens exactly one checkout session
+
 
 class PaymentVerifyTests(PaymentsTestCase):
     def _initiate(self):
@@ -168,6 +188,199 @@ class PaymentVerifyTests(PaymentsTestCase):
         stranger = verified_user("stranger2@example.ng")
         response = self.verify(attempt.reference, who=stranger)
         self.assertEqual(response.status_code, 403)
+
+    def test_a_declined_payment_settles_nothing(self):
+        attempt = self._initiate()
+        with patch("apps.billing.providers.PaystackProvider._json_request") as mocked:
+            mocked.return_value = {"status": True, "data": {"status": "failed"}}
+            response = self.verify(attempt.reference)
+        self.assertEqual(response.status_code, 200)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, PaymentAttemptStatus.PENDING)
+
+    def test_a_provider_currency_mismatch_is_refused_and_settles_nothing(self):
+        attempt = self._initiate()
+        with patch("apps.billing.providers.PaystackProvider._json_request") as mocked:
+            mocked.return_value = {
+                "status": True,
+                "data": {"status": "success", "amount": attempt.amount_minor, "currency": "usd"},
+            }
+            response = self.verify(attempt.reference)
+        self.assertEqual(response.status_code, 400)
+        self.invoice.refresh_from_db()
+        attempt.refresh_from_db()
+        self.assertEqual((self.invoice.status, attempt.status), (InvoiceStatus.OPEN, PaymentAttemptStatus.PENDING))
+
+    def test_a_provider_outage_during_verify_is_reported_and_settles_nothing(self):
+        attempt = self._initiate()
+        with patch("apps.billing.providers.PaystackProvider._json_request") as mocked:
+            mocked.side_effect = PaymentProviderError(
+                "Paystack could not be reached or returned an invalid response."
+            )
+            response = self.verify(attempt.reference)
+        self.assertEqual(response.status_code, 400)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, PaymentAttemptStatus.PENDING)
+
+
+@PAYSTACK_SETTINGS
+class PaymentSettlementOrderingTests(PaymentsTestCase):
+    """The same payment can be confirmed through two independent paths - the payer's own
+    browser calling verify, and Paystack's webhook - arriving in either order. Whichever
+    arrives second must be a clean no-op, never a second settlement."""
+
+    def _initiate(self):
+        with patch("apps.billing.providers.PaystackProvider._json_request") as mocked:
+            mocked.side_effect = lambda method, path, payload=None: {
+                "status": True,
+                "data": {
+                    "authorization_url": "https://checkout.paystack.com/abc123",
+                    "access_code": "abc123",
+                    "reference": payload["reference"],
+                },
+            }
+            self.checkout()
+        return PaymentAttempt.objects.get(invoice=self.invoice)
+
+    def _send_webhook(self, attempt, *, provider_transaction_id=777):
+        body = {
+            "event": "charge.success",
+            "data": {
+                "reference": attempt.reference,
+                "status": "success",
+                "amount": attempt.amount_minor,
+                "currency": attempt.currency,
+                "id": provider_transaction_id,
+            },
+        }
+        raw = json.dumps(body).encode("utf-8")
+        return self.client.post(
+            "/api/v1/billing/webhooks/paystack/",
+            data=raw,
+            content_type="application/json",
+            HTTP_X_PAYSTACK_SIGNATURE=_sign("sk_test_dummy_secret", raw),
+        )
+
+    def test_a_webhook_settling_first_makes_a_later_client_verify_a_clean_no_op(self):
+        attempt = self._initiate()
+        webhook_response = self._send_webhook(attempt)
+        self.assertEqual(webhook_response.status_code, 200, webhook_response.json())
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.status, InvoiceStatus.PAID)
+
+        with patch("apps.billing.providers.PaystackProvider._json_request") as mocked:
+            verify_response = self.verify(attempt.reference)
+        self.assertEqual(verify_response.status_code, 200, verify_response.json())
+        self.assertEqual(mocked.call_count, 0)  # already succeeded - the provider is never asked again
+        self.assertEqual(DuplicateCollectionReview.objects.count(), 0)
+
+    def test_a_client_verify_settling_first_makes_a_later_webhook_a_clean_no_op(self):
+        attempt = self._initiate()
+        with patch("apps.billing.providers.PaystackProvider._json_request") as mocked:
+            mocked.return_value = {
+                "status": True,
+                "data": {
+                    "status": "success",
+                    "amount": attempt.amount_minor,
+                    "currency": attempt.currency,
+                    "id": 111,
+                },
+            }
+            verify_response = self.verify(attempt.reference)
+        self.assertEqual(verify_response.status_code, 200, verify_response.json())
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.status, InvoiceStatus.PAID)
+
+        webhook_response = self._send_webhook(attempt)
+        self.assertEqual(webhook_response.status_code, 200, webhook_response.json())
+        event = ProviderWebhookEvent.objects.get(provider="paystack")
+        self.assertEqual(event.status, WebhookProcessingStatus.PROCESSED)
+        self.assertEqual(DuplicateCollectionReview.objects.count(), 0)
+
+
+@PAYSTACK_SETTINGS
+class DuplicateCollectionReviewTests(PaymentsTestCase):
+    """Two separate PaymentAttempts for the same invoice can each be genuinely confirmed by
+    the provider - a slow retry, a second tab, or a race the locking in
+    get_or_initialize_invoice_payment makes rare but, once two checkout sessions already
+    exist, cannot make impossible. Neither real collection is ever discarded."""
+
+    def _pending_attempt(self, reference):
+        return PaymentAttempt.objects.create(
+            invoice=self.invoice,
+            provider="paystack",
+            reference=reference,
+            amount_minor=self.invoice.amount_due_minor,
+            currency=self.invoice.currency,
+            status=PaymentAttemptStatus.PENDING,
+            initiated_by=self.owner,
+        )
+
+    def test_two_independently_successful_attempts_are_both_recorded_and_the_second_is_flagged(self):
+        attempt_a = self._pending_attempt("sos-dup-a")
+        attempt_b = self._pending_attempt("sos-dup-b")
+
+        settled_a = payments.settle_payment_attempt(
+            attempt_a.reference,
+            provider_code="paystack",
+            provider_data={
+                "status": "success",
+                "amount": attempt_a.amount_minor,
+                "currency": attempt_a.currency,
+                "id": 1,
+            },
+            source="provider_verify",
+        )
+        settled_b = payments.settle_payment_attempt(
+            attempt_b.reference,
+            provider_code="paystack",
+            provider_data={
+                "status": "success",
+                "amount": attempt_b.amount_minor,
+                "currency": attempt_b.currency,
+                "id": 2,
+            },
+            source="webhook",
+        )
+
+        # Both provider confirmations are real and both are recorded as SUCCEEDED - the
+        # second one is never silently dropped or rewritten to look like a failure.
+        self.assertEqual(settled_a.status, PaymentAttemptStatus.SUCCEEDED)
+        self.assertEqual(settled_b.status, PaymentAttemptStatus.SUCCEEDED)
+
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.status, InvoiceStatus.PAID)
+        self.assertEqual(self.invoice.paid_at, settled_a.succeeded_at)  # side effects applied once, from the first
+
+        reviews = DuplicateCollectionReview.objects.filter(invoice=self.invoice)
+        self.assertEqual(reviews.count(), 1)
+        review = reviews.get()
+        self.assertEqual(review.primary_attempt_id, attempt_a.id)
+        self.assertEqual(review.duplicate_attempt_id, attempt_b.id)
+        self.assertEqual(review.detail["detectedVia"], "webhook")
+        self.assertIsNone(review.resolved_at)  # an operator resolves it - nothing here does so automatically
+
+    def test_force_new_cancels_the_existing_pending_attempt_and_opens_a_fresh_checkout_session(self):
+        with patch("apps.billing.providers.PaystackProvider._json_request") as mocked:
+            mocked.side_effect = lambda method, path, payload=None: {
+                "status": True,
+                "data": {
+                    "authorization_url": f"https://checkout.paystack.com/{payload['reference']}",
+                    "access_code": payload["reference"],
+                    "reference": payload["reference"],
+                },
+            }
+            first = payments.get_or_initialize_invoice_payment(
+                self.invoice, actor=self.owner, email=self.owner.email,
+            )
+            second = payments.get_or_initialize_invoice_payment(
+                self.invoice, actor=self.owner, email=self.owner.email, force_new=True,
+            )
+        self.assertNotEqual(first.id, second.id)
+        first.refresh_from_db()
+        self.assertEqual(first.status, PaymentAttemptStatus.CANCELLED)
+        self.assertEqual(second.status, PaymentAttemptStatus.PENDING)
+        self.assertEqual(mocked.call_count, 2)  # one checkout session was actually opened per attempt
 
 
 @PAYSTACK_SETTINGS

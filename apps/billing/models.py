@@ -431,6 +431,51 @@ class ProviderWebhookEvent(models.Model):
         return f"{self.provider} · {self.event_type} · {self.status}"
 
 
+class DuplicateCollectionReview(models.Model):
+    """A second, independently successful provider transaction for an invoice that was
+    already paid by a different attempt.
+
+    The provider genuinely confirmed both, so neither PaymentAttempt is ever discarded or
+    silently ignored. This row is the operator-facing record of the excess collection -
+    resolved by contacting the payer, applying credit, or a manual refund under an approved
+    policy, never automatically.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invoice = models.ForeignKey(
+        BillingInvoice,
+        on_delete=models.PROTECT,
+        related_name="duplicate_collection_reviews",
+    )
+    primary_attempt = models.ForeignKey(
+        PaymentAttempt,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    duplicate_attempt = models.ForeignKey(
+        PaymentAttempt,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    detail = models.JSONField(default=dict, blank=True)
+    detected_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    resolution_note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-detected_at"]
+
+    def __str__(self):
+        return f"Duplicate collection on {self.invoice.number}"
+
+
 class BillingCyclePolicy(models.Model):
     """Explicit automatic-billing timings for one commercial plan.
 

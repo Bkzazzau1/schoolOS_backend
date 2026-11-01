@@ -1,8 +1,10 @@
 from django.contrib import admin
+from django.utils import timezone
 
 from .models import (
     BillingCyclePolicy,
     BillingInvoice,
+    DuplicateCollectionReview,
     OrganizationSubscription,
     PaymentAttempt,
     Plan,
@@ -181,6 +183,47 @@ class PaymentAttemptAdmin(_AppendOnlyAdmin):
     )
     list_filter = ("provider", "status", "currency")
     search_fields = ("reference", "invoice__number", "invoice__organization__name")
+
+
+@admin.register(DuplicateCollectionReview)
+class DuplicateCollectionReviewAdmin(admin.ModelAdmin):
+    """Operator-resolution queue for a second successful provider collection on one
+    invoice. The detection itself (which attempts, what the provider reported) is
+    read-only - an operator records how it was resolved, never edits the evidence."""
+
+    list_display = (
+        "invoice",
+        "primary_attempt",
+        "duplicate_attempt",
+        "detected_at",
+        "resolved_at",
+        "resolved_by",
+    )
+    list_filter = ("resolved_at",)
+    search_fields = ("invoice__number", "invoice__organization__name", "duplicate_attempt__reference")
+    readonly_fields = ("invoice", "primary_attempt", "duplicate_attempt", "detail", "detected_at")
+    fields = (
+        "invoice",
+        "primary_attempt",
+        "duplicate_attempt",
+        "detail",
+        "detected_at",
+        "resolved_at",
+        "resolved_by",
+        "resolution_note",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        if obj.resolution_note and obj.resolved_at is None:
+            obj.resolved_at = timezone.now()
+            obj.resolved_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(ProviderWebhookEvent)

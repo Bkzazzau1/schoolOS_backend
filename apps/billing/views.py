@@ -10,7 +10,7 @@ from apps.schools.models import School
 
 from .cycle import automation_summary
 from .models import BillingInvoice, PaymentAttempt, Plan, SubscriptionStatus
-from .payments import initialize_invoice_payment, process_paystack_webhook, verify_payment_attempt
+from .payments import get_or_initialize_invoice_payment, process_paystack_webhook, verify_payment_attempt
 from .premium_access import serialize_school_entitlement_status
 from .services import (
     can_manage_billing,
@@ -206,7 +206,7 @@ class InvoiceCheckoutView(APIView):
             )
         except BillingInvoice.DoesNotExist as exc:
             raise PermissionDenied("This invoice is not available to your organization.") from exc
-        attempt = initialize_invoice_payment(
+        attempt = get_or_initialize_invoice_payment(
             invoice,
             actor=request.user,
             email=request.user.email,

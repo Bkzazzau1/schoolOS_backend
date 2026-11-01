@@ -14,6 +14,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from .models import (
     BillingInvoice,
+    DuplicateCollectionReview,
     InvoiceStatus,
     PaymentAttempt,
     PaymentAttemptStatus,
@@ -24,23 +25,75 @@ from .models import (
 from .providers import PaymentProviderError, provider_for
 from .services import transition_subscription
 
+_OPEN_ATTEMPT_STATUSES = (PaymentAttemptStatus.INITIALIZED, PaymentAttemptStatus.PENDING)
 
-def initialize_invoice_payment(
+
+def get_or_initialize_invoice_payment(
     invoice: BillingInvoice,
     *,
     actor,
     email: str,
     provider_code: str = "paystack",
+    force_new: bool = False,
 ) -> PaymentAttempt:
-    invoice = BillingInvoice.objects.select_related("subscription", "organization").get(pk=invoice.pk)
-    if invoice.status == InvoiceStatus.PAID:
-        raise ValidationError({"message": "This invoice has already been paid."})
-    if invoice.status != InvoiceStatus.OPEN:
-        raise ValidationError({"message": "This invoice is not available for payment."})
-    remaining = invoice.amount_due_minor - invoice.amount_paid_minor
-    if remaining <= 0:
-        raise ValidationError({"message": "This invoice has no outstanding balance."})
+    """Return a usable PaymentAttempt for this invoice, reusing an open one when safe.
 
+    Locks the invoice row so concurrent checkout requests for the same invoice serialize
+    onto the same attempt instead of each opening its own provider checkout session. Pass
+    force_new=True only to deliberately abandon an existing pending attempt - it is
+    cancelled, not discarded, before a fresh one is created.
+    """
+    failure: ValidationError | None = None
+    with transaction.atomic():
+        invoice = (
+            BillingInvoice.objects.select_for_update()
+            .select_related("subscription", "organization")
+            .get(pk=invoice.pk)
+        )
+        if invoice.status == InvoiceStatus.PAID:
+            raise ValidationError({"message": "This invoice has already been paid."})
+        if invoice.status != InvoiceStatus.OPEN:
+            raise ValidationError({"message": "This invoice is not available for payment."})
+        remaining = invoice.amount_due_minor - invoice.amount_paid_minor
+        if remaining <= 0:
+            raise ValidationError({"message": "This invoice has no outstanding balance."})
+
+        existing = (
+            PaymentAttempt.objects.select_for_update()
+            .filter(invoice=invoice, provider=provider_code, status__in=_OPEN_ATTEMPT_STATUSES)
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if existing is not None:
+            if not force_new:
+                return existing
+            existing.status = PaymentAttemptStatus.CANCELLED
+            existing.failure_message = "Cancelled: a new checkout was started for this invoice."
+            existing.save(update_fields=["status", "failure_message", "updated_at"])
+
+        # A provider failure below must not roll back the attempt it just marked FAILED -
+        # that row is the audit evidence of the failed attempt - so the failure is carried
+        # out of the atomic block and only raised once it has safely committed.
+        attempt, failure = _create_payment_attempt(
+            invoice,
+            actor=actor,
+            email=email,
+            provider_code=provider_code,
+            remaining=remaining,
+        )
+    if failure is not None:
+        raise failure
+    return attempt
+
+
+def _create_payment_attempt(
+    invoice: BillingInvoice,
+    *,
+    actor,
+    email: str,
+    provider_code: str,
+    remaining: int,
+) -> tuple[PaymentAttempt, ValidationError | None]:
     reference = f"sos-{uuid.uuid4().hex}"
     attempt = PaymentAttempt.objects.create(
         invoice=invoice,
@@ -67,7 +120,7 @@ def initialize_invoice_payment(
         attempt.status = PaymentAttemptStatus.FAILED
         attempt.failure_message = str(problem)[:250]
         attempt.save(update_fields=["status", "failure_message", "updated_at"])
-        raise ValidationError({"message": str(problem)}) from problem
+        return attempt, ValidationError({"message": str(problem)})
 
     attempt.status = PaymentAttemptStatus.PENDING
     attempt.checkout_url = checkout.authorization_url
@@ -79,7 +132,7 @@ def initialize_invoice_payment(
     if subscription.provider != provider_code:
         subscription.provider = provider_code
         subscription.save(update_fields=["provider", "updated_at"])
-    return attempt
+    return attempt, None
 
 
 @transaction.atomic
@@ -161,6 +214,30 @@ def settle_payment_attempt(
                 "source": source,
             },
         )
+    else:
+        # This attempt is a genuinely separate, independently successful provider
+        # transaction arriving after a different attempt already settled this invoice.
+        # Both collections are real - neither is discarded - so the excess is recorded
+        # for an operator to resolve rather than silently absorbed or auto-refunded.
+        primary = (
+            PaymentAttempt.objects.filter(invoice=invoice, status=PaymentAttemptStatus.SUCCEEDED)
+            .exclude(pk=attempt.pk)
+            .order_by("succeeded_at", "created_at", "id")
+            .first()
+        )
+        if primary is not None:
+            DuplicateCollectionReview.objects.create(
+                invoice=invoice,
+                primary_attempt=primary,
+                duplicate_attempt=attempt,
+                detail={
+                    "reference": attempt.reference,
+                    "primaryReference": primary.reference,
+                    "amountMinor": attempt.amount_minor,
+                    "currency": attempt.currency,
+                    "detectedVia": source,
+                },
+            )
     return attempt
 
 
