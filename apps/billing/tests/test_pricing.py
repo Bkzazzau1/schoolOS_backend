@@ -79,6 +79,7 @@ class BracketBoundaryTests(TestCase):
         school = _provision_school()
         agreement = create_enterprise_agreement(
             school=school, fixed_fee_minor=40_000_000, effective_from=timezone.now() - timedelta(days=1),
+            contract_reference="TEST-CONTRACT-1",
         )
         result = fixed_fee_for_school(school, billable_student_count=3_500)
         self.assertEqual((result.fixed_fee_minor, result.source, result.enterprise_agreement_id), (40_000_000, "enterprise", str(agreement.id)))
@@ -86,7 +87,7 @@ class BracketBoundaryTests(TestCase):
     def test_an_enterprise_agreement_never_applies_to_another_school(self):
         priced_school = _provision_school("Priced Academy")
         other_school = _provision_school("Other Academy")
-        create_enterprise_agreement(school=priced_school, fixed_fee_minor=40_000_000, effective_from=timezone.now() - timedelta(days=1))
+        create_enterprise_agreement(school=priced_school, fixed_fee_minor=40_000_000, effective_from=timezone.now() - timedelta(days=1), contract_reference="TEST-CONTRACT-2")
         with self.assertRaises(PricingPolicyUndefined):
             fixed_fee_for_school(other_school, billable_student_count=3_000)
 

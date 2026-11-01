@@ -39,6 +39,13 @@ class PaymentAttemptStatus(models.TextChoices):
     CANCELLED = "cancelled", "Cancelled"
 
 
+class CensusStatus(models.TextChoices):
+    OPEN = "open", "Open"
+    FROZEN = "frozen", "Frozen"
+    NEEDS_REVIEW = "needs_review", "Needs review"
+    CORRECTED = "corrected", "Corrected"
+
+
 class WebhookProcessingStatus(models.TextChoices):
     RECEIVED = "received", "Received"
     PROCESSED = "processed", "Processed"
@@ -494,6 +501,13 @@ class BillingCyclePolicy(models.Model):
     invoice_due_days = models.PositiveSmallIntegerField(null=True, blank=True)
     past_due_days = models.PositiveSmallIntegerField(null=True, blank=True)
     grace_days = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Days after a TERM's starts_on at which that term's enrollment census freezes for
+    # pricing (apps.billing.census). Null (the shipped default) is a deliberate, unapproved
+    # commercial policy - not a gap: it means "no cutoff yet," so a school's census is priced
+    # from whatever authoritative roster count exists the first time the cycle runs for it,
+    # exactly as before this field existed. Set only once a specific cutoff is commercially
+    # approved (Phase D Stage 3, Task 1).
+    census_cutoff_days = models.PositiveSmallIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -602,6 +616,9 @@ class EnterpriseAgreement(models.Model):
     fixed_fee_minor = models.PositiveBigIntegerField()
     effective_from = models.DateTimeField()
     effective_until = models.DateTimeField(null=True, blank=True)
+    # The external commercial contract this price comes from - never invented, and blank
+    # only for agreements recorded before this field existed (Phase D Stage 3, Task 6).
+    contract_reference = models.CharField(max_length=120, blank=True)
     notes = models.TextField(blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -610,6 +627,17 @@ class EnterpriseAgreement(models.Model):
         on_delete=models.SET_NULL,
         related_name="+",
     )
+    # Distinct from created_by: the platform staff member who approved this specific
+    # commercial exception, recorded explicitly rather than assumed from who merely entered
+    # it (Task 6/7's "approval details" and "appropriate approval controls").
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -649,3 +677,95 @@ class PricingAuditEvent(models.Model):
 
     def __str__(self):
         return f"{self.action} · {self.target_type}:{self.target_id}"
+
+
+class SchoolEnrollmentCensus(models.Model):
+    """One school's authoritative, pricing-grade enrollment count for one billing period
+    (apps.billing.census, Phase D Stage 3 Task 1) - distinct from the raw, continuously
+    updated SchoolBillingMeterSnapshot it is taken from.
+
+    status progresses OPEN -> FROZEN (a real, non-zero census existed at the configured
+    cutoff) or OPEN -> NEEDS_REVIEW (the cutoff passed, or pricing proved undefined, with no
+    usable count - flagged for an operator, never silently invoiced). A correction never
+    mutates a FROZEN/NEEDS_REVIEW row's own recorded count or source: it flips that row's
+    status to CORRECTED and creates a new current row referencing it via corrected_from, so
+    the full history survives and a BillingInvoice already issued from the superseded row is
+    never silently rewritten (see correct_school_census()).
+
+    With no row at all for a (school, period), nothing about this model has fired yet - the
+    cycle still prices directly from the latest authoritative meter, unchanged from before
+    this model existed. That remains true platform-wide until a plan's BillingCyclePolicy
+    actually sets census_cutoff_days.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(
+        "schools.School",
+        on_delete=models.CASCADE,
+        related_name="enrollment_censuses",
+    )
+    period_start = models.DateTimeField()
+    period_end = models.DateTimeField()
+    status = models.CharField(
+        max_length=16,
+        choices=CensusStatus.choices,
+        default=CensusStatus.OPEN,
+    )
+    # Recorded explicitly at the moment this row is created, so a later change to the
+    # plan's census_cutoff_days policy never retroactively alters what already happened for
+    # this period.
+    cutoff_at = models.DateTimeField(null=True, blank=True)
+    billable_student_count = models.PositiveIntegerField(null=True, blank=True)
+    source_snapshot = models.ForeignKey(
+        SchoolBillingMeterSnapshot,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    # An explicit, voluntary freeze requested before the ordinary cutoff (Task 2's early
+    # subscription purchase) - never set by the ordinary cutoff-driven freeze path.
+    is_early = models.BooleanField(default=False)
+    frozen_at = models.DateTimeField(null=True, blank=True)
+    exception_reason = models.CharField(max_length=250, blank=True)
+    invoice = models.ForeignKey(
+        BillingInvoice,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="census_records",
+    )
+    corrected_from = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="corrections",
+    )
+    correction_reason = models.TextField(blank=True)
+    corrected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    corrected_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["school", "period_start", "period_end", "-created_at"],
+                name="billing_census_period_idx",
+            ),
+            models.Index(
+                fields=["status"],
+                name="billing_census_status_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.school} · {self.period_start:%Y-%m-%d} · {self.status}"

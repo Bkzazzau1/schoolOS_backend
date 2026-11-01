@@ -202,6 +202,7 @@ def school_enterprise_agreement(request, school_id):
                 school=school,
                 fixed_fee_minor=_minor_from_naira_input(request.POST.get("fixed_fee_naira", "")),
                 effective_from=timezone.now(),
+                contract_reference=request.POST.get("contract_reference", "").strip(),
                 notes=request.POST.get("notes", "").strip(),
                 actor=request.user,
             )

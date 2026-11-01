@@ -71,7 +71,7 @@ class AnnualFeeCalculationTests(TestCase):
     def test_the_rounding_rule_truncates_toward_zero_never_rounds_up(self):
         school = _provision_school()
         _make_session_with_terms(school, term_count=3)
-        create_enterprise_agreement(school=school, fixed_fee_minor=1_000_001, effective_from=timezone.now() - timedelta(days=1))
+        create_enterprise_agreement(school=school, fixed_fee_minor=1_000_001, effective_from=timezone.now() - timedelta(days=1), contract_reference="TEST-CONTRACT")
         result = annual_fee_for_school(school, billable_student_count=5_000)
         gross = 1_000_001 * 3
         expected_net = (gross * 9) // 10

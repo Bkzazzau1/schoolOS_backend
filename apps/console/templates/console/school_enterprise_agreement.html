@@ -11,13 +11,15 @@
   <h2>Agreements</h2>
   {% if agreements %}
     <table>
-      <thead><tr><th>Fixed fee</th><th>Effective from</th><th>Effective until</th><th>Notes</th></tr></thead>
+      <thead><tr><th>Fixed fee</th><th>Contract reference</th><th>Effective from</th><th>Effective until</th><th>Approved by</th><th>Notes</th></tr></thead>
       <tbody>
       {% for agreement in agreements %}
         <tr>
           <td>{{ agreement.fixed_fee_minor|money:agreement.currency }}</td>
+          <td>{{ agreement.contract_reference|default:"-" }}</td>
           <td>{{ agreement.effective_from|date:"Y-m-d H:i" }}</td>
           <td>{% if agreement.effective_until %}{{ agreement.effective_until|date:"Y-m-d H:i" }}{% else %}<span class="pill tone-good">current</span>{% endif %}</td>
+          <td class="muted">{% if agreement.approved_by %}{{ agreement.approved_by }} &middot; {{ agreement.approved_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</td>
           <td class="muted">{{ agreement.notes|default:"-" }}</td>
         </tr>
       {% endfor %}
@@ -31,6 +33,7 @@
   <form method="post" class="action-row">
     {% csrf_token %}
     <label>Fixed fee (NGN) <input type="text" name="fixed_fee_naira" size="10" required placeholder="400000"></label>
+    <label>Contract reference <input type="text" name="contract_reference" size="20" required placeholder="e.g. CONTRACT-2026-014"></label>
     <label>Notes <input type="text" name="notes" size="30" placeholder="optional"></label>
     <button type="submit">Create, effective now</button>
   </form>

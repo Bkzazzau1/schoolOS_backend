@@ -49,7 +49,7 @@ class BillingTestCase(APITestCase):
 
     # -- plan / policy --------------------------------------------------------------------------
 
-    def set_plan(self, *, interval=BillingInterval.MONTHLY, base_amount_minor=0, student_unit_amount_minor=0, automatic=True, invoice_due_days=7, past_due_days=3, grace_days=7):
+    def set_plan(self, *, interval=BillingInterval.MONTHLY, base_amount_minor=0, student_unit_amount_minor=0, automatic=True, invoice_due_days=7, past_due_days=3, grace_days=7, census_cutoff_days=None):
         plan = self.subscription.plan
         plan.billing_interval = interval
         plan.base_amount_minor = base_amount_minor
@@ -62,6 +62,7 @@ class BillingTestCase(APITestCase):
                 "invoice_due_days": invoice_due_days,
                 "past_due_days": past_due_days,
                 "grace_days": grace_days,
+                "census_cutoff_days": census_cutoff_days,
             },
         )
         self.subscription.refresh_from_db()

@@ -91,14 +91,29 @@ class SchoolEnterpriseAgreementConsoleTests(BillingTestCase):
         self.assertEqual(list(response.context["agreements"]), [])
 
     def test_creating_an_agreement_lets_the_school_be_priced_above_every_bracket(self):
-        self.client.post(self._url(), {"fixed_fee_naira": "400000", "notes": "Negotiated for 3,500 students"})
+        self.client.post(
+            self._url(),
+            {
+                "fixed_fee_naira": "400000",
+                "contract_reference": "CONTRACT-2026-014",
+                "notes": "Negotiated for 3,500 students",
+            },
+        )
         agreement = EnterpriseAgreement.objects.get(school=self.school)
         self.assertEqual(agreement.fixed_fee_minor, 40_000_000)
+        self.assertEqual(agreement.contract_reference, "CONTRACT-2026-014")
         self.assertEqual(agreement.notes, "Negotiated for 3,500 students")
+        # Creating it through this gated, staff-only view is itself the approval.
+        self.assertEqual(agreement.approved_by, self.staff_user)
+        self.assertIsNotNone(agreement.approved_at)
 
         from apps.billing.pricing import fixed_fee_for_school
         result = fixed_fee_for_school(self.school, billable_student_count=3_500)
         self.assertEqual((result.fixed_fee_minor, result.source), (40_000_000, "enterprise"))
+
+    def test_an_agreement_is_refused_without_a_contract_reference(self):
+        self.client.post(self._url(), {"fixed_fee_naira": "400000", "notes": "Missing contract reference"})
+        self.assertFalse(EnterpriseAgreement.objects.filter(school=self.school).exists())
 
 
 class OrganizationDetailShowsBillingHistoryTests(BillingTestCase):

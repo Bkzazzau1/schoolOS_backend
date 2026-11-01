@@ -329,24 +329,42 @@ def create_enterprise_agreement(
     school,
     fixed_fee_minor: int,
     effective_from,
+    contract_reference: str,
     effective_until=None,
     currency: str = "NGN",
     notes: str = "",
     actor=None,
 ) -> EnterpriseAgreement:
+    """Records one custom, above-bracket fixed fee. Reachable only through apps.console,
+    gated to platform staff - there is no path for a school's own staff to create or approve
+    one of these for themselves (Phase D Stage 3, Task 6/7).
+
+    Creating the record through that gated path IS the approval: the acting staff member and
+    the moment are recorded as approved_by/approved_at, not left implicit in created_by.
+    contract_reference is required - a custom price is never recorded as "just a number,"
+    always tied to the real external agreement that authorized it.
+    """
+
     if fixed_fee_minor < 0:
         raise ValueError("fixed_fee_minor cannot be negative")
     if effective_until is not None and effective_until <= effective_from:
         raise ValueError("effective_until must be after effective_from")
+    contract_reference = contract_reference.strip()
+    if not contract_reference:
+        raise ValueError("A contract reference is required for an enterprise agreement.")
 
+    now = timezone.now()
     agreement = EnterpriseAgreement.objects.create(
         school=school,
         fixed_fee_minor=fixed_fee_minor,
         effective_from=effective_from,
         effective_until=effective_until,
         currency=currency,
+        contract_reference=contract_reference,
         notes=notes,
         created_by=actor,
+        approved_by=actor,
+        approved_at=now,
     )
     PricingAuditEvent.objects.create(
         actor=actor,
@@ -357,8 +375,10 @@ def create_enterprise_agreement(
             "schoolId": str(school.id),
             "fixedFeeMinor": fixed_fee_minor,
             "currency": currency,
+            "contractReference": contract_reference,
             "effectiveFrom": effective_from.isoformat(),
             "effectiveUntil": effective_until.isoformat() if effective_until else None,
+            "approvedBy": str(actor.id) if actor is not None else None,
         },
     )
     return agreement

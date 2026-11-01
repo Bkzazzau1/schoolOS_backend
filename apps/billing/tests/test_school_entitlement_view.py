@@ -365,6 +365,7 @@ class EnrollmentPricingTests(SchoolEntitlementViewTestCase):
 
         create_enterprise_agreement(
             school=self.school, fixed_fee_minor=99_000_000, effective_from=timezone.now() - timedelta(days=1),
+            contract_reference="TEST-CONTRACT",
         )
         self.add_billable_students(self.school, 5_000)  # far above every standard bracket
         self.publish_meter()

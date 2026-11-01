@@ -5,12 +5,21 @@ Split out of apps.billing.cycle (a single >700-line module) by responsibility, p
 apps/core/tests/test_code_size.py's own rule.
 """
 
+from datetime import datetime, time, timedelta
+
 from django.utils import timezone
 
 from apps.schools.models import School
 
 from ..academic_periods import active_term_for_school, term_bounds
-from ..models import BillingCyclePolicy, BillingInvoice, OrganizationSubscription, UsageSnapshot
+from ..census import flag_pricing_exception, freeze_school_census, mark_census_invoiced
+from ..models import (
+    BillingCyclePolicy,
+    BillingInvoice,
+    CensusStatus,
+    OrganizationSubscription,
+    UsageSnapshot,
+)
 from ..pricing import PricingPolicyUndefined, fixed_fee_for_school
 from .invoicing import _create_school_invoice_locked
 from .metering import _latest_meter_for_period
@@ -62,13 +71,32 @@ def _issue_term_invoice_for_school_locked(
     if existing is not None:
         return existing, "already_invoiced"
 
-    meter = _latest_meter_for_period(school, period_start=start, as_of=min(now, end))
-    if meter is None:
-        return None, "awaiting_census"
+    census = None
+    meter = None
+    if policy.census_cutoff_days is None:
+        # No cutoff policy configured - price from whatever authoritative meter exists the
+        # moment this cycle run reaches the school, exactly as before census.py existed.
+        meter = _latest_meter_for_period(school, period_start=start, as_of=min(now, end))
+        if meter is None:
+            return None, "awaiting_census"
+        billable_count = meter.billable_student_count
+    else:
+        cutoff_at = (
+            timezone.make_aware(datetime.combine(term.starts_on, time.min))
+            + timedelta(days=policy.census_cutoff_days)
+        )
+        census = freeze_school_census(school, period_start=start, period_end=end, cutoff_at=cutoff_at, now=now)
+        if census is None:
+            return None, "awaiting_census_cutoff"
+        if census.status == CensusStatus.NEEDS_REVIEW:
+            return None, "census_needs_review"
+        meter = census.source_snapshot
+        billable_count = census.billable_student_count
 
     try:
-        fee = fixed_fee_for_school(school, billable_student_count=meter.billable_student_count, as_of=now)
-    except PricingPolicyUndefined:
+        fee = fixed_fee_for_school(school, billable_student_count=billable_count, as_of=now)
+    except PricingPolicyUndefined as problem:
+        flag_pricing_exception(school, period_start=start, period_end=end, reason=str(problem), meter=meter)
         return None, "pricing_undefined"
 
     snapshot = UsageSnapshot.objects.create(
@@ -77,21 +105,27 @@ def _issue_term_invoice_for_school_locked(
         period_start=start,
         period_end=end,
         active_school_count=1,
-        billable_student_count=meter.billable_student_count,
+        billable_student_count=billable_count,
         source="automatic_roster_meter_term",
-        metadata={"schoolId": str(school.id), "meterSource": meter.source, "meterSourceVersion": meter.source_version},
+        metadata={
+            "schoolId": str(school.id),
+            "meterSource": meter.source if meter else None,
+            "meterSourceVersion": meter.source_version if meter else None,
+        },
     )
     invoice = _create_school_invoice_locked(
         subscription,
         school_id=str(school.id),
         fee=fee,
-        billable_student_count=meter.billable_student_count,
+        billable_student_count=billable_count,
         usage_snapshot=snapshot,
         period_start=start,
         period_end=end,
         policy=policy,
         now=now,
     )
+    if census is not None:
+        mark_census_invoiced(census, invoice)
     return invoice, "issued"
 
 
