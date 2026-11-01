@@ -5,7 +5,7 @@ this module ever changes a plan's billing_interval on its own), with the origina
 and discount preserved on the issued invoice, and integer kobo arithmetic with a documented
 truncate-toward-zero rounding rule."""
 
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
@@ -89,6 +89,33 @@ class AnnualFeeCalculationTests(TestCase):
         with self.assertRaises(PricingPolicyUndefined):
             annual_fee_for_school(school, billable_student_count=50)
 
+    def test_renewing_into_a_new_session_recomputes_the_discount_fresh_never_compounding(self):
+        """Phase D Stage 3, Task 5: there is no stored, cumulative discount state anything
+        could compound onto - each call computes gross (per-term fee x that session's own
+        real term count) and the 10% discount fresh, from whichever session is active as of
+        the date asked about. A renewal into a session with a DIFFERENT term count must
+        never carry over the previous session's discount amount, rate, or term count."""
+
+        school = _provision_school()
+        today = timezone.localdate()
+        _make_session_with_terms(school, term_count=3, starts_on=today - timedelta(days=10))
+        first = annual_fee_for_school(school, billable_student_count=50, as_of=timezone.now())
+        self.assertEqual((first.term_count, first.gross_fee_minor), (3, 4_000_000 * 3))
+        self.assertEqual(first.fixed_fee_minor, (4_000_000 * 3 * 9) // 10)
+
+        # A renewed future session with a different real term count - never assumed to
+        # carry the first's 3 terms. (Priced in the future, not the past, so it is never
+        # dated before the fixed-bracket pricing this school is billed under even exists.)
+        second_start = today + timedelta(days=300)
+        _make_session_with_terms(school, term_count=2, starts_on=second_start)
+        second_as_of = timezone.make_aware(datetime.combine(second_start + timedelta(days=10), time.min))
+        second = annual_fee_for_school(school, billable_student_count=50, as_of=second_as_of)
+        self.assertEqual((second.term_count, second.gross_fee_minor), (2, 4_000_000 * 2))
+        self.assertEqual(second.fixed_fee_minor, (4_000_000 * 2 * 9) // 10)
+
+        # The first result's own figures are untouched by having since computed the second.
+        self.assertEqual((first.term_count, first.gross_fee_minor), (3, 4_000_000 * 3))
+
 
 class AnnualInvoicingTests(BillingTestCase):
     def test_an_annual_subscription_is_invoiced_at_the_discounted_multi_term_fee(self):
@@ -118,3 +145,35 @@ class AnnualInvoicingTests(BillingTestCase):
         run_subscription_cycle(self.subscription.id)
         self.subscription.refresh_from_db()
         self.assertEqual(self.subscription.plan.billing_interval, BillingInterval.MONTHLY)
+
+    def test_two_schools_with_different_session_term_counts_are_each_discounted_from_their_own(self):
+        """Task 5's "support different academic calendars within one organization,"
+        verified at the pricing level: each school's annual fee is computed from ITS OWN
+        session's real term count, never a shared or averaged figure, even though both
+        invoices are issued under the same organization-wide annual cycle run."""
+
+        school_b, _ = provision_school(
+            actor=self.owner, organization_id=self.organization.id, name="Campus B",
+            school_type=SchoolType.PRIMARY, location="Kano",
+        )
+        self.set_plan(interval=BillingInterval.ANNUAL, base_amount_minor=1_000_000)
+        _make_session_with_terms(self.school, term_count=2)
+        _make_session_with_terms(school_b, term_count=4)
+        self.add_billable_students(self.school, 50)
+        self.add_billable_students(school_b, 50)
+        run_subscription_cycle(self.subscription.id)
+        self.publish_meter(self.school)
+        self.publish_meter(school_b)
+        cutoff = timezone.now()
+        self.subscription.refresh_from_db()
+        self.subscription.current_period_start = cutoff - timedelta(hours=1)
+        self.subscription.current_period_end = cutoff
+        self.subscription.save(update_fields=["current_period_start", "current_period_end"])
+
+        run_subscription_cycle(self.subscription.id)
+        line_a = self.subscription.invoices.get(school=self.school).lines.get()
+        line_b = self.subscription.invoices.get(school=school_b).lines.get()
+        self.assertEqual(line_a.term_count, 2)
+        self.assertEqual(line_b.term_count, 4)
+        self.assertEqual(line_a.gross_fee_minor, 4_000_000 * 2)
+        self.assertEqual(line_b.gross_fee_minor, 4_000_000 * 4)
