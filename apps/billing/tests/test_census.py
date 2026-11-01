@@ -14,13 +14,19 @@ from datetime import datetime, time, timedelta
 from django.utils import timezone
 
 from apps.academics.models import AcademicSession, AcademicTerm
-from apps.billing.census import correct_school_census, current_census, flag_pricing_exception
+from apps.billing.census import (
+    correct_school_census,
+    current_census,
+    flag_pricing_exception,
+    request_early_census_freeze,
+)
 from apps.billing.cycle import publish_school_billing_meter, run_subscription_cycle
 from apps.billing.models import (
     BillingInterval,
     BillingInvoice,
     CensusStatus,
     InvoiceStatus,
+    PricingAuditEvent,
     SchoolEnrollmentCensus,
 )
 
@@ -214,3 +220,50 @@ class CensusCorrectionTests(BillingTestCase):
         self.assertEqual(corrected.status, CensusStatus.FROZEN)
         current = current_census(self.school, period_start=self.start, period_end=self.end)
         self.assertEqual(current.id, corrected.id)
+
+
+class EarlyCensusFreezeTests(BillingTestCase):
+    """Task 2's policy-neutral infrastructure: a school can voluntarily freeze its census
+    before any ordinary cutoff, with the request itself attributed and audited. No bracket-
+    change-on-later-increase/decrease logic exists here by design - that commercial decision
+    is left open (see the Stage 3 report)."""
+
+    def setUp(self):
+        super().setUp()
+        # No census_cutoff_days configured - early freeze works even with no cutoff policy
+        # approved yet, since it is requested explicitly rather than triggered by one.
+        self.set_plan(interval=BillingInterval.TERM, base_amount_minor=1_000_000)
+        today = timezone.localdate()
+        self.term = _make_term(self.school, code="t1", starts_on=today - timedelta(days=10), ends_on=today + timedelta(days=50))
+        self.start, self.end = _term_bounds(self.term)
+
+    def test_an_explicit_early_request_freezes_the_real_count_right_now(self):
+        _census_meter(self.school, 50, at=timezone.now(), key="early")
+        census = request_early_census_freeze(self.school, period_start=self.start, period_end=self.end, actor=self.owner)
+
+        self.assertEqual(census.status, CensusStatus.FROZEN)
+        self.assertEqual(census.billable_student_count, 50)
+        self.assertTrue(census.is_early)
+
+        event = PricingAuditEvent.objects.get(action="early_census_freeze_requested")
+        self.assertEqual(event.actor, self.owner)
+        self.assertEqual(event.detail["schoolId"], str(self.school.id))
+
+    def test_an_early_freeze_with_only_the_zero_bootstrap_meter_needs_review_not_invention(self):
+        census = request_early_census_freeze(self.school, period_start=self.start, period_end=self.end, actor=self.owner)
+        self.assertEqual(census.status, CensusStatus.NEEDS_REVIEW)
+
+    def test_the_subsequent_automatic_cycle_bills_from_the_early_frozen_count(self):
+        _census_meter(self.school, 80, at=timezone.now(), key="early")
+        census = request_early_census_freeze(self.school, period_start=self.start, period_end=self.end, actor=self.owner)
+
+        # A later, larger real count must never retroactively change what was voluntarily
+        # frozen early - this is the explicit point of an early freeze.
+        _census_meter(self.school, 300, at=timezone.now() + timedelta(days=1), key="grew")
+
+        result = run_subscription_cycle(self.subscription.id, now=timezone.now() + timedelta(days=2))
+        self.assertEqual(result["result"], "invoice_issued")
+        invoice = BillingInvoice.objects.get(subscription=self.subscription, school=self.school)
+        self.assertEqual(invoice.billable_student_count, 80)
+        census.refresh_from_db()
+        self.assertEqual(census.invoice_id, invoice.id)

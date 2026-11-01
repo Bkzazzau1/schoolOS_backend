@@ -12,7 +12,7 @@ from django.utils import timezone
 from apps.schools.models import School
 
 from ..academic_periods import active_term_for_school, term_bounds
-from ..census import flag_pricing_exception, freeze_school_census, mark_census_invoiced
+from ..census import current_census, flag_pricing_exception, freeze_school_census, mark_census_invoiced
 from ..models import (
     BillingCyclePolicy,
     BillingInvoice,
@@ -71,11 +71,21 @@ def _issue_term_invoice_for_school_locked(
     if existing is not None:
         return existing, "already_invoiced"
 
-    census = None
     meter = None
-    if policy.census_cutoff_days is None:
-        # No cutoff policy configured - price from whatever authoritative meter exists the
-        # moment this cycle run reaches the school, exactly as before census.py existed.
+    # An early-frozen census (Task 2) always takes priority, with or without a
+    # census_cutoff_days policy configured - a school that voluntarily froze its count ahead
+    # of time must never have that count silently bypassed by reading the raw latest meter
+    # straight past it.
+    census = current_census(school, period_start=start, period_end=end)
+    if census is not None and census.status == CensusStatus.NEEDS_REVIEW:
+        return None, "census_needs_review"
+    if census is not None and census.status == CensusStatus.FROZEN:
+        meter = census.source_snapshot
+        billable_count = census.billable_student_count
+    elif policy.census_cutoff_days is None:
+        # No cutoff policy configured and no census already frozen - price from whatever
+        # authoritative meter exists the moment this cycle run reaches the school, exactly
+        # as before census.py existed.
         meter = _latest_meter_for_period(school, period_start=start, as_of=min(now, end))
         if meter is None:
             return None, "awaiting_census"

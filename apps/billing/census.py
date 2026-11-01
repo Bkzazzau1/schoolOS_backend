@@ -21,12 +21,22 @@ approval:
 Corrections never rewrite a frozen row's own recorded count, source, or the BillingInvoice
 already issued from it (if any) - they supersede it with a new current row, preserving full
 audit history (Task 1 requirement 10).
+
+`request_early_census_freeze` (Task 2) is the one exception to "nothing fires without a
+cutoff policy": it voluntarily freezes a school's census right now, before any ordinary
+cutoff, for a school that wants to pay early. It is infrastructure only - reachable today
+only from a trusted, attributed caller (an operator via apps.console or the Django shell),
+never from a school-facing self-service endpoint, because what happens on a later bracket
+change is a commercial decision this stage deliberately leaves open (see the Stage 3
+completion report's proposed approach and alternatives). It invents no top-up charge,
+credit, or refund; a later correction, if one is ever authorized, goes through the exact
+same correct_school_census() every other census correction uses.
 """
 
 from django.db import transaction
 from django.utils import timezone
 
-from .models import BillingInvoice, CensusStatus, SchoolEnrollmentCensus
+from .models import BillingInvoice, CensusStatus, PricingAuditEvent, SchoolEnrollmentCensus
 
 # Deferred to call time, not module load time: apps.billing.cycle's own package __init__
 # imports term_billing, which imports this module - importing cycle.metering up here would
@@ -184,3 +194,35 @@ def correct_school_census(
             exception_reason="" if corrected_count > 0 else "The corrected count is still zero.",
         )
         return replacement
+
+
+def request_early_census_freeze(
+    school, *, period_start, period_end, actor,
+) -> SchoolEnrollmentCensus:
+    """Voluntarily freezes this school's census right now, before any ordinary cutoff
+    (Task 2's "early subscription purchase"). Never re-freezes an already FROZEN/
+    NEEDS_REVIEW census for this period - exactly like freeze_school_census, since this
+    calls that same function with cutoff_at=now.
+
+    `actor` must always be the real, attributed requester - this is never anonymous. The
+    request itself is recorded as a PricingAuditEvent, satisfying "the school explicitly
+    accepts an early roster freeze" as an auditable fact, not an implicit side effect.
+    """
+
+    now = timezone.now()
+    census = freeze_school_census(
+        school, period_start=period_start, period_end=period_end, cutoff_at=now, now=now, is_early=True,
+    )
+    PricingAuditEvent.objects.create(
+        actor=actor,
+        action="early_census_freeze_requested",
+        target_type="school_enrollment_census",
+        target_id=str(census.id) if census is not None else "",
+        detail={
+            "schoolId": str(school.id),
+            "periodStart": period_start.isoformat(),
+            "periodEnd": period_end.isoformat(),
+            "resultingStatus": census.status if census is not None else None,
+        },
+    )
+    return census
