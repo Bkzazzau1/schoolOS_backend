@@ -134,19 +134,48 @@ def require_premium_entitlement(school, *, code: str, current_value: int | None 
 
 def resolve_school_entitlements(school) -> dict[str, dict]:
     """A read-only, non-raising view of require_premium_entitlement()'s own two real checks -
-    the source of truth the school-scoped entitlement API (apps.billing.views) reads for an
-    "available"/"reason" display, so what the UI explains can never drift from what the gate
-    would actually say. Never duplicates require_premium_entitlement()'s own conditions: calls
-    it directly for each approved premium code and reports whether it would have raised."""
+    the source of truth the school-scoped entitlement API (apps.billing.views) reads for
+    display. Distinguishes the three things Phase D's brief requires kept separate, as three
+    separate fields rather than one collapsed boolean:
+
+    - ``planEnabled``: the organization's commercial plan entitlement switch
+      (resolved_entitlements()) - independent of any one school's payment.
+    - ``schoolPaid``: this specific school's own current-period payment
+      (school_premium_access()) - independent of the plan switch and of every sibling school.
+    - ``available``: what require_premium_entitlement() would actually decide today, called
+      directly rather than re-derived, so this can never drift from the real gate's own
+      message. (The top-level ``premiumEnforcementEnabled`` flag is the fourth, orthogonal
+      dimension: whether any of this is actually enforced yet at all.)
+
+    A school with no organization is outside SkulGen's SaaS billing entirely (the same
+    legacy exemption require_premium_entitlement() itself has) - planEnabled and schoolPaid
+    both read as true for it, matching available.
+    """
+
+    organization = school.organization
+    resolved = resolved_entitlements(ensure_organization_subscription(organization)) if organization else {}
 
     result = {}
     for code in PREMIUM_CODES:
+        entry = resolved.get(code)
+        plan_enabled = organization is None or bool(entry and entry["enabled"])
+        school_paid = organization is None or school_premium_access(school)
         try:
             require_premium_entitlement(school, code=code)
         except PermissionDenied as refused:
-            result[code] = {"available": False, "reason": str(refused)}
+            result[code] = {
+                "planEnabled": plan_enabled,
+                "schoolPaid": school_paid,
+                "available": False,
+                "reason": str(refused),
+            }
         else:
-            result[code] = {"available": True, "reason": ""}
+            result[code] = {
+                "planEnabled": plan_enabled,
+                "schoolPaid": school_paid,
+                "available": True,
+                "reason": "",
+            }
     return result
 
 

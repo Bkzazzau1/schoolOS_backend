@@ -160,6 +160,27 @@ class PaymentStatusAndEntitlementTests(SchoolEntitlementViewTestCase):
         payload = self.get(self.entitlement_url(self.school), who=self.owner).json()
         self.assertFalse(payload["premiumEnforcementEnabled"])
 
+    def test_plan_entitlement_and_school_payment_are_reported_as_separate_signals(self):
+        """Task 1's own requirement: distinguish plan entitlement, payment eligibility and
+        actual enforcement - never one collapsed boolean."""
+        # Plan allows it, but this school has not paid: planEnabled true, schoolPaid false.
+        unpaid = self.get(self.entitlement_url(self.school), who=self.owner).json()
+        entry = unpaid["entitlements"][CBT_EXAM_PUBLISH]
+        self.assertTrue(entry["planEnabled"])
+        self.assertFalse(entry["schoolPaid"])
+        self.assertFalse(entry["available"])
+
+        # The plan itself does not include the feature at all - even once paid, it stays
+        # unavailable, and planEnabled (not schoolPaid) is what reports why.
+        self.give_entitlement(CBT_EXAM_PUBLISH, enabled=False)
+        start, end = self._current_period()
+        self._invoice(self.school, period_start=start, period_end=end, status=InvoiceStatus.PAID)
+        disabled_plan = self.get(self.entitlement_url(self.school), who=self.owner).json()
+        entry = disabled_plan["entitlements"][CBT_EXAM_PUBLISH]
+        self.assertFalse(entry["planEnabled"])
+        self.assertTrue(entry["schoolPaid"])
+        self.assertFalse(entry["available"])
+
 
 class MultiSchoolIndependenceTests(SchoolEntitlementViewTestCase):
     def test_mixed_paid_and_unpaid_schools_in_one_organization_are_fully_independent(self):
