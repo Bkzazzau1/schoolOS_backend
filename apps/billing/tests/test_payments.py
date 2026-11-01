@@ -6,9 +6,11 @@ never a client-supplied flag."""
 import hashlib
 import hmac
 import json
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.test import override_settings
+from django.utils import timezone
 
 from apps.billing import payments
 from apps.billing.models import (
@@ -114,6 +116,32 @@ class InvoiceCheckoutTests(PaymentsTestCase):
         self.assertEqual(first.json()["payment"]["reference"], second.json()["payment"]["reference"])
         self.assertEqual(PaymentAttempt.objects.filter(invoice=self.invoice).count(), 1)
         self.assertEqual(mocked.call_count, 1)  # the provider opens exactly one checkout session
+
+    def test_a_second_checkout_after_the_reuse_window_elapses_supersedes_the_old_attempt(self):
+        with patch("apps.billing.providers.PaystackProvider._json_request") as mocked:
+            mocked.side_effect = lambda method, path, payload=None: {
+                "status": True,
+                "data": {
+                    "authorization_url": "https://checkout.paystack.com/abc123",
+                    "access_code": "abc123",
+                    "reference": payload["reference"],
+                },
+            }
+            first = self.checkout()
+            first_reference = first.json()["payment"]["reference"]
+            # Backdates the attempt past the configured reuse window - simulating an
+            # abandoned checkout whose provider session has likely gone stale - rather than
+            # waiting out the real window in the test.
+            PaymentAttempt.objects.filter(reference=first_reference).update(
+                created_at=timezone.now() - timedelta(minutes=31)
+            )
+            second = self.checkout()
+        self.assertEqual(second.status_code, 201, second.json())
+        self.assertNotEqual(second.json()["payment"]["reference"], first_reference)
+        self.assertEqual(mocked.call_count, 2)  # a genuinely new checkout session was opened
+        first_attempt = PaymentAttempt.objects.get(reference=first_reference)
+        self.assertEqual(first_attempt.status, PaymentAttemptStatus.CANCELLED)
+        self.assertIn("checkout window elapsed", first_attempt.failure_message)
 
 
 class PaymentVerifyTests(PaymentsTestCase):

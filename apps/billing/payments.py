@@ -7,7 +7,9 @@ checking the provider's own reported amount and currency against what this attem
 import hashlib
 import json
 import uuid
+from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -65,10 +67,19 @@ def get_or_initialize_invoice_payment(
             .first()
         )
         if existing is not None:
-            if not force_new:
+            reuse_window = timedelta(minutes=settings.PAYMENT_ATTEMPT_REUSE_WINDOW_MINUTES)
+            expired = (timezone.now() - existing.created_at) > reuse_window
+            if not force_new and not expired:
                 return existing
+            # Superseded, not silently reused and not discarded: an attempt this old has
+            # likely outlived its provider checkout session, so handing it back to a new
+            # checkout request would risk sending the payer to a dead link.
             existing.status = PaymentAttemptStatus.CANCELLED
-            existing.failure_message = "Cancelled: a new checkout was started for this invoice."
+            existing.failure_message = (
+                "Cancelled: a new checkout was started for this invoice."
+                if force_new or not expired
+                else "Cancelled: the checkout window elapsed without a confirmed payment."
+            )
             existing.save(update_fields=["status", "failure_message", "updated_at"])
 
         # A provider failure below must not roll back the attempt it just marked FAILED -

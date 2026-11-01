@@ -215,6 +215,12 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="SkulGen <no-reply@skulge
 PAYSTACK_SECRET_KEY = env("PAYSTACK_SECRET_KEY", default="")
 PAYSTACK_API_BASE_URL = env("PAYSTACK_API_BASE_URL", default="https://api.paystack.co")
 PAYSTACK_CALLBACK_URL = env("PAYSTACK_CALLBACK_URL", default="")
+# A conservative default, not a value taken from Paystack's own documented session
+# lifetime: how long an unresolved checkout attempt (apps.billing.payments) stays eligible
+# to be handed back to a second checkout request for the same invoice, rather than treated
+# as abandoned and superseded by a fresh one. Confirm against Paystack's actual hosted
+# checkout session lifetime before relying on this in production.
+PAYMENT_ATTEMPT_REUSE_WINDOW_MINUTES = env.int("PAYMENT_ATTEMPT_REUSE_WINDOW_MINUTES", default=30)
 
 # Push notifications (apps.notifications.push_delivery), via Firebase Cloud Messaging. Both
 # unset until a real Firebase project exists; until then every push send honestly refuses
