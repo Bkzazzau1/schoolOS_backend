@@ -18,6 +18,7 @@ from ..models import (
     BillingInvoice,
     CensusStatus,
     OrganizationSubscription,
+    SchoolEnrollmentCensus,
     UsageSnapshot,
 )
 from ..pricing import PricingPolicyUndefined, fixed_fee_for_school
@@ -88,6 +89,18 @@ def _issue_term_invoice_for_school_locked(
             existing.period_start = start
             existing.period_end = end
             existing.save(update_fields=["period_start", "period_end"])
+            # The line's own copy of the coverage window must never go stale alongside it
+            # (Stage 4 Task 4/9 audit finding) - nothing reads it for pricing or entitlement
+            # (those read the invoice directly), but a stale line would show the wrong
+            # coverage window anywhere it's displayed (e.g. the console's invoice detail).
+            existing.lines.update(period_start=start, period_end=end)
+            # The census this invoice was frozen from (if any) is keyed by its own
+            # period_start/period_end snapshot too - without updating it here, a later
+            # lookup keyed by the term's now-current bounds would miss this census
+            # entirely and risk creating an orphaned duplicate for the same term.
+            SchoolEnrollmentCensus.objects.filter(invoice=existing).update(
+                period_start=start, period_end=end,
+            )
         return existing, "already_invoiced"
 
     meter = None

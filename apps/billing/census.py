@@ -36,6 +36,8 @@ same correct_school_census() every other census correction uses.
 from django.db import transaction
 from django.utils import timezone
 
+from apps.schools.models import School
+
 from .models import BillingInvoice, CensusStatus, PricingAuditEvent, SchoolEnrollmentCensus
 
 # Deferred to call time, not module load time: apps.billing.cycle's own package __init__
@@ -107,6 +109,14 @@ def freeze_school_census(
     if now < cutoff_at:
         return None
     with transaction.atomic():
+        # Locks the school row for the duration of this decision (Phase D Stage 4, Task 4/9
+        # audit finding): SchoolEnrollmentCensus has no DB-level uniqueness on
+        # (school, period_start, period_end) to rely on instead - a correction must be free
+        # to create a new row alongside a CORRECTED one, so that constraint can't exist.
+        # Without this lock, two concurrent freezes (or a freeze racing a correction) for a
+        # school with no existing census row yet could both decide "nothing exists" and
+        # each create their own, or both act on a stale read of the same OPEN row.
+        School.objects.select_for_update().get(pk=school.pk)
         census = current_census(school, period_start=period_start, period_end=period_end)
         if census is None:
             census = SchoolEnrollmentCensus.objects.create(
@@ -172,6 +182,15 @@ def correct_school_census(
         raise ValueError("Provide either a replacement meter or an explicit corrected count.")
 
     with transaction.atomic():
+        # Same lock freeze_school_census takes, and for the same reason (Stage 4, Task 4/9
+        # audit finding) - also re-reads the census under that lock, since the caller's own
+        # `census` argument could already be stale if another correction (or an early
+        # freeze) ran concurrently between when they fetched it and this call.
+        School.objects.select_for_update().get(pk=census.school_id)
+        census.refresh_from_db()
+        if census.status == CensusStatus.CORRECTED:
+            raise ValueError("This census has already been corrected by someone else - re-read it and retry.")
+
         now = timezone.now()
         census.status = CensusStatus.CORRECTED
         census.corrected_by = actor

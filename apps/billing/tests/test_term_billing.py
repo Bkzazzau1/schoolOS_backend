@@ -135,6 +135,40 @@ class TermInvoicingTests(BillingTestCase):
         self.assertEqual((original_invoice.period_start, original_invoice.period_end), (new_start, new_end))
         self.assertEqual(original_invoice.amount_due_minor, 4_000_000)  # the amount is never rewritten
 
+        # Stage 4, Task 4/9 audit finding: the invoice's own BillingInvoiceLine copy of the
+        # coverage window must never go stale alongside it, and so should its own
+        # SchoolEnrollmentCensus, if the plan has a census_cutoff_days policy (so one
+        # exists) - without that second sync, a later lookup keyed by the term's now-current
+        # bounds would miss the census row entirely.
+        line = original_invoice.lines.get()
+        self.assertEqual((line.period_start, line.period_end), (new_start, new_end))
+
+    def test_amending_a_terms_dates_after_a_cutoff_freeze_keeps_its_census_in_sync_too(self):
+        from apps.billing.census import current_census
+
+        self.set_plan(interval=BillingInterval.TERM, base_amount_minor=1_000_000, census_cutoff_days=1)
+        term = _make_term(self.school, code="t1", sequence=1, starts_on=self.today - timedelta(days=10), ends_on=self.today + timedelta(days=50))
+        term_start_at = timezone.make_aware(datetime.combine(term.starts_on, time.min))
+        # Measured within [term start, term start + 1 day] - the configured cutoff window -
+        # never at "now", which is well past that cutoff and would be excluded.
+        _census(self.school, 20, at=term_start_at + timedelta(hours=12), key="first")
+        run_subscription_cycle(self.subscription.id)
+        original_invoice = BillingInvoice.objects.get(subscription=self.subscription)
+        old_start, old_end = _term_bounds(term)
+        census_before = current_census(self.school, period_start=old_start, period_end=old_end)
+        self.assertIsNotNone(census_before)
+        self.assertEqual(census_before.invoice_id, original_invoice.id)
+
+        term.ends_on = term.ends_on + timedelta(days=14)
+        term.save(update_fields=["ends_on"])
+        run_subscription_cycle(self.subscription.id)
+
+        new_start, new_end = _term_bounds(term)
+        # The census is still findable by the term's CURRENT bounds - not orphaned under
+        # its old period key.
+        self.assertIsNotNone(current_census(self.school, period_start=new_start, period_end=new_end))
+        self.assertIsNone(current_census(self.school, period_start=old_start, period_end=old_end))
+
     def test_once_the_next_term_begins_its_own_separate_invoice_can_be_issued(self):
         first_term_end = self.today + timedelta(days=1)
         first_term = _make_term(self.school, code="t1", sequence=1, starts_on=self.today - timedelta(days=10), ends_on=first_term_end)
