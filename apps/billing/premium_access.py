@@ -27,7 +27,8 @@ from django.conf import settings
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
-from .academic_periods import active_session_for_school, active_term_for_school
+from .academic_periods import active_session_for_school, active_term_for_school, term_bounds
+from .census import current_census
 from .models import BillingInvoice, InvoiceStatus, SchoolBillingMeterSnapshot
 from .pricing import PricingPolicyUndefined, fixed_fee_for_school
 from .services import ensure_organization_subscription, resolved_entitlements, serialize_payment_attempt
@@ -257,6 +258,25 @@ def serialize_school_entitlement_status(school, *, viewer_role: str | None, bill
             enrollment["bracketMaxStudents"] = fee.max_students
             enrollment["pricingSource"] = fee.source
 
+    # The authoritative census status for this school's current term (Phase D Stage 3, Task
+    # 1 requirement 4) - never shown for MONTHLY/ANNUAL subscriptions, which have no
+    # per-school period for a census to be scoped to. None here means either no active term,
+    # or (today, with no census_cutoff_days approved on any real plan) that nothing about
+    # this model has fired yet for this period - never an error.
+    census = None
+    if term is not None:
+        term_start, term_end = term_bounds(term)
+        census_record = current_census(school, period_start=term_start, period_end=term_end)
+        if census_record is not None:
+            census = {
+                "status": census_record.status,
+                "billableStudentCount": census_record.billable_student_count,
+                "cutoffAt": census_record.cutoff_at.isoformat() if census_record.cutoff_at else None,
+                "frozenAt": census_record.frozen_at.isoformat() if census_record.frozen_at else None,
+                "isEarly": census_record.is_early,
+                "exceptionReason": census_record.exception_reason,
+            }
+
     billing = None
     if billing_authority and invoice is not None:
         # The invoice's own latest payment attempt (never created here - just read), so a
@@ -296,6 +316,7 @@ def serialize_school_entitlement_status(school, *, viewer_role: str | None, bill
             else None
         ),
         "enrollment": enrollment,
+        "census": census,
         "entitlements": resolve_school_entitlements(school),
         "billing": billing,
     }

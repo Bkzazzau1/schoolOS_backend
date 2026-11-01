@@ -328,6 +328,72 @@ class AcademicCalendarTests(SchoolEntitlementViewTestCase):
         self.assertIsNone(payload["academicSession"])
 
 
+class CensusDisplayTests(SchoolEntitlementViewTestCase):
+    """Census status surfaced to the school's own authorized viewers (Phase D Stage 3, Task
+    1 requirement 4) - built from apps.billing.census, the same model apps.console reads."""
+
+    def _term(self):
+        from apps.academics.models import AcademicSession, AcademicTerm
+
+        today = timezone.localdate()
+        session = AcademicSession.objects.create(
+            school=self.school, code="2026-session", name="2026/2027",
+            starts_on=today - timedelta(days=30), ends_on=today + timedelta(days=300),
+        )
+        return AcademicTerm.objects.create(
+            session=session, code="t1", name="Term 1", sequence=1,
+            starts_on=today - timedelta(days=10), ends_on=today + timedelta(days=50),
+        )
+
+    def test_with_no_cutoff_policy_and_no_census_fired_yet_reports_null(self):
+        self._term()
+        payload = self.get(self.entitlement_url(self.school), who=self.owner).json()
+        self.assertIsNone(payload["census"])
+
+    def test_a_pricing_exception_is_reported_as_needs_review(self):
+        from apps.billing.census import flag_pricing_exception
+        from apps.billing.academic_periods import term_bounds
+
+        term = self._term()
+        start, end = term_bounds(term)
+        flag_pricing_exception(self.school, period_start=start, period_end=end, reason="Zero billable students.")
+
+        payload = self.get(self.entitlement_url(self.school), who=self.owner).json()
+        self.assertEqual(payload["census"]["status"], "needs_review")
+        self.assertEqual(payload["census"]["exceptionReason"], "Zero billable students.")
+
+    def test_a_frozen_census_reports_its_count_and_timestamps(self):
+        from apps.billing.census import freeze_school_census
+        from apps.billing.academic_periods import term_bounds
+        from apps.billing.cycle import publish_school_billing_meter
+
+        term = self._term()
+        start, end = term_bounds(term)
+        # Published after the real zero-student bootstrap meter every provisioned school
+        # already has, so it is genuinely the latest authoritative observation as of the
+        # cutoff below, not shadowed by that older zero count.
+        publish_school_billing_meter(
+            school=self.school, billable_student_count=80, source="canonical_student_roster",
+            source_version="test:1", measured_at=timezone.now(),
+        )
+        cutoff_at = timezone.now() + timedelta(minutes=1)
+        freeze_school_census(
+            self.school, period_start=start, period_end=end, cutoff_at=cutoff_at,
+            now=timezone.now() + timedelta(minutes=2),
+        )
+
+        payload = self.get(self.entitlement_url(self.school), who=self.owner).json()
+        self.assertEqual(payload["census"]["status"], "frozen")
+        self.assertEqual(payload["census"]["billableStudentCount"], 80)
+        self.assertIsNotNone(payload["census"]["frozenAt"])
+        self.assertFalse(payload["census"]["isEarly"])
+
+    def test_census_is_never_reported_for_monthly_billing_with_no_per_school_term(self):
+        self.set_plan(automatic=False)  # default MONTHLY interval, no AcademicTerm created
+        payload = self.get(self.entitlement_url(self.school), who=self.owner).json()
+        self.assertIsNone(payload["census"])
+
+
 class EnrollmentPricingTests(SchoolEntitlementViewTestCase):
     def test_a_real_published_census_resolves_the_correct_bracket(self):
         self.add_billable_students(self.school, 20)
