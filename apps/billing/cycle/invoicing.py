@@ -32,6 +32,7 @@ def _create_school_invoice_locked(
     period_end,
     policy: BillingCyclePolicy,
     now,
+    academic_term=None,
 ) -> BillingInvoice:
     """Issues one school's own invoice for one period - the single creation path every
     automatic invoicing route (org-wide multi-school periods, and independent per-school term
@@ -45,6 +46,7 @@ def _create_school_invoice_locked(
         subscription=subscription,
         school_id=school_id,
         usage_snapshot=usage_snapshot,
+        academic_term=academic_term,
         number=f"SOS-{now:%Y%m%d}-{uuid.uuid4().hex[:10].upper()}",
         currency=fee.currency,
         base_amount_minor=amount_due,

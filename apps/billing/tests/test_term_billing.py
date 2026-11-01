@@ -107,6 +107,34 @@ class TermInvoicingTests(BillingTestCase):
         self.assertEqual(result["result"], "scheduled")
         self.assertEqual(BillingInvoice.objects.filter(subscription=self.subscription).count(), 1)
 
+    def test_amending_a_terms_end_date_after_invoicing_never_creates_a_duplicate_invoice(self):
+        """Phase D Stage 3, Task 4: "delayed term dates and calendar amendments do not
+        silently generate duplicate invoices." A term's own identity, not a snapshot of its
+        dates at issuance time, is what "already invoiced" is judged by - the existing
+        invoice's coverage window is kept in sync with the amended term instead, never its
+        amount or status, so a school that already paid for this term stays covered through
+        its real, current end date rather than appearing to lapse at a now-stale one."""
+
+        term = _make_term(self.school, code="t1", sequence=1, starts_on=self.today - timedelta(days=10), ends_on=self.today + timedelta(days=50))
+        _census(self.school, 20, at=timezone.now(), key="first")
+        run_subscription_cycle(self.subscription.id)
+        self.assertEqual(BillingInvoice.objects.filter(subscription=self.subscription).count(), 1)
+        original_invoice = BillingInvoice.objects.get(subscription=self.subscription)
+        self.assertEqual(original_invoice.academic_term_id, term.id)
+
+        # A school closure extends the term by two weeks.
+        term.ends_on = term.ends_on + timedelta(days=14)
+        term.save(update_fields=["ends_on"])
+
+        result = run_subscription_cycle(self.subscription.id)
+        self.assertEqual(result["result"], "scheduled")  # nothing NEW issued
+        self.assertEqual(BillingInvoice.objects.filter(subscription=self.subscription).count(), 1)
+
+        original_invoice.refresh_from_db()
+        new_start, new_end = _term_bounds(term)
+        self.assertEqual((original_invoice.period_start, original_invoice.period_end), (new_start, new_end))
+        self.assertEqual(original_invoice.amount_due_minor, 4_000_000)  # the amount is never rewritten
+
     def test_once_the_next_term_begins_its_own_separate_invoice_can_be_issued(self):
         first_term_end = self.today + timedelta(days=1)
         first_term = _make_term(self.school, code="t1", sequence=1, starts_on=self.today - timedelta(days=10), ends_on=first_term_end)

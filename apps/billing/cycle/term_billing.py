@@ -58,17 +58,36 @@ def _issue_term_invoice_for_school_locked(
         return None, "no_active_term"
     start, end = term_bounds(term)
 
+    # Matched by the term's own stable identity first, never only by its current dates - a
+    # delayed start or an extended closure must never make this look like a brand-new,
+    # unbilled period (Phase D Stage 3, Task 4).
     existing = (
-        BillingInvoice.objects.filter(
-            subscription=subscription,
-            school=school,
-            period_start=start,
-            period_end=end,
-        )
+        BillingInvoice.objects.filter(subscription=subscription, school=school, academic_term=term)
         .order_by("issued_at", "id")
         .first()
     )
+    if existing is None:
+        # Backward compatible with invoices issued before academic_term existed on this
+        # model - matched by period bounds, the only identity available at the time.
+        existing = (
+            BillingInvoice.objects.filter(
+                subscription=subscription,
+                school=school,
+                period_start=start,
+                period_end=end,
+            )
+            .order_by("issued_at", "id")
+            .first()
+        )
     if existing is not None:
+        if (existing.period_start, existing.period_end) != (start, end):
+            # The term's own dates were amended after this invoice was issued. Its coverage
+            # window is kept in sync with the real term - never its amount or status - so a
+            # school that already paid for "this term" stays covered through the term's
+            # real, current end date rather than appearing to lapse at a now-stale one.
+            existing.period_start = start
+            existing.period_end = end
+            existing.save(update_fields=["period_start", "period_end"])
         return existing, "already_invoiced"
 
     meter = None
@@ -133,6 +152,7 @@ def _issue_term_invoice_for_school_locked(
         period_end=end,
         policy=policy,
         now=now,
+        academic_term=term,
     )
     if census is not None:
         mark_census_invoiced(census, invoice)

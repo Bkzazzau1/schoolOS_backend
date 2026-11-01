@@ -251,6 +251,18 @@ class BillingInvoice(models.Model):
         on_delete=models.PROTECT,
         related_name="invoices",
     )
+    # Set only for TERM-interval invoices (apps.billing.cycle.term_billing). The one stable
+    # identity a term keeps even when its own starts_on/ends_on is later amended (a delayed
+    # start, an extended closure) - letting "already invoiced for this term" be judged by
+    # what the term actually IS, never by a period_start/period_end snapshot that calendar
+    # amendments would otherwise silently fall out of sync with (Phase D Stage 3, Task 4).
+    academic_term = models.ForeignKey(
+        "academics.AcademicTerm",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="billing_invoices",
+    )
     number = models.CharField(max_length=40, unique=True)
     currency = models.CharField(max_length=3)
     base_amount_minor = models.PositiveBigIntegerField(default=0)
