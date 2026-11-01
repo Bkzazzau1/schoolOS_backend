@@ -23,10 +23,13 @@ analytics" all turned out to have no backend implementation to gate yet, verifie
 actual repository rather than assumed from an earlier proposal).
 """
 
+from django.conf import settings
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
-from .models import BillingInvoice, InvoiceStatus
+from .academic_periods import active_session_for_school, active_term_for_school
+from .models import BillingInvoice, InvoiceStatus, SchoolBillingMeterSnapshot
+from .pricing import PricingPolicyUndefined, fixed_fee_for_school
 from .services import ensure_organization_subscription, resolved_entitlements
 
 #: Verified against real, currently-implemented code (apps/cbt/services.py's automatic scoring
@@ -36,25 +39,21 @@ from .services import ensure_organization_subscription, resolved_entitlements
 #: unverified proposal.
 CBT_EXAM_PUBLISH = "cbt_exam_publish"
 REPORT_CARD_GENERATION = "report_card_generation"
+PREMIUM_CODES = (CBT_EXAM_PUBLISH, REPORT_CARD_GENERATION)
 
 
-def school_premium_access(school, *, as_of=None) -> bool:
-    """Whether this specific school's current billing period has a paid invoice covering it.
+def current_school_invoice(school, *, as_of=None) -> BillingInvoice | None:
+    """The invoice that covers this specific school's current billing period, if any - the one
+    source of truth both school_premium_access() and the school-scoped entitlement API read,
+    so a display can never disagree with the actual gate.
 
-    Fails closed: no invoice yet for the period covering `as_of` means premium stays locked,
-    never silently unlocked just because the organization's lifecycle status looks healthy.
-    Queries BillingInvoice.school directly (set on every invoice issued since the per-school
-    independent billing change), so one school's paid period can never unlock a sibling
-    school's different period or a different organization's school - each school's own
-    invoice carries its own status, settled independently through the ordinary Paystack
-    checkout/webhook flow, with the usual idempotency guarantees unchanged.
-
-    Falls back to a historical, pre-Phase-C combined invoice (``school`` is null on those -
-    see BillingInvoice's own docstring) only when no per-school invoice exists for this period
-    at all, and only when that historical invoice both actually covers this school (one of its
-    BillingInvoiceLine rows names it) and is itself PAID. A historical invoice that was never
-    paid gives no fallback access - this never unlocks a payment that was never confirmed, it
-    only preserves one that genuinely already was.
+    Prefers a per-school invoice (BillingInvoice.school, set on every invoice issued since the
+    per-school independent billing change); a sibling school's different period or a different
+    organization's school is never matched. Falls back to a historical, pre-Phase-C combined
+    invoice (``school`` is null on those) only when no per-school invoice exists for this
+    period at all, and only one that actually covers this school (one of its
+    BillingInvoiceLine rows names it) - paid or not; callers that care only about payment use
+    school_premium_access() instead.
     """
 
     as_of = as_of or timezone.now()
@@ -67,11 +66,9 @@ def school_premium_access(school, *, as_of=None) -> bool:
         .order_by("-issued_at", "-id")
         .first()
     )
-    if invoice is not None:
-        return invoice.status == InvoiceStatus.PAID
-    if school.organization_id is None:
-        return False
-    historical = (
+    if invoice is not None or school.organization_id is None:
+        return invoice
+    return (
         BillingInvoice.objects.filter(
             school__isnull=True,
             organization_id=school.organization_id,
@@ -82,7 +79,20 @@ def school_premium_access(school, *, as_of=None) -> bool:
         .order_by("-issued_at", "-id")
         .first()
     )
-    return historical is not None and historical.status == InvoiceStatus.PAID
+
+
+def school_premium_access(school, *, as_of=None) -> bool:
+    """Whether this specific school's current billing period has a paid invoice covering it.
+
+    Fails closed: no invoice yet for the period covering `as_of` means premium stays locked,
+    never silently unlocked just because the organization's lifecycle status looks healthy.
+    A historical invoice (see current_school_invoice()) only ever unlocks access when it was
+    itself PAID - one that was never paid gives no fallback access, this never unlocks a
+    payment that was never confirmed, it only preserves one that genuinely already was.
+    """
+
+    invoice = current_school_invoice(school, as_of=as_of)
+    return invoice is not None and invoice.status == InvoiceStatus.PAID
 
 
 def require_premium_entitlement(school, *, code: str, current_value: int | None = None) -> None:
@@ -120,3 +130,135 @@ def require_premium_entitlement(school, *, code: str, current_value: int | None 
         raise PermissionDenied(
             "This feature needs this school's current term subscription to be paid."
         )
+
+
+def resolve_school_entitlements(school) -> dict[str, dict]:
+    """A read-only, non-raising view of require_premium_entitlement()'s own two real checks -
+    the source of truth the school-scoped entitlement API (apps.billing.views) reads for an
+    "available"/"reason" display, so what the UI explains can never drift from what the gate
+    would actually say. Never duplicates require_premium_entitlement()'s own conditions: calls
+    it directly for each approved premium code and reports whether it would have raised."""
+
+    result = {}
+    for code in PREMIUM_CODES:
+        try:
+            require_premium_entitlement(school, code=code)
+        except PermissionDenied as refused:
+            result[code] = {"available": False, "reason": str(refused)}
+        else:
+            result[code] = {"available": True, "reason": ""}
+    return result
+
+
+def _serialize_term_brief(term) -> dict | None:
+    if term is None:
+        return None
+    return {
+        "id": str(term.id),
+        "code": term.code,
+        "name": term.name,
+        "startsOn": term.starts_on.isoformat(),
+        "endsOn": term.ends_on.isoformat(),
+    }
+
+
+def _serialize_session_brief(session) -> dict | None:
+    if session is None:
+        return None
+    return {
+        "id": str(session.id),
+        "code": session.code,
+        "name": session.name,
+        "startsOn": session.starts_on.isoformat(),
+        "endsOn": session.ends_on.isoformat(),
+    }
+
+
+def serialize_school_entitlement_status(school, *, viewer_role: str | None, billing_authority: bool) -> dict:
+    """The full school-scoped subscription/entitlement payload - built entirely from this
+    school's own state (its own academic calendar, its own census, its own invoice; never the
+    organization's overall accessMode and never a sibling school's payment). Sensitive
+    commercial detail (invoice id/number, due date, exact amounts) is included only when
+    `billing_authority` is true - every other field here is safe for any active member of the
+    school to see, including why a premium capability is currently unavailable.
+    """
+
+    now = timezone.now()
+    today = timezone.localdate()
+    organization = school.organization
+
+    term = active_term_for_school(school, as_of_date=today)
+    session = active_session_for_school(school, as_of_date=today)
+    invoice = current_school_invoice(school, as_of=now) if organization is not None else None
+
+    if organization is None:
+        payment_status = "not_applicable"
+    elif invoice is None:
+        payment_status = "no_invoice_yet"
+    elif invoice.status == InvoiceStatus.PAID:
+        payment_status = "paid"
+    else:
+        payment_status = "unpaid"
+
+    meter = (
+        SchoolBillingMeterSnapshot.objects.filter(school=school, authoritative=True)
+        .order_by("-measured_at", "-id")
+        .first()
+    )
+    enrollment = None
+    if meter is not None:
+        enrollment = {
+            "billableStudentCount": meter.billable_student_count,
+            "measuredAt": meter.measured_at.isoformat(),
+            "bracketMinStudents": None,
+            "bracketMaxStudents": None,
+            "pricingSource": None,
+            "undefinedReason": None,
+        }
+        try:
+            fee = fixed_fee_for_school(
+                school, billable_student_count=meter.billable_student_count, as_of=now
+            )
+        except PricingPolicyUndefined as problem:
+            # Never invents a price: zero enrollment, or above every bracket with no
+            # enterprise agreement on file, surfaces as an explicit reason, not a number.
+            enrollment["undefinedReason"] = str(problem)
+        else:
+            enrollment["bracketMinStudents"] = fee.min_students
+            enrollment["bracketMaxStudents"] = fee.max_students
+            enrollment["pricingSource"] = fee.source
+
+    billing = None
+    if billing_authority and invoice is not None:
+        billing = {
+            "organizationId": str(organization.id),
+            "invoiceId": str(invoice.id),
+            "invoiceNumber": invoice.number,
+            "status": invoice.status,
+            "amountDueMinor": invoice.amount_due_minor,
+            "amountPaidMinor": invoice.amount_paid_minor,
+            "currency": invoice.currency,
+            "dueAt": invoice.due_at.isoformat() if invoice.due_at else None,
+            "issuedAt": invoice.issued_at.isoformat(),
+            "payable": invoice.status == InvoiceStatus.OPEN,
+        }
+
+    return {
+        "schoolId": str(school.id),
+        "schoolName": school.name,
+        "organizationId": str(organization.id) if organization else None,
+        "viewerRole": viewer_role,
+        "canManageBilling": billing_authority,
+        "premiumEnforcementEnabled": settings.PREMIUM_ENFORCEMENT_ENABLED,
+        "academicTerm": _serialize_term_brief(term),
+        "academicSession": _serialize_session_brief(session),
+        "paymentStatus": payment_status,
+        "currentPeriod": (
+            {"start": invoice.period_start.isoformat(), "end": invoice.period_end.isoformat()}
+            if invoice is not None and invoice.period_start and invoice.period_end
+            else None
+        ),
+        "enrollment": enrollment,
+        "entitlements": resolve_school_entitlements(school),
+        "billing": billing,
+    }

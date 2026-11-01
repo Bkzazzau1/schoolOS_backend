@@ -4,11 +4,14 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.permissions import active_membership
 from apps.organizations.models import OrganizationMembership
+from apps.schools.models import School
 
 from .cycle import automation_summary
 from .models import BillingInvoice, PaymentAttempt, Plan, SubscriptionStatus
 from .payments import initialize_invoice_payment, process_paystack_webhook, verify_payment_attempt
+from .premium_access import serialize_school_entitlement_status
 from .services import (
     can_manage_billing,
     ensure_organization_subscription,
@@ -41,6 +44,59 @@ def _organization_membership(
     if billing_authority and not can_manage_billing(membership.role):
         raise PermissionDenied("Your organization role does not manage SkulGen billing.")
     return membership
+
+
+def _school_billing_authority(user, school) -> bool:
+    """Whether this person manages SkulGen billing for this specific school's organization -
+    the ORGANIZATION-level role system (apps.organizations.OrganizationMembership), not the
+    school-level one (apps.schools.Membership) that already proved this person belongs to the
+    school. A school with no organization has no billing authority to hold - never an error,
+    since reading entitlement status for a legacy, no-organization school is still allowed.
+    """
+
+    if school.organization_id is None:
+        return False
+    org_membership = OrganizationMembership.objects.filter(
+        user=user,
+        organization_id=school.organization_id,
+        is_active=True,
+        organization__is_active=True,
+    ).first()
+    return org_membership is not None and can_manage_billing(org_membership.role)
+
+
+class SchoolEntitlementView(APIView):
+    """Read-only, school-scoped subscription and premium-entitlement status - the real
+    per-school source of truth. Deliberately separate from OrganizationSubscriptionView:
+    that view's accessMode/entitlements are organization-wide and must never be read as proof
+    that any one particular school has paid (apps.billing.premium_access's own module
+    docstring).
+
+    Reachable by either of the two people Task 2 names: an ordinary school-level member (any
+    role - entitlement availability and why is safe for anyone there to see), or an
+    organization-level billing administrator who manages this school's subscription but may
+    hold no school-level membership at all (the same person OrganizationInvoiceListView
+    already serves org-wide). Either is enough; neither is required if the other holds. The
+    nested `billing` detail (invoice id/number, due date, exact amounts) is populated only for
+    someone with billing authority at the school's organization either way (Task 2: "sensitive
+    commercial records... must remain limited to users with the appropriate organization-level
+    billing authority").
+    """
+
+    def get(self, request, school_id):
+        school = School.objects.filter(pk=school_id, is_active=True).select_related("organization").first()
+        if school is None:
+            raise PermissionDenied("You do not have access to this school.")
+        membership = active_membership(request.user, school_id, bypass_subscription_check=True)
+        billing_authority = _school_billing_authority(request.user, school)
+        if membership is None and not billing_authority:
+            raise PermissionDenied("You do not have access to this school.")
+        payload = serialize_school_entitlement_status(
+            school,
+            viewer_role=membership.role if membership is not None else None,
+            billing_authority=billing_authority,
+        )
+        return Response(payload)
 
 
 class PlanListView(APIView):

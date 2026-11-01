@@ -7,6 +7,7 @@ from .views import (
     PaymentVerifyView,
     PaystackWebhookView,
     PlanListView,
+    SchoolEntitlementView,
 )
 
 urlpatterns = [
@@ -14,6 +15,10 @@ urlpatterns = [
     path(
         "organizations/<uuid:organization_id>/subscription/",
         OrganizationSubscriptionView.as_view(),
+    ),
+    path(
+        "schools/<uuid:school_id>/billing/entitlements/",
+        SchoolEntitlementView.as_view(),
     ),
     path(
         "organizations/<uuid:organization_id>/billing/invoices/",
