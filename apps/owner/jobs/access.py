@@ -42,3 +42,30 @@ def campus_scope_for(membership) -> str | None:
         if section and section.payload.get("campusId"):
             return section.payload["campusId"]
     return None
+
+
+def stage_scope_for(membership) -> str | None:
+    """The one academic stage (a real section's own "stage" - Nursery, Primary,
+    Secondary, ...) this membership's authority is limited to, from a real active
+    sectionHead job assignment the owner gave them. None means whole-school: the
+    default for everyone until the owner sets one up, so nothing changes for a
+    school that never does.
+
+    This is what lets anyone - not only a Principal - be scoped to one stage's own
+    data: the owner assigns them as sectionHead of a Nursery or Primary section the
+    same way a Secondary sectionHead assignment would, through the same Job
+    Assignments screen, and apps.academics.curriculum_services enforces it the same
+    way it already enforces Principal's own Secondary-only scope.
+    """
+    for payload in _active_assignments(membership):
+        if payload.get("role") != "sectionHead":
+            continue
+        section_id = payload.get("sectionId")
+        if not section_id:
+            continue
+        section = SyncRecord.objects.filter(
+            school=membership.school, entity_type=SECTION, entity_id=section_id, deleted=False
+        ).first()
+        if section and section.payload.get("stage"):
+            return section.payload["stage"]
+    return None

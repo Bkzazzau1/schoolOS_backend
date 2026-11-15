@@ -1,4 +1,4 @@
-from apps.owner.jobs.access import campus_scope_for, has_duty
+from apps.owner.jobs.access import campus_scope_for, has_duty, stage_scope_for
 from apps.sync.models import SyncRecord
 
 from .helpers import OwnerTestCase
@@ -89,3 +89,67 @@ class CampusScopeForTests(OwnerTestCase):
             payload={"status": "active", "membershipId": str(admin.id), "duties": [], "campusId": "CAMPUS-1"},
         )
         self.assertIsNone(campus_scope_for(admin))
+
+
+class StageScopeForTests(OwnerTestCase):
+    """Lets anyone - not only a Principal - be scoped to one academic stage (Nursery,
+    Primary, ...) the owner assigns them sectionHead of, the same Job Assignments
+    screen that already scopes someone to one campus."""
+
+    def test_no_assignment_at_all_means_whole_school(self):
+        self.assertIsNone(stage_scope_for(self.members["teacher"]))
+
+    def test_a_sectionhead_grant_resolves_through_the_sections_own_real_stage(self):
+        teacher = self.members["teacher"]
+        SyncRecord.objects.create(
+            school=self.school, entity_type="academic_section", entity_id="SEC-1",
+            payload={"id": "SEC-1", "stage": "Nursery"},
+        )
+        SyncRecord.objects.create(
+            school=self.school, entity_type="owner_job_assignment", entity_id="J1",
+            payload={"status": "active", "membershipId": str(teacher.id), "role": "sectionHead", "sectionId": "SEC-1"},
+        )
+        self.assertEqual(stage_scope_for(teacher), "Nursery")
+
+    def test_a_grant_with_a_different_job_role_never_scopes_by_stage(self):
+        """sectionId alone is not enough - unlike campus_scope_for, a cleaner or driver
+        tied to a section is not thereby restricted in curriculum access, which they
+        never had any access to in the first place."""
+        staff = self.members["staff"]
+        SyncRecord.objects.create(
+            school=self.school, entity_type="academic_section", entity_id="SEC-1",
+            payload={"id": "SEC-1", "stage": "Nursery"},
+        )
+        SyncRecord.objects.create(
+            school=self.school, entity_type="owner_job_assignment", entity_id="J1",
+            payload={"status": "active", "membershipId": str(staff.id), "role": "cleaner", "sectionId": "SEC-1"},
+        )
+        self.assertIsNone(stage_scope_for(staff))
+
+    def test_a_sectionhead_grant_for_a_section_with_no_stage_yet_stays_whole_school(self):
+        teacher = self.members["teacher"]
+        SyncRecord.objects.create(
+            school=self.school, entity_type="academic_section", entity_id="SEC-1",
+            payload={"id": "SEC-1", "stage": ""},
+        )
+        SyncRecord.objects.create(
+            school=self.school, entity_type="owner_job_assignment", entity_id="J1",
+            payload={"status": "active", "membershipId": str(teacher.id), "role": "sectionHead", "sectionId": "SEC-1"},
+        )
+        self.assertIsNone(stage_scope_for(teacher))
+
+    def test_an_inactive_or_someone_elses_assignment_never_scopes_this_membership(self):
+        teacher, staff = self.members["teacher"], self.members["staff"]
+        SyncRecord.objects.create(
+            school=self.school, entity_type="academic_section", entity_id="SEC-1",
+            payload={"id": "SEC-1", "stage": "Nursery"},
+        )
+        SyncRecord.objects.create(
+            school=self.school, entity_type="owner_job_assignment", entity_id="J1",
+            payload={"status": "pendingActivation", "membershipId": str(teacher.id), "role": "sectionHead", "sectionId": "SEC-1"},
+        )
+        SyncRecord.objects.create(
+            school=self.school, entity_type="owner_job_assignment", entity_id="J2",
+            payload={"status": "active", "membershipId": str(staff.id), "role": "sectionHead", "sectionId": "SEC-1"},
+        )
+        self.assertIsNone(stage_scope_for(teacher))
