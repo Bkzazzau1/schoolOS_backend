@@ -64,6 +64,7 @@
   <a href="{% url 'console:pricing' %}">Pricing</a>
   <a href="{% url 'console:census_exceptions' %}">Census</a>
   <a href="{% url 'console:duplicate_payments' %}">Duplicates</a>
+  <a href="{% url 'console:announcements' %}">Announcements</a>
   <span class="spacer"></span>
   {% if request.user.is_authenticated %}<span class="who">{{ request.user.email }}</span>{% endif %}
 </header>

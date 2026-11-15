@@ -171,11 +171,15 @@ class ConsoleOrganizationDetailTests(TestCase):
 
     def test_shows_usage_snapshot_history_newest_first(self):
         now = timezone.now()
-        UsageSnapshot.objects.create(
+        older = UsageSnapshot.objects.create(
             organization=self.organization, subscription=self.subscription,
             period_start=now - timedelta(days=30), period_end=now,
             active_school_count=1, billable_student_count=40, source="older",
         )
+        # captured_at is auto_now_add, which can land on the exact same instant as the
+        # next create() below (timer resolution) - back-date it explicitly so the
+        # newest-first ordering under test is never a coin flip on equal timestamps.
+        UsageSnapshot.objects.filter(pk=older.pk).update(captured_at=now - timedelta(days=1))
         newer = UsageSnapshot.objects.create(
             organization=self.organization, subscription=self.subscription,
             period_start=now, period_end=now + timedelta(days=30),

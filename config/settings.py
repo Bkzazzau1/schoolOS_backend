@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "apps.cbt",
     "apps.domains",
     "apps.notifications",
+    "apps.announcements",
     "apps.access",
     "apps.sync",
     "apps.owner",

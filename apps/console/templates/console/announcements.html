@@ -1,0 +1,65 @@
+{% extends "console/base.html" %}
+{% load console_extras %}
+{% block title %}Announcements · SkulGen console{% endblock %}
+{% block content %}
+<h1>Announcements</h1>
+<p class="muted">A pop message shown to schools when they open the app - platform-wide,
+  or targeted at one organization. Stays live until it ends.</p>
+
+<div class="card">
+  <h2>Send an announcement</h2>
+  <form method="post" class="action-row">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create">
+    <label>Title <input type="text" name="title" size="20" required placeholder="e.g. Annual plan discount"></label>
+    <label>Message <input type="text" name="body" size="40" required placeholder="Pay annually before Dec 1 and save 10%."></label>
+    <label>Audience
+      <select name="organization_id">
+        <option value="">All schools</option>
+        {% for organization in organizations %}
+          <option value="{{ organization.id }}">{{ organization.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Send, effective now</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>All announcements</h2>
+  {% if announcements %}
+    <table>
+      <thead><tr><th>Title</th><th>Message</th><th>Audience</th><th>Effective from</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for announcement in announcements %}
+        <tr>
+          <td>{{ announcement.title }}</td>
+          <td class="muted">{{ announcement.body }}</td>
+          <td>{{ announcement.organization.name|default:"All schools" }}</td>
+          <td class="muted">{{ announcement.effective_from|date:"Y-m-d H:i" }}</td>
+          <td>
+            {% if not announcement.effective_until or announcement.effective_until > now %}
+              <span class="pill tone-good">current</span>
+            {% else %}
+              <span class="pill tone-muted">ended</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if not announcement.effective_until or announcement.effective_until > now %}
+              <form method="post" class="inline">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="end">
+                <input type="hidden" name="announcement_id" value="{{ announcement.id }}">
+                <button type="submit" class="button secondary">End</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No announcements sent yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

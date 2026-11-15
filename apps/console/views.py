@@ -47,6 +47,8 @@ from apps.billing.reporting import (
     weekly_confirmed_revenue,
 )
 from apps.billing.services import access_mode, admin_set_plan, admin_set_status, ensure_organization_subscription
+from apps.announcements.models import PlatformAnnouncement
+from apps.announcements.services import create_announcement, end_announcement
 from apps.organizations.models import Organization
 from apps.schools.models import School
 
@@ -381,3 +383,41 @@ def duplicate_payments(request):
         .order_by("-detected_at")[:50]
     )
     return render(request, "console/duplicate_payments.html", {"reviews": reviews})
+
+
+@staff_member_required
+def announcements(request):
+    """Pop messages shown to schools in the app - platform-wide, or targeted at one
+    organization. Never generated automatically; this console page is the only place
+    one is written."""
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        try:
+            if action == "end":
+                announcement = get_object_or_404(PlatformAnnouncement, id=request.POST.get("announcement_id"))
+                end_announcement(announcement, actor=request.user)
+                messages.success(request, "Announcement ended.")
+            else:
+                organization_id = request.POST.get("organization_id", "").strip()
+                organization = get_object_or_404(Organization, id=organization_id) if organization_id else None
+                create_announcement(
+                    title=request.POST.get("title", ""),
+                    body=request.POST.get("body", ""),
+                    organization=organization,
+                    actor=request.user,
+                )
+                messages.success(request, "Announcement sent.")
+        except ValueError as problem:
+            messages.error(request, str(problem))
+        return redirect(reverse("console:announcements"))
+
+    return render(
+        request,
+        "console/announcements.html",
+        {
+            "announcements": PlatformAnnouncement.objects.select_related("organization").all()[:100],
+            "organizations": Organization.objects.filter(is_active=True).order_by("name"),
+            "now": timezone.now(),
+        },
+    )

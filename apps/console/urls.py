@@ -13,4 +13,5 @@ urlpatterns = [
     path("schools/<uuid:school_id>/discount/", views.school_discount, name="school_discount"),
     path("census/", views.census_exceptions, name="census_exceptions"),
     path("duplicate-payments/", views.duplicate_payments, name="duplicate_payments"),
+    path("announcements/", views.announcements, name="announcements"),
 ]
