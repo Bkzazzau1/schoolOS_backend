@@ -10,6 +10,19 @@
 </div>
 
 <div class="card" style="margin-top: 1.25rem;">
+  <h2>School growth</h2>
+  <p class="muted">{{ school_growth_total }} new school{{ school_growth_total|pluralize }} in the last {{ school_growth|length }} weeks.</p>
+  <div class="bar-chart" role="img" aria-label="New schools created per week for the last {{ school_growth|length }} weeks, {{ school_growth_total }} in total.">
+    {% for week in school_growth %}
+      <div class="bar-col">
+        <div class="bar" style="height: {{ week.height_pct }}%" title="Week of {{ week.week_start|date:'M j' }}: {{ week.count }} new school{{ week.count|pluralize }}"></div>
+        <div class="bar-label">{{ week.week_start|date:'M j' }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
   <h2>Subscription reporting</h2>
   <div class="stat-grid">
     <div class="stat"><div class="n">{{ report.totalSubscribedSchools }}</div><div class="label">Subscribed schools</div></div>

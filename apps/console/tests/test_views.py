@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.billing.models import OrganizationSubscription, Plan, SubscriptionEvent, SubscriptionStatus
 from apps.organizations.models import Organization
@@ -67,6 +70,55 @@ class ConsoleDashboardTests(TestCase):
 
         filtered = self.client.get(reverse("console:organizations"), {"status": SubscriptionStatus.SUSPENDED})
         self.assertEqual([o.name for o in filtered.context["organizations"]], ["Suspended Group"])
+
+
+class ConsoleDashboardGrowthTests(TestCase):
+    """Schools created per week, as shown on the dashboard's growth chart."""
+
+    def setUp(self):
+        self.staff_user = User.objects.create_user("ops@skulgen.com", PASSWORD, is_staff=True)
+        self.client.force_login(self.staff_user)
+        self.organization = Organization.objects.create(name="Growth Co", slug="growth-co-console-test")
+
+    def _school(self, slug, created_at):
+        school = School.objects.create(name=slug, slug=slug, organization=self.organization)
+        # created_at is auto_now_add, which overrides any value passed to create() -
+        # only a queryset .update() after the fact can back-date it.
+        School.objects.filter(pk=school.pk).update(created_at=created_at)
+        return school
+
+    def test_schools_are_counted_into_the_week_they_were_actually_created(self):
+        now = timezone.now()
+        self._school("this-week-school", now)
+        self._school("three-weeks-ago-school-a", now - timedelta(weeks=3))
+        self._school("three-weeks-ago-school-b", now - timedelta(weeks=3))
+
+        response = self.client.get(reverse("console:dashboard"))
+        growth = response.context["school_growth"]
+        self.assertEqual(len(growth), 12)
+        self.assertEqual(growth[-1]["count"], 1)
+        self.assertEqual(growth[-4]["count"], 2)
+        self.assertEqual(growth[-1]["height_pct"], 50)
+        self.assertEqual(growth[-4]["height_pct"], 100)
+        self.assertEqual(response.context["school_growth_total"], sum(b["count"] for b in growth))
+
+    def test_a_school_deactivated_later_still_counts_in_the_week_it_was_created(self):
+        school = self._school("later-deactivated-school", timezone.now())
+        school.is_active = False
+        school.save(update_fields=["is_active"])
+
+        response = self.client.get(reverse("console:dashboard"))
+        growth = response.context["school_growth"]
+        self.assertEqual(growth[-1]["count"], 1)
+
+    def test_an_empty_history_renders_a_zeroed_chart_without_error(self):
+        response = self.client.get(reverse("console:dashboard"))
+        self.assertEqual(response.status_code, 200)
+        growth = response.context["school_growth"]
+        self.assertEqual(len(growth), 12)
+        self.assertTrue(all(bucket["count"] == 0 for bucket in growth))
+        self.assertTrue(all(bucket["height_pct"] == 0 for bucket in growth))
+        self.assertEqual(response.context["school_growth_total"], 0)
 
 
 class ConsoleOrganizationDetailTests(TestCase):

@@ -7,6 +7,8 @@ JWT/Membership system at all. An unauthenticated visit redirects to the same
 login form /admin/ already uses.
 """
 
+from datetime import datetime, time, timedelta
+
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Count
@@ -63,6 +65,29 @@ _ATTENTION_STATUSES = (
 )
 
 
+def _weekly_school_growth(*, weeks: int = 12, now=None) -> list[dict]:
+    """New schools created per calendar week (Mon-Sun), oldest first. Counts every
+    school ever created in that week regardless of whether it's still active today -
+    this answers "when did we grow", not "what's active now", so a later deactivation
+    must never erase the week a school actually joined."""
+
+    now = now or timezone.now()
+    today = timezone.localdate(now)
+    this_week_start = today - timedelta(days=today.weekday())
+    buckets = []
+    for weeks_ago in range(weeks - 1, -1, -1):
+        start = this_week_start - timedelta(weeks=weeks_ago)
+        end = start + timedelta(days=7)
+        start_at = timezone.make_aware(datetime.combine(start, time.min))
+        end_at = timezone.make_aware(datetime.combine(end, time.min))
+        count = School.objects.filter(created_at__gte=start_at, created_at__lt=end_at).count()
+        buckets.append({"week_start": start, "count": count})
+    peak = max((bucket["count"] for bucket in buckets), default=0) or 1
+    for bucket in buckets:
+        bucket["height_pct"] = round(bucket["count"] / peak * 100)
+    return buckets
+
+
 @staff_member_required
 def dashboard(request):
     subscriptions = OrganizationSubscription.objects.select_related("organization", "plan")
@@ -74,6 +99,7 @@ def dashboard(request):
         subscriptions.filter(status__in=_ATTENTION_STATUSES)
         .order_by("status", "-updated_at")
     )
+    school_growth = _weekly_school_growth()
     return render(
         request,
         "console/dashboard.html",
@@ -83,6 +109,8 @@ def dashboard(request):
             "total_organizations": Organization.objects.filter(is_active=True).count(),
             "total_schools": School.objects.filter(is_active=True).count(),
             "report": platform_subscription_report(),
+            "school_growth": school_growth,
+            "school_growth_total": sum(bucket["count"] for bucket in school_growth),
         },
     )
 
