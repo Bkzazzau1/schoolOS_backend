@@ -86,7 +86,11 @@ class StaffFiguresTests(DashboardTestCase):
         self.assertEqual(staff["monthlyPayroll"], {"gross": 500000, "deductions": 50000, "net": 450000})
         self.assertEqual(sum(staff["byCategory"].values()), 2)
         self.assertEqual(staff["registration"]["waitingForStaff"], 2)
-        self.assertEqual(staff["withLogin"], 0)
+        # A fresh email and phone number both bootstrap a working login immediately on
+        # approval (apps.invitations.accept.provision_staff_login) - withLogin counts
+        # that, separately from waitingForStaff above, which still correctly counts
+        # them until they submit the rest of their own registration details.
+        self.assertEqual(staff["withLogin"], 2)
         self.assertEqual(staff["filesComplete"] + staff["filesMissingDocuments"], 2)
         # A staff member taken off payroll leaves the payroll figures but not the headcount.
         record = SyncRecord.objects.get(entity_type="owner_payroll_profile", entity_id=a)

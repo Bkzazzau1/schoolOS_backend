@@ -39,7 +39,7 @@ class TokenTests(InviteTestCase):
 class CreatingInvitationsTests(InviteTestCase):
     def setUp(self):
         super().setUp()
-        self.staff_id = self.make_staff()
+        self.staff_id, _ = self.staff_with_link()
 
     def test_an_invitation_lasts_the_configured_time_and_records_who_and_when(self):
         with override_settings(INVITATION_TTL_DAYS=3):
@@ -91,7 +91,7 @@ class CreatingInvitationsTests(InviteTestCase):
 
 class EmailTests(InviteTestCase):
     def test_the_email_is_sent_once_the_change_is_saved_not_before(self):
-        staff_id = self.make_staff()
+        staff_id = self.make_staff_no_bootstrap()
         mail.outbox.clear()
         with self.captureOnCommitCallbacks(execute=False) as callbacks:
             service.create_invitation(self.school, staff_id, "musa@school.ng", "teacher")
@@ -101,7 +101,7 @@ class EmailTests(InviteTestCase):
         self.assertEqual(len(mail.outbox), 1)
 
     def test_a_rolled_back_change_sends_nothing(self):
-        staff_id = self.make_staff()
+        staff_id = self.make_staff_no_bootstrap()
         mail.outbox.clear()
         with self.captureOnCommitCallbacks(execute=True):
             try:
@@ -151,7 +151,7 @@ class EmailTests(InviteTestCase):
 class WhenEmailCannotBeSentTests(InviteTestCase):
     def setUp(self):
         super().setUp()
-        self.staff_id = self.make_staff()
+        self.staff_id = self.make_staff_no_bootstrap()
 
     def last_events(self):
         return list(self.pending(self.staff_id).events.values_list("event", flat=True))

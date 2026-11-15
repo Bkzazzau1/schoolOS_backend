@@ -1,13 +1,18 @@
 from unittest import mock
 
+from django.contrib.auth import get_user_model
+
 from apps.notifications.models import Notification
 from apps.owner.payroll.salary import SalaryProfileHandler
+from apps.schools.models import Membership
 from apps.staff.models import IdentityClaim
 from apps.staff.signals import staff_approved
 from apps.sync import registry
 from apps.sync.models import SyncRecord
 
 from .helpers import StaffTestCase
+
+User = get_user_model()
 
 
 class OwnerApprovalTests(StaffTestCase):
@@ -38,7 +43,15 @@ class OwnerApprovalTests(StaffTestCase):
                          ("invitePending", "musa@school.ng", "teacher"))
         self.assertEqual((profile["personal"]["phone"], profile["personal"]["nin"]), ("08031234567", "11111111111"))
         self.assertEqual(len(profile["documents"]), 6)
-        self.assertEqual(profile["linkedMembershipId"], "")
+        # A login is provisioned immediately - their own phone number as a temporary
+        # password they must change on first sign-in - never left waiting on an
+        # emailed link, since the email ("musa@school.ng") is brand new.
+        self.assertNotEqual(profile["linkedMembershipId"], "")
+        login = User.objects.get(email="musa@school.ng")
+        self.assertTrue(login.check_password("+2348031234567"))
+        self.assertTrue(login.must_change_password)
+        membership = Membership.objects.get(id=profile["linkedMembershipId"])
+        self.assertEqual((membership.user_id, membership.role), (login.id, "teacher"))
         proposal = self.stored("staff_proposal", "P1").payload
         self.assertEqual((proposal["status"], proposal["createdStaffId"], proposal["decidedByMembershipId"]),
                          ("approved", staff_id, str(self.owner.id)))

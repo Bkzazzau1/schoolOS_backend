@@ -273,9 +273,15 @@ class WebPageTests(InviteTestCase):
 
 
 class EndToEndTests(InviteTestCase):
-    def test_from_proposal_to_a_registered_staff_member(self):
-        """The whole journey: proposed, approved, emailed, accepted, registered, owner told."""
+    def test_from_proposal_to_a_registered_staff_member_whose_email_already_exists(self):
+        """The whole journey for the one case that still falls back to an emailed
+        link instead of an instant phone-bootstrap (see
+        apps.invitations.accept.provision_staff_login): the proposed email already
+        belongs to an existing account, so nobody can self-register a NEW password
+        for it - they accept signed in as themselves. Proposed, approved, emailed,
+        accepted, registered, owner told."""
         mail.outbox.clear()
+        user = User.objects.create_user("zainab@school.ng", "a-long-existing-password-1", first_name="Zainab", last_name="Musa")
         self.ok(self.propose(name="Zainab Musa", systemRole="teacher", email="zainab@school.ng"))
         with self.captureOnCommitCallbacks(execute=True):
             approved = self.approve(self.owner, self.last_proposal_id)
@@ -284,9 +290,32 @@ class EndToEndTests(InviteTestCase):
         self.assertEqual(mail.outbox[0].to, ["zainab@school.ng"])
 
         token = self.token_from_mail()
-        accepted = self.accept(token, self.new_person_body(firstName="Zainab", lastName="Musa"))
+        accepted = self.accept(token, user=user)
         self.assertEqual(accepted.status_code, 200, accepted.json())
+
+        self.client.force_authenticate(user)
+        submitted = self.client.post("/api/v1/staff/me/onboarding/", {"personal": details(), "payment": {**BANK, "accountName": "Zainab Musa"}}, format="json")
+        self.assertEqual(submitted.status_code, 200, submitted.json())
+        self.assertEqual(self.profile(staff_id)["onboardingStatus"], "submitted")
+        self.assertEqual(Membership.objects.get(user=user, school=self.school).role, "teacher")
+        self.assertTrue(Notification.objects.filter(recipient=self.owner, kind="staff_invitation_accepted").exists())
+
+    def test_from_proposal_to_a_registered_staff_member_by_instant_bootstrap(self):
+        """The now-default whole journey - no email at all: proposed, approved
+        (which immediately provisions a login with the phone number as a
+        temporary password), signs in, registered, owner told."""
+        mail.outbox.clear()
+        phone = fresh_phone()
+        self.ok(self.propose(name="Zainab Musa", systemRole="teacher", email="zainab@school.ng", phone=phone))
+        with self.captureOnCommitCallbacks(execute=True):
+            approved = self.approve(self.owner, self.last_proposal_id)
+        staff_id = approved.json()["staffId"]
+        self.assertEqual(mail.outbox, [])  # nobody was emailed a link
+
         user = User.objects.get(email="zainab@school.ng")
+        self.assertTrue(user.must_change_password)
+        self.assertTrue(user.check_password("+234" + phone[1:]))
+        self.assertTrue(StaffLink.objects.filter(school=self.school, staff_id=staff_id, membership__user=user).exists())
 
         self.client.force_authenticate(user)
         submitted = self.client.post("/api/v1/staff/me/onboarding/", {"personal": details(), "payment": {**BANK, "accountName": "Zainab Musa"}}, format="json")

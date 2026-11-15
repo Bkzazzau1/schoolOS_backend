@@ -12,6 +12,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.accounts.identity import create_staff_bootstrap_user, normalize_parent_phone
 from apps.notifications.services import notify_many
 from apps.schools.models import Membership
 from apps.staff.constants import AUTHORIZER, DIRECTORY, PROFILE
@@ -72,42 +73,87 @@ def accept(token: str, *, signed_in_user=None, password: str = "", first_name: s
     with transaction.atomic():
         invitation = find(token, request_school=request_school, lock=True)
         school, staff_id = invitation.school, invitation.staff_id
-        profile = records.read(school, PROFILE, staff_id)
-        if profile is None:
+        if records.read(school, PROFILE, staff_id) is None:
             raise InvitationError(*INVALID)
 
         user = _resolve_user(invitation, signed_in_user, password, first_name, last_name)
-        membership, _ = Membership.objects.get_or_create(
-            user=user, school=school, role=invitation.role, defaults={"is_active": True}
+        result = _finish_linking(
+            school, staff_id, user, invitation.role,
+            joined_message="accepted their invitation and can now sign in.",
+            linked_via=invitation,
         )
-        if not membership.is_active:
-            membership.is_active = True
-            membership.save(update_fields=["is_active"])
-
-        # One login per staff record and one staff record per login, in the database.
-        if StaffLink.objects.filter(school=school, staff_id=staff_id).exists() or StaffLink.objects.filter(
-            membership=membership
-        ).exists():
-            raise InvitationError("already_linked", "This staff record or this account is already linked.", 409)
-        StaffLink.objects.create(school=school, staff_id=staff_id, membership=membership, linked_via=invitation)
-
-        # The staff record now says whose it is. Only the server ever writes this.
-        records.write(school, PROFILE, staff_id, {**profile, "linkedMembershipId": str(membership.id)}, by=None)
-        _activate_assignments(school, staff_id, membership)
 
         invitation.status = StaffInvitation.Status.ACCEPTED
         invitation.accepted_at = timezone.now()
-        invitation.accepted_membership = membership
+        invitation.accepted_membership = result["membership"]
         invitation.save(update_fields=["status", "accepted_at", "accepted_membership"])
         record(invitation, "accepted", request)
+    return result
 
-        directory = records.read(school, DIRECTORY, staff_id) or {}
-        owners = Membership.objects.filter(school=school, role="proprietor", is_active=True).select_related("school")
-        notify_many(
-            owners, "staff_invitation_accepted", "Staff member joined",
-            f"{directory.get('name', 'A staff member')} accepted their invitation and can now sign in.",
-            {"staffId": staff_id},
+
+def provision_staff_login(school, staff_id: str, *, email: str, phone: str, role: str,
+                           first_name: str = "", last_name: str = "") -> dict | None:
+    """Create a staff member's login immediately, their own phone number as a
+    temporary password they must change on first sign-in - the same bootstrap
+    rule already used for student/parent accounts, skipping the emailed
+    registration link entirely.
+
+    Returns None - the caller should fall back to emailing a registration link
+    instead (see apps.invitations.listeners) - when there is nothing to do yet
+    (no profile, already linked), or when it would not be safe to create the
+    account outright: the phone number does not look like a real Nigerian
+    number, or the email already belongs to an existing account (nobody is
+    signed in here to prove they own it, unlike accept() above).
+    """
+
+    if StaffLink.objects.filter(school=school, staff_id=staff_id).exists():
+        return None
+    if account_exists(email):
+        return None
+    normalized_phone = normalize_parent_phone(phone)
+    if normalized_phone is None:
+        return None
+    with transaction.atomic():
+        if records.read(school, PROFILE, staff_id) is None:
+            return None
+        user = create_staff_bootstrap_user(
+            email=email, first_name=first_name, last_name=last_name, initial_password=normalized_phone,
         )
+        return _finish_linking(school, staff_id, user, role, joined_message="can now sign in.")
+
+
+def _finish_linking(school, staff_id: str, user, role: str, *, joined_message: str, linked_via=None) -> dict:
+    """Shared tail of linking a login to a staff record - the same whether the
+    login was just obtained by accepting an emailed link (accept(), above) or
+    provisioned directly with a phone-number bootstrap password
+    (provision_staff_login(), above)."""
+
+    membership, _ = Membership.objects.get_or_create(
+        user=user, school=school, role=role, defaults={"is_active": True}
+    )
+    if not membership.is_active:
+        membership.is_active = True
+        membership.save(update_fields=["is_active"])
+
+    # One login per staff record and one staff record per login, in the database.
+    if StaffLink.objects.filter(school=school, staff_id=staff_id).exists() or StaffLink.objects.filter(
+        membership=membership
+    ).exists():
+        raise InvitationError("already_linked", "This staff record or this account is already linked.", 409)
+    StaffLink.objects.create(school=school, staff_id=staff_id, membership=membership, linked_via=linked_via)
+
+    # The staff record now says whose it is. Only the server ever writes this.
+    profile = records.read(school, PROFILE, staff_id) or {}
+    records.write(school, PROFILE, staff_id, {**profile, "linkedMembershipId": str(membership.id)}, by=None)
+    _activate_assignments(school, staff_id, membership)
+
+    directory = records.read(school, DIRECTORY, staff_id) or {}
+    owners = Membership.objects.filter(school=school, role="proprietor", is_active=True).select_related("school")
+    notify_many(
+        owners, "staff_invitation_accepted", "Staff member joined",
+        f"{directory.get('name', 'A staff member')} {joined_message}",
+        {"staffId": staff_id},
+    )
     return {"user": user, "membership": membership, "staffId": staff_id}
 
 

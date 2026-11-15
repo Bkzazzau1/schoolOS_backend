@@ -60,10 +60,15 @@ class EditorTests(StaffTestCase):
         self.assertEqual(self.profile(self.staff_id)["payment"], BANK)
 
     def test_the_server_owned_fields_cannot_be_set_by_the_app(self):
+        # make_staff() already provisioned a real login (bootstrap: a fresh email and
+        # phone number both succeed) - linkedMembershipId is not empty, and that is
+        # exactly the value an edit must not be able to override.
+        already_linked_to = self.profile(self.staff_id)["linkedMembershipId"]
+        self.assertNotEqual(already_linked_to, "")
         self.ok(self.edit_profile(self.staff_id, self.owner, linkedMembershipId=str(self.members["parent"].id),
                                   systemRole="principal", submittedAt="2001", injected="x"))
         p = self.profile(self.staff_id)
-        self.assertEqual((p["linkedMembershipId"], p["systemRole"]), ("", "teacher"))
+        self.assertEqual((p["linkedMembershipId"], p["systemRole"]), (already_linked_to, "teacher"))
         self.assertNotIn("injected", p)
         self.assertNotIn("submittedAt", p)
 

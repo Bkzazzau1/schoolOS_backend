@@ -147,3 +147,19 @@ def create_bootstrap_user(
         must_change_password=True,
     )
     return user
+
+
+def create_staff_bootstrap_user(*, email: str, first_name: str, last_name: str, initial_password: str) -> User:
+    """A staff member's account, provisioned directly by the school rather than
+    self-registered through an emailed link - the same must-change-password
+    bootstrap rule as create_bootstrap_user, but keyed by the person's own real
+    email (staff sign in by email, never a synthetic one or a separate
+    LoginIdentity)."""
+
+    return User.objects.create_user(
+        email=email.strip().lower(),
+        password=initial_password,
+        first_name=first_name.strip(),
+        last_name=last_name.strip(),
+        must_change_password=True,
+    )

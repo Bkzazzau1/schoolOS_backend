@@ -4,7 +4,9 @@ from django.core import mail
 from django.test import override_settings
 
 from apps.invitations import service
+from apps.invitations.listeners import give_login_when_registration_is_requested
 from apps.invitations.models import StaffInvitation
+from apps.staff.signals import registration_requested
 from apps.staff.tests.helpers import StaffTestCase
 
 LINK = re.compile(r"https?://([^/\s]+)/invite/([^/\s]+)/")
@@ -23,11 +25,30 @@ class InviteTestCase(StaffTestCase):
 
     # -- making invitations ------------------------------------------------------------
 
+    def make_staff_no_bootstrap(self, **over):
+        """A real staff member, approved the way the app does it, with the automatic
+        phone-number bootstrap login (now the default on approval - see
+        apps.invitations.accept.provision_staff_login) suppressed. Lets a test decide
+        for itself, via new_link(), when and how a login gets attached - the same
+        shape a real "email already belongs to someone" or owner-initiated resend
+        would leave the staff record in. Returns staff_id."""
+        registration_requested.disconnect(give_login_when_registration_is_requested)
+        try:
+            staff_id = self.make_staff(**over)
+        finally:
+            registration_requested.connect(give_login_when_registration_is_requested)
+        return staff_id
+
     def staff_with_link(self, **over):
         """A real staff member, approved the way the app does it, and the link that
-        was emailed to them. Returns (staff_id, token)."""
-        with self.captureOnCommitCallbacks(execute=True):
-            staff_id = self.make_staff(**over)
+        was emailed to them - the automatic bootstrap is suppressed (see
+        make_staff_no_bootstrap) so this keeps testing the token/link mechanism
+        itself, the same as before phone-bootstrap became the default outcome of an
+        ordinary approval. Returns (staff_id, token)."""
+        staff_id = self.make_staff_no_bootstrap(**over)
+        # new_link() already wraps its own send in captureOnCommitCallbacks - nesting
+        # another one here double-sends.
+        self.new_link(staff_id, email=over.get("email", "musa@school.ng"), role=over.get("systemRole", "teacher"))
         return staff_id, self.token_from_mail()
 
     def token_from_mail(self, message=-1):

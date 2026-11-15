@@ -129,8 +129,8 @@ class StaffProfileHandler(EntityHandler):
         ):
             registration_requested.send(
                 sender=None, school=school, staff_id=ctx.entity_id, email=stored["onboardingEmail"],
-                system_role=stored.get("systemRole") or "", name=directory.get("name", ""),
-                requested_by=ctx.membership,
+                phone=stored["personal"]["phone"], system_role=stored.get("systemRole") or "",
+                name=directory.get("name", ""), requested_by=ctx.membership,
             )
         if stored["onboardingStatus"] == SUBMITTED and was != SUBMITTED:
             reviewers = Membership.objects.filter(
