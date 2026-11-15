@@ -48,7 +48,10 @@ class OwnerApprovalTests(StaffTestCase):
         # emailed link, since the email ("musa@school.ng") is brand new.
         self.assertNotEqual(profile["linkedMembershipId"], "")
         login = User.objects.get(email="musa@school.ng")
-        self.assertTrue(login.check_password("+2348031234567"))
+        # The local 11-digit form, same as shown/typed everywhere else in the app -
+        # never the +234 form (apps.accounts.identity.normalize_parent_phone's own
+        # format, used for parent-login identities, not this).
+        self.assertTrue(login.check_password("08031234567"))
         self.assertTrue(login.must_change_password)
         membership = Membership.objects.get(id=profile["linkedMembershipId"])
         self.assertEqual((membership.user_id, membership.role), (login.id, "teacher"))

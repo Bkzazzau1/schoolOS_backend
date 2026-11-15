@@ -12,7 +12,8 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from apps.accounts.identity import create_staff_bootstrap_user, normalize_parent_phone
+from apps.accounts.identity import create_staff_bootstrap_user
+from apps.core.identity import normalize_phone
 from apps.notifications.services import notify_many
 from apps.schools.models import Membership
 from apps.staff.constants import AUTHORIZER, DIRECTORY, PROFILE
@@ -98,6 +99,11 @@ def provision_staff_login(school, staff_id: str, *, email: str, phone: str, role
     rule already used for student/parent accounts, skipping the emailed
     registration link entirely.
 
+    The password is the same local 11-digit form (08031234567) used everywhere
+    else a phone number is shown or typed in this app (apps.core.identity.
+    normalize_phone - not apps.accounts.identity.normalize_parent_phone's
+    +234 form, which nobody would think to type as "their phone number").
+
     Returns None - the caller should fall back to emailing a registration link
     instead (see apps.invitations.listeners) - when there is nothing to do yet
     (no profile, already linked), or when it would not be safe to create the
@@ -110,7 +116,7 @@ def provision_staff_login(school, staff_id: str, *, email: str, phone: str, role
         return None
     if account_exists(email):
         return None
-    normalized_phone = normalize_parent_phone(phone)
+    normalized_phone = normalize_phone(phone)
     if normalized_phone is None:
         return None
     with transaction.atomic():

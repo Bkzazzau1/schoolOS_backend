@@ -314,7 +314,9 @@ class EndToEndTests(InviteTestCase):
 
         user = User.objects.get(email="zainab@school.ng")
         self.assertTrue(user.must_change_password)
-        self.assertTrue(user.check_password("+234" + phone[1:]))
+        # The local 11-digit form they'd actually type, same as everywhere else in
+        # the app - never the +234 form.
+        self.assertTrue(user.check_password(phone))
         self.assertTrue(StaffLink.objects.filter(school=self.school, staff_id=staff_id, membership__user=user).exists())
 
         self.client.force_authenticate(user)
