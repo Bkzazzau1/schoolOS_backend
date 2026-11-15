@@ -121,6 +121,23 @@ class ConsoleDashboardGrowthTests(TestCase):
         self.assertEqual(response.context["school_growth_total"], 0)
 
 
+class ConsoleDashboardRevenueTrendsTests(TestCase):
+    """Wiring only - apps.billing.tests.test_reporting owns the business-logic
+    coverage for weekly_confirmed_revenue/revenue_by_plan/weekly_cancellations."""
+
+    def setUp(self):
+        self.staff_user = User.objects.create_user("ops@skulgen.com", PASSWORD, is_staff=True)
+        self.client.force_login(self.staff_user)
+
+    def test_the_dashboard_exposes_revenue_and_cancellation_trends(self):
+        response = self.client.get(reverse("console:dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["revenue_growth"], {})
+        self.assertEqual(response.context["revenue_by_plan"], {})
+        self.assertEqual(len(response.context["cancellations"]), 12)
+        self.assertEqual(response.context["cancellations_total"], 0)
+
+
 class ConsoleOrganizationDetailTests(TestCase):
     def setUp(self):
         self.staff_user = User.objects.create_user("ops@skulgen.com", PASSWORD, is_staff=True)

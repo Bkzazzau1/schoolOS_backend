@@ -46,7 +46,15 @@
     .bar-chart { display: flex; align-items: flex-end; gap: 6px; height: 160px; margin-top: .5rem; border-bottom: 1px solid var(--line); }
     .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
     .bar-col .bar { width: 100%; max-width: 24px; min-height: 2px; background: var(--brand); border-radius: 4px 4px 0 0; }
+    .bar-col .bar.bad { background: #7a1c14; }
     .bar-col .bar-label { margin-top: .4rem; font-size: .68rem; color: var(--muted); white-space: nowrap; }
+    .chart-subtitle { font-size: .8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .02em; margin: 0 0 .4rem; }
+    .currency-block + .currency-block { margin-top: 1.25rem; }
+    .hbar-row { display: flex; align-items: center; gap: .6rem; margin-top: .5rem; }
+    .hbar-row .hbar-label { width: 9rem; flex-shrink: 0; font-size: .85rem; color: var(--ink); text-align: right; }
+    .hbar-row .hbar-track { flex: 1; }
+    .hbar-row .hbar { height: 20px; min-width: 2px; background: var(--brand); border-radius: 0 4px 4px 0; }
+    .hbar-row .hbar-value { flex-shrink: 0; min-width: 5rem; font-size: .85rem; color: var(--muted); white-space: nowrap; }
   </style>
 </head>
 <body>

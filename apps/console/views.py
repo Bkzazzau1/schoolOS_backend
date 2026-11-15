@@ -36,7 +36,12 @@ from apps.billing.pricing import (
     create_enterprise_agreement,
     create_pricing_bracket,
 )
-from apps.billing.reporting import platform_subscription_report
+from apps.billing.reporting import (
+    platform_subscription_report,
+    revenue_by_plan,
+    weekly_cancellations,
+    weekly_confirmed_revenue,
+)
 from apps.billing.services import access_mode, admin_set_plan, admin_set_status, ensure_organization_subscription
 from apps.organizations.models import Organization
 from apps.schools.models import School
@@ -100,6 +105,7 @@ def dashboard(request):
         .order_by("status", "-updated_at")
     )
     school_growth = _weekly_school_growth()
+    cancellations = weekly_cancellations()
     return render(
         request,
         "console/dashboard.html",
@@ -111,6 +117,10 @@ def dashboard(request):
             "report": platform_subscription_report(),
             "school_growth": school_growth,
             "school_growth_total": sum(bucket["count"] for bucket in school_growth),
+            "revenue_growth": weekly_confirmed_revenue(),
+            "revenue_by_plan": revenue_by_plan(),
+            "cancellations": cancellations,
+            "cancellations_total": sum(bucket["count"] for bucket in cancellations),
         },
     )
 

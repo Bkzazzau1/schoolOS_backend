@@ -23,6 +23,60 @@
 </div>
 
 <div class="card">
+  <h2>Confirmed revenue</h2>
+  {% if revenue_growth %}
+    {% for currency, weeks in revenue_growth.items %}
+      <div class="currency-block">
+        <h3 class="chart-subtitle">{{ currency }}</h3>
+        <div class="bar-chart" role="img" aria-label="Confirmed {{ currency }} revenue per week for the last {{ weeks|length }} weeks">
+          {% for week in weeks %}
+            <div class="bar-col">
+              <div class="bar" style="height: {{ week.height_pct }}%" title="Week of {{ week.week_start|date:'M j' }}: {{ week.amount_minor|money:currency }}"></div>
+              <div class="bar-label">{{ week.week_start|date:'M j' }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No confirmed revenue yet - only a paid invoice counts, never an open one.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Revenue by plan</h2>
+  {% if revenue_by_plan %}
+    {% for currency, plans in revenue_by_plan.items %}
+      <div class="currency-block">
+        <h3 class="chart-subtitle">{{ currency }}</h3>
+        {% for plan in plans %}
+          <div class="hbar-row">
+            <div class="hbar-label">{{ plan.plan_name }}</div>
+            <div class="hbar-track"><div class="hbar" style="width: {{ plan.width_pct }}%"></div></div>
+            <div class="hbar-value">{{ plan.amount_minor|money:currency }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No confirmed revenue yet - only a paid invoice counts, never an open one.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Cancellations</h2>
+  <p class="muted">{{ cancellations_total }} cancellation{{ cancellations_total|pluralize }} in the last {{ cancellations|length }} weeks.</p>
+  <div class="bar-chart" role="img" aria-label="Subscriptions cancelled per week for the last {{ cancellations|length }} weeks, {{ cancellations_total }} in total.">
+    {% for week in cancellations %}
+      <div class="bar-col">
+        <div class="bar bad" style="height: {{ week.height_pct }}%" title="Week of {{ week.week_start|date:'M j' }}: {{ week.count }} cancellation{{ week.count|pluralize }}"></div>
+        <div class="bar-label">{{ week.week_start|date:'M j' }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
   <h2>Subscription reporting</h2>
   <div class="stat-grid">
     <div class="stat"><div class="n">{{ report.totalSubscribedSchools }}</div><div class="label">Subscribed schools</div></div>
