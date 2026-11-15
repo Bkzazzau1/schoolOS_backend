@@ -18,7 +18,7 @@ from django.utils import timezone
 from apps.schools.models import School
 
 from .academic_periods import active_session_for_school
-from .models import BillingInterval, EnterpriseAgreement, PricingAuditEvent, PricingBracket
+from .models import BillingInterval, DiscountKind, EnterpriseAgreement, PricingAuditEvent, PricingBracket, SchoolDiscount
 
 #: The approved annual-payment discount: 10% off, kept as a numerator/denominator pair so the
 #: rounding rule (truncate toward zero - the discount is never less generous than advertised)
@@ -156,6 +156,55 @@ def annual_fee_for_school(school, *, billable_student_count: int, as_of=None) ->
     return replace(per_term, fixed_fee_minor=net, gross_fee_minor=gross, discount_minor=gross - net, term_count=term_count)
 
 
+def active_school_discount_for(school, *, as_of=None) -> SchoolDiscount | None:
+    as_of = as_of or timezone.now()
+    return (
+        SchoolDiscount.objects.filter(school=school)
+        .filter(_time_window_q(as_of, from_field="effective_from", until_field="effective_until"))
+        .order_by("-effective_from", "-id")
+        .first()
+    )
+
+
+def _discount_reduction(discount: SchoolDiscount, amount_minor: int) -> int:
+    """The actual kobo reduction for one discount - never more than what's actually owed,
+    so a fixed-amount discount larger than the fee reduces it to zero, never negative."""
+
+    if discount.kind == DiscountKind.PERCENT:
+        reduction = (amount_minor * discount.percent_off) // 100
+    else:
+        reduction = discount.amount_off_minor
+    return max(0, min(reduction, amount_minor))
+
+
+def priced_fee_for_school(school, *, billable_student_count: int, as_of=None, annual: bool = False) -> FeeResult:
+    """The actual amount this school would be charged right now - the one place every real
+    invoicing path (term billing, subscription-period billing, and the premium-access
+    affordability preview) goes through, so an operator-negotiated SchoolDiscount is never
+    applied in only some of them.
+
+    Combines with, never replaces, the automatic annual-payment discount: both reductions
+    accumulate in the returned discount_minor, and gross_fee_minor always stays the true
+    pre-any-discount figure - applying the operator discount here, once, after either the
+    per-term or annual amount is already final, is what keeps a fixed-amount discount from
+    being multiplied by a term count it was never meant to scale with.
+    """
+
+    as_of = as_of or timezone.now()
+    fee = (
+        annual_fee_for_school(school, billable_student_count=billable_student_count, as_of=as_of)
+        if annual
+        else fixed_fee_for_school(school, billable_student_count=billable_student_count, as_of=as_of)
+    )
+    discount = active_school_discount_for(school, as_of=as_of)
+    if discount is None:
+        return fee
+    reduction = _discount_reduction(discount, fee.fixed_fee_minor)
+    if reduction <= 0:
+        return fee
+    return replace(fee, fixed_fee_minor=fee.fixed_fee_minor - reduction, discount_minor=fee.discount_minor + reduction)
+
+
 @dataclass(frozen=True)
 class SchoolFee:
     school_id: str
@@ -179,7 +228,7 @@ def fixed_fees_for_subscription_period(subscription, snapshot) -> list[SchoolFee
     as_of = snapshot.period_end or timezone.now()
     school_meters = (snapshot.metadata or {}).get("schoolMeters")
     plan = subscription.plan
-    fee_for = annual_fee_for_school if (plan and plan.billing_interval == BillingInterval.ANNUAL) else fixed_fee_for_school
+    annual = bool(plan and plan.billing_interval == BillingInterval.ANNUAL)
 
     if not school_meters:
         if snapshot.active_school_count != 1:
@@ -190,7 +239,8 @@ def fixed_fees_for_subscription_period(subscription, snapshot) -> list[SchoolFee
             )
         school = School.objects.get(organization=subscription.organization, is_active=True)
         count = snapshot.billable_student_count or 0
-        return [SchoolFee(school_id=str(school.id), billable_student_count=count, fee=fee_for(school, billable_student_count=count, as_of=as_of))]
+        fee = priced_fee_for_school(school, billable_student_count=count, as_of=as_of, annual=annual)
+        return [SchoolFee(school_id=str(school.id), billable_student_count=count, fee=fee)]
 
     not_ready = [detail["schoolId"] for detail in school_meters if not detail.get("ready")]
     if not_ready:
@@ -202,7 +252,8 @@ def fixed_fees_for_subscription_period(subscription, snapshot) -> list[SchoolFee
     for detail in school_meters:
         school = schools_by_id[detail["schoolId"]]
         count = detail["count"]
-        results.append(SchoolFee(school_id=detail["schoolId"], billable_student_count=count, fee=fee_for(school, billable_student_count=count, as_of=as_of)))
+        fee = priced_fee_for_school(school, billable_student_count=count, as_of=as_of, annual=annual)
+        results.append(SchoolFee(school_id=detail["schoolId"], billable_student_count=count, fee=fee))
     return results
 
 
@@ -382,3 +433,83 @@ def create_enterprise_agreement(
         },
     )
     return agreement
+
+
+@transaction.atomic
+def create_school_discount(
+    *,
+    school,
+    kind: str,
+    reason: str,
+    percent_off: int | None = None,
+    amount_off_minor: int | None = None,
+    effective_from=None,
+    currency: str = "NGN",
+    actor=None,
+) -> SchoolDiscount:
+    """Records a new operator-negotiated discount for one school. reason is required - a
+    discount is never recorded as "just a number," always tied to why it was granted."""
+
+    reason = reason.strip()
+    if not reason:
+        raise ValueError("A reason is required for a discount.")
+    effective_from = effective_from or timezone.now()
+
+    if kind == DiscountKind.PERCENT:
+        if percent_off is None or not (1 <= percent_off <= 100):
+            raise ValueError("percent_off must be between 1 and 100.")
+        amount_off_minor = None
+    elif kind == DiscountKind.FIXED:
+        if amount_off_minor is None or amount_off_minor <= 0:
+            raise ValueError("amount_off_minor must be a positive amount.")
+        percent_off = None
+    else:
+        raise ValueError(f"Unknown discount kind: {kind!r}")
+
+    discount = SchoolDiscount.objects.create(
+        school=school,
+        kind=kind,
+        percent_off=percent_off,
+        amount_off_minor=amount_off_minor,
+        currency=currency,
+        reason=reason,
+        effective_from=effective_from,
+        created_by=actor,
+    )
+    PricingAuditEvent.objects.create(
+        actor=actor,
+        action="school_discount_created",
+        target_type="school_discount",
+        target_id=str(discount.id),
+        detail={
+            "schoolId": str(school.id),
+            "kind": kind,
+            "percentOff": percent_off,
+            "amountOffMinor": amount_off_minor,
+            "currency": currency,
+            "reason": reason,
+            "effectiveFrom": effective_from.isoformat(),
+        },
+    )
+    return discount
+
+
+@transaction.atomic
+def end_school_discount(discount: SchoolDiscount, *, actor=None) -> SchoolDiscount:
+    """Ends an operator-negotiated discount from this moment forward. Never deletes the
+    row: an invoice already priced under it keeps its own copied discount_minor, so the
+    historical discount stays on record as what was actually applied."""
+
+    if discount.effective_until is not None and discount.effective_until <= timezone.now():
+        raise ValueError("This discount has already ended.")
+    effective_until = timezone.now()
+    discount.effective_until = effective_until
+    discount.save(update_fields=["effective_until"])
+    PricingAuditEvent.objects.create(
+        actor=actor,
+        action="school_discount_ended",
+        target_type="school_discount",
+        target_id=str(discount.id),
+        detail={"effectiveUntil": effective_until.isoformat()},
+    )
+    return discount

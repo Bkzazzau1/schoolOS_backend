@@ -30,7 +30,7 @@ from rest_framework.exceptions import PermissionDenied
 from .academic_periods import active_session_for_school, active_term_for_school, term_bounds
 from .census import current_census
 from .models import BillingInvoice, InvoiceStatus, SchoolBillingMeterSnapshot
-from .pricing import PricingPolicyUndefined, fixed_fee_for_school
+from .pricing import PricingPolicyUndefined, priced_fee_for_school
 from .services import ensure_organization_subscription, resolved_entitlements, serialize_payment_attempt
 
 #: Verified against real, currently-implemented code (apps/cbt/services.py's automatic scoring
@@ -246,7 +246,7 @@ def serialize_school_entitlement_status(school, *, viewer_role: str | None, bill
             "undefinedReason": None,
         }
         try:
-            fee = fixed_fee_for_school(
+            fee = priced_fee_for_school(
                 school, billable_student_count=meter.billable_student_count, as_of=now
             )
         except PricingPolicyUndefined as problem:

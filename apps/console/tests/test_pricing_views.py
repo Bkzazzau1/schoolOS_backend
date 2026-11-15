@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.billing.cycle import run_subscription_cycle
-from apps.billing.models import EnterpriseAgreement, PricingAuditEvent, PricingBracket
+from apps.billing.models import EnterpriseAgreement, PricingAuditEvent, PricingBracket, SchoolDiscount
 from apps.billing.tests.base import BillingTestCase
 
 User = get_user_model()
@@ -114,6 +114,62 @@ class SchoolEnterpriseAgreementConsoleTests(BillingTestCase):
     def test_an_agreement_is_refused_without_a_contract_reference(self):
         self.client.post(self._url(), {"fixed_fee_naira": "400000", "notes": "Missing contract reference"})
         self.assertFalse(EnterpriseAgreement.objects.filter(school=self.school).exists())
+
+
+class SchoolDiscountConsoleTests(BillingTestCase):
+    def setUp(self):
+        super().setUp()
+        self.staff_user = User.objects.create_user("ops-discount@skulgen.com", PASSWORD, is_staff=True)
+        self.client.force_login(self.staff_user)
+
+    def _url(self):
+        return reverse("console:school_discount", args=[self.school.id])
+
+    def test_shows_no_discount_yet_for_a_fresh_school(self):
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["active_discount"])
+        self.assertEqual(list(response.context["discounts"]), [])
+
+    def test_creating_a_percent_discount_makes_it_the_active_one(self):
+        self.client.post(self._url(), {"action": "create", "kind": "percent", "percent_off": "15", "reason": "renewal deal"})
+        discount = SchoolDiscount.objects.get(school=self.school)
+        self.assertEqual(discount.kind, "percent")
+        self.assertEqual(discount.percent_off, 15)
+        self.assertEqual(discount.reason, "renewal deal")
+        self.assertEqual(discount.created_by, self.staff_user)
+
+        response = self.client.get(self._url())
+        self.assertEqual(response.context["active_discount"].id, discount.id)
+
+    def test_creating_a_fixed_discount_converts_naira_to_kobo(self):
+        self.client.post(self._url(), {"action": "create", "kind": "fixed", "amount_off_naira": "20000", "reason": "goodwill credit"})
+        discount = SchoolDiscount.objects.get(school=self.school)
+        self.assertEqual(discount.kind, "fixed")
+        self.assertEqual(discount.amount_off_minor, 2_000_000)
+
+    def test_a_discount_without_a_reason_is_refused(self):
+        self.client.post(self._url(), {"action": "create", "kind": "percent", "percent_off": "15", "reason": ""})
+        self.assertFalse(SchoolDiscount.objects.filter(school=self.school).exists())
+
+    def test_ending_the_active_discount_removes_it_from_future_pricing(self):
+        self.client.post(self._url(), {"action": "create", "kind": "percent", "percent_off": "15", "reason": "deal"})
+        discount = SchoolDiscount.objects.get(school=self.school)
+
+        self.client.post(self._url(), {"action": "end", "discount_id": str(discount.id)})
+        discount.refresh_from_db()
+        self.assertIsNotNone(discount.effective_until)
+
+        response = self.client.get(self._url())
+        self.assertIsNone(response.context["active_discount"])
+
+    def test_an_ordinary_account_cannot_reach_the_discount_page(self):
+        self.client.logout()
+        ordinary = User.objects.create_user("owner-discount-test@school.ng", PASSWORD)
+        self.client.force_login(ordinary)
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/login/", response.url)
 
 
 class OrganizationDetailShowsBillingHistoryTests(BillingTestCase):

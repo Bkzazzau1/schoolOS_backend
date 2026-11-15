@@ -21,7 +21,7 @@ from ..models import (
     SchoolEnrollmentCensus,
     UsageSnapshot,
 )
-from ..pricing import PricingPolicyUndefined, fixed_fee_for_school
+from ..pricing import PricingPolicyUndefined, priced_fee_for_school
 from .invoicing import _create_school_invoice_locked
 from .metering import _latest_meter_for_period
 from .status import _reconcile_overdue_locked
@@ -136,7 +136,7 @@ def _issue_term_invoice_for_school_locked(
         billable_count = census.billable_student_count
 
     try:
-        fee = fixed_fee_for_school(school, billable_student_count=billable_count, as_of=now)
+        fee = priced_fee_for_school(school, billable_student_count=billable_count, as_of=now)
     except PricingPolicyUndefined as problem:
         flag_pricing_exception(school, period_start=start, period_end=end, reason=str(problem), meter=meter)
         return None, "pricing_undefined"

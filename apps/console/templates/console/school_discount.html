@@ -1,0 +1,72 @@
+{% extends "console/base.html" %}
+{% load console_extras %}
+{% block title %}{{ school.name }} · Discount · SkulGen console{% endblock %}
+{% block content %}
+<p><a class="row-link muted" href="{% url 'console:organization_detail' school.organization_id %}">&larr; {{ school.organization.name }}</a></p>
+<h1>{{ school.name }} &middot; Discount</h1>
+<p class="muted">An ongoing reduction off this school's future invoices, negotiated by an
+  operator - separate from the automatic 10% annual-payment discount every annual payer
+  already gets. Only one can be active at a time; the newest overrides an older one that
+  hasn't been ended yet.</p>
+
+<div class="card">
+  <h2>Active discount</h2>
+  {% if active_discount %}
+    <table>
+      <tr><th>Amount</th><td>{% if active_discount.kind == "percent" %}{{ active_discount.percent_off }}% off{% else %}{{ active_discount.amount_off_minor|money:active_discount.currency }} off{% endif %}</td></tr>
+      <tr><th>Reason</th><td>{{ active_discount.reason }}</td></tr>
+      <tr><th>Effective from</th><td>{{ active_discount.effective_from|date:"Y-m-d H:i" }}</td></tr>
+      <tr><th>Granted by</th><td class="muted">{{ active_discount.created_by|default:"-" }}</td></tr>
+    </table>
+    <form method="post" class="action-row" style="margin-top:.75rem">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="end">
+      <input type="hidden" name="discount_id" value="{{ active_discount.id }}">
+      <button type="submit" class="button secondary">End this discount</button>
+    </form>
+  {% else %}
+    <p class="muted">No discount active for this school right now.</p>
+  {% endif %}
+
+  <h2 style="margin-top:1.5rem">Grant a discount</h2>
+  <form method="post" class="action-row">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create">
+    <label>Type
+      <select name="kind">
+        {% for value, label in discount_kinds %}
+          <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Percent off <input type="text" name="percent_off" size="4" placeholder="e.g. 15"></label>
+    <label>Fixed amount off (NGN) <input type="text" name="amount_off_naira" size="10" placeholder="e.g. 20000"></label>
+    <label>Reason <input type="text" name="reason" size="30" required placeholder="e.g. negotiated renewal discount"></label>
+    <button type="submit">Create, effective now</button>
+  </form>
+  <p class="muted" style="margin-top:.5rem">Fill in percent off for a percentage discount, or
+    fixed amount for a flat one - only the field matching the chosen type is used.</p>
+</div>
+
+<div class="card">
+  <h2>History</h2>
+  {% if discounts %}
+    <table>
+      <thead><tr><th>Amount</th><th>Reason</th><th>Effective from</th><th>Effective until</th><th>Granted by</th></tr></thead>
+      <tbody>
+      {% for discount in discounts %}
+        <tr>
+          <td>{% if discount.kind == "percent" %}{{ discount.percent_off }}%{% else %}{{ discount.amount_off_minor|money:discount.currency }}{% endif %}</td>
+          <td class="muted">{{ discount.reason }}</td>
+          <td class="muted">{{ discount.effective_from|date:"Y-m-d H:i" }}</td>
+          <td>{% if discount.effective_until %}{{ discount.effective_until|date:"Y-m-d H:i" }}{% else %}<span class="pill tone-good">current</span>{% endif %}</td>
+          <td class="muted">{{ discount.created_by|default:"-" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No discount has ever been granted to this school.</p>
+  {% endif %}
+</div>
+{% endblock %}

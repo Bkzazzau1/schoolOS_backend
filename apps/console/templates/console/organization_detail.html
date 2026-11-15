@@ -60,13 +60,14 @@
   <h2>Schools ({{ schools|length }})</h2>
   {% if schools %}
     <table>
-      <thead><tr><th>Name</th><th>Type</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Type</th><th></th><th></th></tr></thead>
       <tbody>
       {% for school in schools %}
         <tr>
           <td>{{ school.name }}</td>
           <td>{{ school.school_type }}</td>
           <td><a class="row-link" href="{% url 'console:school_enterprise_agreement' school.id %}">Enterprise pricing</a></td>
+          <td><a class="row-link" href="{% url 'console:school_discount' school.id %}">Discount</a></td>
         </tr>
       {% endfor %}
       </tbody>

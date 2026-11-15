@@ -20,6 +20,7 @@ from apps.billing.census import correct_school_census
 from apps.billing.cycle import automation_summary
 from apps.billing.models import (
     CensusStatus,
+    DiscountKind,
     DuplicateCollectionReview,
     EnterpriseAgreement,
     OrganizationSubscription,
@@ -32,9 +33,12 @@ from apps.billing.models import (
 )
 from apps.billing.pricing import (
     OverlappingBracketError,
+    active_school_discount_for,
     close_pricing_bracket,
     create_enterprise_agreement,
     create_pricing_bracket,
+    create_school_discount,
+    end_school_discount,
 )
 from apps.billing.reporting import (
     platform_subscription_report,
@@ -265,6 +269,58 @@ def school_enterprise_agreement(request, school_id):
         {
             "school": school,
             "agreements": agreements,
+        },
+    )
+
+
+def _parse_optional_int(raw: str) -> int | None:
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+@staff_member_required
+def school_discount(request, school_id):
+    school = get_object_or_404(School.objects.select_related("organization"), id=school_id)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        try:
+            if action == "end":
+                discount = get_object_or_404(school.discounts, id=request.POST.get("discount_id"))
+                end_school_discount(discount, actor=request.user)
+                messages.success(request, "Discount ended.")
+            else:
+                kind = request.POST.get("kind", "")
+                create_school_discount(
+                    school=school,
+                    kind=kind,
+                    percent_off=_parse_optional_int(request.POST.get("percent_off", "")),
+                    amount_off_minor=(
+                        _minor_from_naira_input(request.POST.get("amount_off_naira", ""))
+                        if kind == DiscountKind.FIXED
+                        else None
+                    ),
+                    reason=request.POST.get("reason", "").strip(),
+                    actor=request.user,
+                )
+                messages.success(request, "Discount created.")
+        except ValueError as problem:
+            messages.error(request, str(problem))
+        return redirect(reverse("console:school_discount", args=[school.id]))
+
+    return render(
+        request,
+        "console/school_discount.html",
+        {
+            "school": school,
+            "discounts": school.discounts.order_by("-effective_from"),
+            "active_discount": active_school_discount_for(school),
+            "discount_kinds": DiscountKind.choices,
         },
     )
 
