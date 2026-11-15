@@ -190,6 +190,7 @@ def organization_detail(request, organization_id):
             "invoices": invoices,
             "payment_attempts": payment_attempts,
             "events": subscription.events.all()[:30],
+            "usage_snapshots": organization.usage_snapshots.all()[:20],
             "plans": Plan.objects.filter(is_active=True).order_by("sort_order"),
             "status_choices": SubscriptionStatus.choices,
         },

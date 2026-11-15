@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.billing.models import OrganizationSubscription, Plan, SubscriptionEvent, SubscriptionStatus
+from apps.billing.models import OrganizationSubscription, Plan, SubscriptionEvent, SubscriptionStatus, UsageSnapshot
 from apps.organizations.models import Organization
 from apps.schools.models import School
 
@@ -168,6 +168,25 @@ class ConsoleOrganizationDetailTests(TestCase):
         self.assertEqual(event.to_status, SubscriptionStatus.SUSPENDED)
         self.assertEqual(event.detail["adminEmail"], "ops@skulgen.com")
         self.assertEqual(event.detail["source"], "console")
+
+    def test_shows_usage_snapshot_history_newest_first(self):
+        now = timezone.now()
+        UsageSnapshot.objects.create(
+            organization=self.organization, subscription=self.subscription,
+            period_start=now - timedelta(days=30), period_end=now,
+            active_school_count=1, billable_student_count=40, source="older",
+        )
+        newer = UsageSnapshot.objects.create(
+            organization=self.organization, subscription=self.subscription,
+            period_start=now, period_end=now + timedelta(days=30),
+            active_school_count=1, billable_student_count=55, source="newer",
+        )
+        response = self.client.get(self._url())
+        snapshots = list(response.context["usage_snapshots"])
+        self.assertEqual(len(snapshots), 2)
+        self.assertEqual(snapshots[0].id, newer.id)
+        self.assertContains(response, "55")
+        self.assertContains(response, "newer")
 
     def test_setting_an_unreal_status_is_refused_and_changes_nothing(self):
         with self.assertRaises(Exception):

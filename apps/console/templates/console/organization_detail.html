@@ -144,6 +144,28 @@
 </div>
 
 <div class="card">
+  <h2>Usage history</h2>
+  {% if usage_snapshots %}
+    <table>
+      <thead><tr><th>Captured</th><th>Period</th><th>Active schools</th><th>Billable students</th><th>Source</th></tr></thead>
+      <tbody>
+      {% for snapshot in usage_snapshots %}
+        <tr>
+          <td class="muted">{{ snapshot.captured_at|date:"Y-m-d H:i" }}</td>
+          <td class="muted">{{ snapshot.period_start|date:"Y-m-d"|default:"-" }} to {{ snapshot.period_end|date:"Y-m-d"|default:"-" }}</td>
+          <td>{{ snapshot.active_school_count }}</td>
+          <td>{{ snapshot.billable_student_count|default:"-" }}</td>
+          <td class="muted">{{ snapshot.source }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No usage recorded yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
   <h2>History</h2>
   {% if events %}
     <table>
