@@ -5,6 +5,7 @@ server sets both when the person's account is linked to their staff record, so a
 assignment nobody has claimed gives none.
 """
 
+from apps.core.errors import Rejected
 from apps.sync.models import SyncRecord
 from apps.structure.constants import SECTION
 
@@ -69,3 +70,21 @@ def stage_scope_for(membership) -> str | None:
         if section and section.payload.get("stage"):
             return section.payload["stage"]
     return None
+
+
+def require_stage_access(membership, stage: str, *, action: str = "manage") -> None:
+    """Raises Rejected unless this membership may act on data belonging to this one
+    academic stage (Nursery, Primary, Secondary, ...).
+
+    A Principal is always scoped to Secondary - the one hardcoded case, since that
+    role exists for exactly this. Anyone else is scoped only if the owner gave them
+    an active sectionHead job assignment for a section of a different stage (see
+    stage_scope_for) - everyone else, including the owner, is whole-school by
+    default, so nothing changes for a school that never sets one up.
+    """
+    if membership.role == "principal":
+        allowed = "secondary"
+    else:
+        allowed = stage_scope_for(membership)
+    if allowed and stage.strip().lower() != allowed.strip().lower():
+        raise Rejected(f"This membership can only {action} {allowed.title()} records.")

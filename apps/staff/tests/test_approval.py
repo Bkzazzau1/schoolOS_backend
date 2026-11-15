@@ -155,10 +155,29 @@ class WhoMayDecideTests(StaffTestCase):
         self.ok(self.propose(proposal_id="P1", systemRole="teacher"))
 
     def test_people_with_no_authority_get_a_403_and_nothing_changes(self):
-        for role in ["principal", "administrator", "accountant", "teacher", "staff", "parent", "student"]:
+        # Principal is deliberately excluded here - see test_a_principal_can_approve_by_default.
+        for role in ["administrator", "accountant", "teacher", "staff", "parent", "student"]:
             self.assertEqual(self.approve(self.members[role], "P1").status_code, 403, role)
             self.assertEqual(self.reject(self.members[role], "P1").status_code, 403, role)
         self.assertEqual(self.stored("staff_proposal", "P1").payload["status"], "pending")
+
+    def test_a_principal_can_approve_teachers_and_staff_by_default(self):
+        """Unlike every other role, a Principal never needs the owner to grant
+        "approveStaff" first - the same DELEGATE_ROLES limit still applies, though:
+        a Principal can never approve an Administrator, Finance Officer or fellow
+        Principal on their own say-so. Proposed by the owner (never the Principal
+        themselves) so this is testing their authority to decide, not the separate
+        "nobody decides on their own proposal" rule."""
+        principal = self.members["principal"]
+        self.ok(self.propose(who=self.owner, proposal_id="OP1", systemRole="teacher"))
+        self.assertEqual(self.approve(principal, "OP1").status_code, 200)
+        self.ok(self.propose(who=self.owner, proposal_id="OP2", systemRole="staff"))
+        self.assertEqual(self.approve(principal, "OP2").status_code, 200)
+        for i, role in enumerate(["accountant", "administrator", "principal"]):
+            self.ok(self.propose(who=self.owner, proposal_id=f"PR{i}", systemRole=role))
+            response = self.approve(principal, f"PR{i}")
+            self.assertEqual(response.status_code, 400, role)
+            self.assertIn("Only the owner can approve", response.json()["message"])
 
     def test_signing_in_is_required_and_other_schools_owners_have_no_power(self):
         self.assertEqual(self.approve(None, "P1").status_code, 401)

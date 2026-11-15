@@ -2,6 +2,7 @@ from typing import Any
 
 from apps.core.errors import Rejected
 from apps.core.validation import boolean, choice, text
+from apps.owner.jobs.access import require_stage_access
 from apps.structure.constants import CAMPUS
 from apps.sync.models import SyncRecord
 from apps.sync.registry import EntityHandler, MutationContext
@@ -26,6 +27,10 @@ PROGRESSION_BATCH_ENTITY = "academic_progression_batch"
 
 _ADMIN_ROLES = frozenset({"administrator"})
 _READ_ROLES = {"administrator", "proprietor", "principal"}
+# A Principal creates classes too (own Secondary-only scope, enforced in
+# AcademicClassHandler.clean - see require_stage_access), unlike the other
+# handlers below, which stay Administrator-only.
+_CLASS_WRITE_ROLES = frozenset({"administrator", "principal"})
 _SESSION_STATUSES = set(AcademicLifecycleStatus.values)
 _BATCH_STATUSES = set(ProgressionBatchStatus.values)
 _OUTCOMES = set(ProgressionOutcome.values)
@@ -121,7 +126,7 @@ class AcademicTermHandler(EntityHandler):
 
 class AcademicClassHandler(EntityHandler):
     entity_type = CLASS_ENTITY
-    roles = _ADMIN_ROLES
+    roles = _CLASS_WRITE_ROLES
 
     def visible(self, membership, payload):
         return payload if membership.role in _READ_ROLES else None
@@ -131,6 +136,8 @@ class AcademicClassHandler(EntityHandler):
         external_id = text(p, "id", max_len=64)
         if external_id != ctx.entity_id:
             raise Rejected("id must match the academic-class entity id.")
+        section = text(p, "section", max_len=80)
+        require_stage_access(ctx.membership, section, action="create or edit classes for")
         next_class_id = _optional_text(p, "nextClassId", max_len=64)
         if next_class_id == external_id:
             raise Rejected("A class cannot progress to itself. Use Repeat instead.")
@@ -143,7 +150,7 @@ class AcademicClassHandler(EntityHandler):
             "id": external_id,
             "code": text(p, "code", max_len=60),
             "name": text(p, "name", max_len=120),
-            "section": text(p, "section", max_len=80),
+            "section": section,
             "campusId": campus_id or None,
             "levelOrder": _positive_int(p, "levelOrder", maximum=1000),
             "stream": _optional_text(p, "stream", max_len=60),

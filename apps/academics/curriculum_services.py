@@ -4,7 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.errors import Rejected
-from apps.owner.jobs.access import stage_scope_for
+from apps.owner.jobs.access import require_stage_access
 from apps.schools.models import Membership, Role
 from apps.students.models import EnrollmentStatus, Student
 from apps.sync.models import SyncRecord
@@ -90,16 +90,12 @@ def _teacher_membership(school, value: str):
 
 
 def _principal_secondary_scope(actor: Membership, academic_class: AcademicClass):
-    if actor.role == Role.PRINCIPAL and academic_class.section.strip().lower() != "secondary":
-        raise Rejected("This Principal can manage only Secondary curriculum and teaching assignments.")
-    # Anyone the owner made sectionHead of a Nursery/Primary/... section (Job
-    # Assignments, the same screen that scopes a Principal-equivalent to one
-    # campus) is limited to that one stage's own curriculum the same way - a
-    # Head Teacher or Headmaster need not be a Principal to get real, not just
-    # titular, authority over only their own section.
-    stage = stage_scope_for(actor)
-    if stage and academic_class.section.strip().lower() != stage.strip().lower():
-        raise Rejected(f"This membership can manage only {stage} curriculum and teaching assignments.")
+    """A Principal may manage only Secondary curriculum and teaching assignments;
+    anyone the owner made sectionHead of a Nursery/Primary/... section (Job
+    Assignments) is limited to that one stage's own curriculum the same way - a
+    Head Teacher or Headmaster need not be a Principal to get real, not just
+    titular, authority over only their own section. See require_stage_access."""
+    require_stage_access(actor, academic_class.section, action="manage curriculum and teaching assignments for")
 
 
 def serialize_subject(item: Subject) -> dict:
