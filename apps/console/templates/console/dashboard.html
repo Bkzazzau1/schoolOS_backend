@@ -2,11 +2,11 @@
 {% load console_extras %}
 {% block title %}SkulGen console{% endblock %}
 {% block content %}
-<h1>Platform overview</h1>
+<div class="page-head"><h1>Platform overview</h1></div>
 
 <div class="stat-grid">
-  <div class="stat"><div class="n">{{ total_organizations }}</div><div class="label">Organizations</div></div>
-  <div class="stat"><div class="n">{{ total_schools }}</div><div class="label">Schools</div></div>
+  <div class="stat hero"><div class="n">{{ total_organizations }}</div><div class="label">Organizations</div></div>
+  <div class="stat hero"><div class="n">{{ total_schools }}</div><div class="label">Schools</div></div>
 </div>
 
 <div class="card" style="margin-top: 1.25rem;">

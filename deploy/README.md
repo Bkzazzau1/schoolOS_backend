@@ -53,9 +53,11 @@ skulgen-api.service` for logs.
 
 `/etc/nginx/conf.d/skulgen.conf` has the HTTP (port 80) block serving the
 ACME challenge and redirecting everything else to HTTPS, followed by the
-HTTPS server blocks for `api.skulgen.com` and `admin.skulgen.com` (proxying
-to `127.0.0.1:8001`) — also kept here as `deploy/nginx-skulgen-https.conf`,
-the exact text appended to the live file.
+HTTPS server blocks for `api.skulgen.com`, `admin.skulgen.com` and
+`console.skulgen.com` (all proxying to `127.0.0.1:8001` — `console.skulgen.com`
+redirects `/` to `/console/`, same pattern as `admin.skulgen.com` and `/admin/`)
+— also kept here as `deploy/nginx-skulgen-https.conf`, the exact text appended
+to the live file.
 
 `skulgen.com`, `www.skulgen.com` and `app.skulgen.com` have DNS and will be
 covered by the TLS cert, but have no nginx server block yet: there is no
